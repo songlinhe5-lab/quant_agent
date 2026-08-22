@@ -39,10 +39,13 @@ AGENT-06 · LLM Provider 适配缝
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from openai import AsyncOpenAI
@@ -157,6 +160,8 @@ class LLMProviderRouter:
     3. 自动恢复探测：定期探测失败 provider 是否恢复
     4. 透明 failover：上层调用 execute_with_failover 时无需关心切换逻辑
     5. SSE 事件通知：切换时生成 FailoverEvent，由上层 yield 给前端
+    6. **AGENT-18: Retry Logic** - 针对可重试错误（429/timeout/5xx）指数退避 + jitter 最多 3 次
+       - 不可重试错误（auth/param）直接报错，不消耗 provider 切换预算
 
     使用示例：
         router = LLMProviderRouter.from_env()
@@ -380,41 +385,143 @@ class LLMProviderRouter:
     async def execute_with_failover(
         self,
         create_func: Callable[[AsyncOpenAI, str], Awaitable[Any]],
+        is_streaming: bool = False,  # AGENT-18: 流式标记（半截流式不重试）
     ) -> tuple[Any, Optional[FailoverEvent]]:
         """
-        带自动 failover 的 LLM 调用。
+        带自动 failover 和 AGENT-18 重试机制的 LLM 调用。
 
         Args:
             create_func: 调用函数，签名为 async (client, model) -> response
+            is_streaming: AGENT-18 标志，表示是否为流式调用（半截流式不重试）
 
         Returns:
             (response, failover_event) — failover_event 仅在发生切换时非 None
+
+        AGENT-18 Retry Semantics (codex responses_retry.rs):
+        - Retryable errors: HTTP 429 / timeout / 5xx / connection reset → exponential backoff + jitter, max 3 attempts
+        - Non-retryable errors: auth / 400 / param → immediate failure, no retry
+        - Half-stream safety: if streaming response already emitted, cancel retry (防副作用)
+        - FailureTracker integration: exhausted retries recorded to AGENT-02 tracker (via consecutive_failures counter)
         """
-        max_attempts = len(self.all_providers)
+        from hermes_agent.retry_classifier import (
+            CONTENT_FILTER_ERROR_CODE,
+            ExponentialBackoff,
+            RetryBudget,
+            RetryConfig,
+            RetryDecision,
+            classify_llm_error,
+        )
+
+        max_providers = len(self.all_providers)
         last_error: Optional[Exception] = None
-        failover_event: Optional[FailoverEvent] = None  # 跟踪切换事件
+        failover_event: Optional[FailoverEvent] = None
 
-        for attempt in range(max_attempts):
+        # AGENT-18: Retry budget（从环境变量读取 max_attempts / base_delay / max_delay）
+        cfg = RetryConfig.from_env()
+        retry_budget = RetryBudget(cfg)
+        backoff = ExponentialBackoff(base_delay=cfg.base_delay, max_delay=cfg.max_delay, exponent=cfg.exponent)
+        retry_budget.start()
+
+        for attempt in range(max_providers):
             provider = self.get_active_provider()
-            try:
-                response = await create_func(provider.client, provider.model)
-                await self.report_success(provider)
-                return response, failover_event  # AGENT-06: 返回切换事件（如果有）
+            current_provider_attempt = 0  # Per-provider retry count
+            backoff.reset()
 
-            except Exception as e:
-                last_error = e
-                event = await self.report_failure(provider)
+            while current_provider_attempt < retry_budget.max_attempts:
+                try:
+                    response = await create_func(provider.client, provider.model)
+                    await self.report_success(provider)
+                    return response, failover_event  # AGENT-06: 返回切换事件（如果有）
 
-                # 如果发生了切换，记录事件并继续尝试下一个 provider
-                if event is not None:
-                    failover_event = event
-                    print(f"🔄 [LLMProvider] 切换到 {event.to_provider}，重试中...")
-                    continue
+                except Exception as e:
+                    last_error = e
+                    current_provider_attempt += 1
 
-                # 如果没有切换（所有 provider 都不可用），抛出异常
-                raise
+                    # AGENT-18: Classify error
+                    status_code = getattr(e, "status_code", None)
+                    response_headers = getattr(getattr(e, "response", None), "headers", None)
+                    error_info = classify_llm_error(e, status_code, response_headers)
 
-        # 所有尝试都失败
+                    # Half-streaming protection: if we've already yielded data, don't retry
+                    if is_streaming and getattr(self, "_stream_emitted", False):
+                        logger.warning(
+                            "⚠️ [AGENT-18] half-stream detected, cancelling retry for %s",
+                            type(e).__name__,
+                        )
+                        raise e  # 立即抛出，不再重试
+
+                    # 内容过滤：返回特定错误码，不重试
+                    if error_info.category.value == "content_filter":
+                        wrapped = RuntimeError(f"[{CONTENT_FILTER_ERROR_CODE}] {e}")
+                        wrapped.__cause__ = e
+                        logger.error("[AGENT-18] 内容过滤/安全拦截，不重试: %s", e)
+                        await self.report_failure(provider)
+                        raise wrapped
+
+                    # 不可重试错误（4xx 参数 / 鉴权）：直接抛出并落 FailureTracker
+                    if not error_info.is_retryable:
+                        logger.error(
+                            "❌ [AGENT-18] 不可重试错误 (%s, status=%s): %s",
+                            error_info.category.value,
+                            status_code,
+                            e,
+                        )
+                        await self.report_failure(provider)
+                        break  # 跳出当前 provider，尝试 fallback
+
+                    # 检查重试预算（次数 / 总超时）
+                    can_retry, reason = retry_budget.can_retry(error_info)
+                    if not can_retry:
+                        logger.warning(
+                            "💔 [AGENT-18] 重试预算耗尽: %s (attempt %d/%d)",
+                            reason,
+                            current_provider_attempt,
+                            retry_budget.max_attempts,
+                        )
+                        await self.report_failure(provider)
+                        break  # 跳出当前 provider，尝试 fallback
+
+                    # 计算退避延迟：429 优先使用 Retry-After 头
+                    if error_info.category.value == "rate_limit" and error_info.retry_after is not None:
+                        delay = min(error_info.retry_after, cfg.max_delay)
+                        decision = RetryDecision.RETRY_BACKOFF
+                    else:
+                        delay = backoff.next_attempt_delay()
+                        if error_info.decision == RetryDecision.RETRY_IMMEDIATE and delay <= 1.0:
+                            delay = 0.0
+                        decision = retry_budget.log[-1].decision if retry_budget.log else error_info.decision
+
+                    # 需求 4：每次重试前记录结构化日志
+                    retry_budget.record_retry(
+                        error_info,
+                        delay,
+                        decision,
+                        reason="proceeding with retry",
+                    )
+
+                    logger.warning(
+                        "🔄 [AGENT-18] 可重试错误: %s (%s) | 退避 %.2fs | attempt %d/%d",
+                        type(e).__name__,
+                        error_info.category.value,
+                        delay,
+                        current_provider_attempt,
+                        retry_budget.max_attempts,
+                    )
+
+                    # Apply backoff
+                    await asyncio.sleep(delay)
+
+            # Current provider exhausted, try next provider
+            event = await self.report_failure(provider)
+            if event is not None:
+                failover_event = event
+                print(f"🔄 [LLMProvider] switching provider: {event.from_provider} → {event.to_provider}")
+                continue
+
+            # No more providers
+            raise
+
+        # All providers and attempts exhausted
         raise last_error or RuntimeError("所有 LLM provider 均不可用")
 
     def get_status_summary(self) -> Dict[str, Any]:

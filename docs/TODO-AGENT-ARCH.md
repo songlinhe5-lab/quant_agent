@@ -366,10 +366,11 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     - `agent.py` +85 net：_react_loop 每轮生成 uuid[:8]；三段式计时（inference/tool/save）；提取 token 计数；Prometheus histogram
     - `test_agent_17_turn_metadata.py` (11 tests)：11/11 全通过
   - **验收**: ✅ 事件日志 turn 事件全带 turn_id 与计时；✅ 指标端点可见每轮延迟分布；✅ tool_result 可按 turn_id 归组
-- [ ] **[AGENT-18]** **LLM 调用重试分类与退避**
-  - **现状**：S17
-  - **改法**（codex `responses_retry.rs` 范式）：retryable（429 / timeout / 5xx / 连接复位）与非 retryable（鉴权 / 参数错误）分类；retryable 指数退避 + jitter 最多 3 次；非 retryable 直进 error 事件；重试耗尽计入 AGENT-02 FailureTracker；**不得对已产生流式输出的半截轮次重试**（防重复下单类副作用）
-  - **验收**：mock 429/timeout 重试后成功；mock 鉴权错误零重试直接报错；半截流式不重试的否定用例
+- [x] **[AGENT-18]** **LLM 调用重试分类与退避**
+  - **现状**：S17 → 完成
+  - **改法**（codex `responses_retry.rs` 范式）：`hermes_agent/retry_classifier.py` 实现五类异常分类（网络/429 速率限制/5xx/4xx 参数/内容过滤+鉴权）；`RetryConfig`（从 `AGENT18_*` 环境变量读取 max_attempts/base_delay/max_delay）可配置；`ExponentialBackoff` 指数退避 + full-jitter 打散重试洪峰；429 优先读 `Retry-After` 响应头；4xx/鉴权零重试直抛；内容过滤返回 `LLM_CONTENT_FILTERED` 特定错误码不重试；`RetryBudget` 结构化重试日志（重试次数/类型/延迟/决策）；半截流式不重试（防副作用）；重试耗尽计入 AGENT-02 FailureTracker
+  - **验收**：`hermes_agent/tests/test_retry_classifier.py` 20 项单测全绿（含 429 读 Retry-After、404 不重试、内容过滤特定码、jitter 边界、预算耗尽、环境变量配置）；`llm_provider.py::execute_with_failover` 已接入新 classifier
+  - **commit**：待提交
 - [ ] **[AGENT-19]** **Elicitation 提问缝（人设落地）**
   - **现状**：S18 —— AGENTS.md §1 的"质疑精神"无机制承载
   - **改法**（codex `elicitation.rs` 范式）：新增 SSE 事件 `elicitation`（question + options + request_id），前端经 WebSocket/端点应答；Agent 暂停当前轮等待应答；复用 AGENT-07 审批通道基建；fail-closed：应答超时降级为"声明假设后继续"而非挂死
