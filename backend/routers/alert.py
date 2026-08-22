@@ -242,6 +242,9 @@ async def ai_triage(
     if global_llm_client is None:
         return AiTriageResponse(status="warning", triage=None, message="LLM 客户端未初始化")
 
+    if not settings.llm_model:
+        return AiTriageResponse(status="warning", triage=None, message="LLM 模型未配置")
+
     alerts_text = "\n".join(
         f"- {a.get('symbol', '?')} | {a.get('type', '?')} | {a.get('detail', '')}" for a in req.alerts[:30]
     )
@@ -255,7 +258,7 @@ async def ai_triage(
     )
     try:
         resp = await global_llm_client.chat.completions.create(
-            model=settings.llm_model or "deepseek-v4-flash",
+            model=settings.llm_model,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
         )

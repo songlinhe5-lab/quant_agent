@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Sparkles, AlertTriangle, ListOrdered, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
@@ -17,6 +17,13 @@ export function AiTriageCard({ alerts }: { alerts?: any[] }) {
   const [loading, setLoading] = useState(false)
   const [triage, setTriage] = useState<TriageResult | null>(null)
   const [warn, setWarn] = useState<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 用 event_id 集合生成稳定 key：仅当"触发集合"变化时重发 LLM，避免 ack/WS 抖动导致的重复调用
+  const alertKey = (alerts || [])
+    .map((a) => a.event_id || a.id || a.symbol || a.ticker || '?')
+    .slice(0, 30)
+    .join('|')
 
   useEffect(() => {
     if (!ai06Enabled) return
@@ -28,6 +35,7 @@ export function AiTriageCard({ alerts }: { alerts?: any[] }) {
         detail: a.detail || a.message || '',
       }))
     if (!input.length) {
+      if (timerRef.current) clearTimeout(timerRef.current)
       setTriage(null)
       setWarn('暂无触发告警，分诊待命中')
       setLoading(false)
@@ -36,7 +44,9 @@ export function AiTriageCard({ alerts }: { alerts?: any[] }) {
     let alive = true
     setLoading(true)
     setWarn(null)
-    ;(async () => {
+    // 防抖 300ms：合并快速连续的 events 更新，避免每次推送都打 LLM
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(async () => {
       try {
         const res = await apiClient.post('/alert/ai-triage', { alerts: input })
         const body = res.data || res
@@ -50,11 +60,12 @@ export function AiTriageCard({ alerts }: { alerts?: any[] }) {
       } finally {
         if (alive) setLoading(false)
       }
-    })()
+    }, 300)
     return () => {
       alive = false
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [ai06Enabled, alerts])
+  }, [ai06Enabled, alertKey])
 
   if (!ai06Enabled) return null
 
@@ -101,6 +112,9 @@ export function AiTriageCard({ alerts }: { alerts?: any[] }) {
               {triage.rule_suggestion}
             </p>
           )}
+          <p className="pt-1 text-[9px] text-muted-foreground/50 border-t border-border/30">
+            AI 生成 · 仅供参考，不构成投资建议
+          </p>
         </div>
       )}
     </div>
