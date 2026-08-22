@@ -263,6 +263,106 @@ class TestGetOptionStrategy:
         assert res["status"] == "error"
 
 
+# ── get_option_strategy_analysis（P0.2 期权损益分析）────────────────────────
+class TestGetOptionStrategyAnalysis:
+    LEGS = [
+        {"code": "US.AAPL260824C205000", "action": "BUY", "quantity": 1},
+        {"code": "US.AAPL260824P210000", "action": "BUY", "quantity": 1},
+    ]
+
+    async def test_not_initialized(self):
+        conn = _make_conn_mgr(quote_ctx=None)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_strategy_analysis(self.LEGS)
+        assert res["status"] == "error"
+        assert "未连接" in res["message"]
+
+    async def test_invalid_legs(self):
+        conn = _make_conn_mgr()
+        res = await OptionFundHandler(conn, CacheManager()).get_option_strategy_analysis("bad")
+        assert res["status"] == "error"
+        assert "option_legs" in res["message"]
+
+    async def test_empty_legs(self):
+        conn = _make_conn_mgr()
+        res = await OptionFundHandler(conn, CacheManager()).get_option_strategy_analysis([])
+        assert res["status"] == "error"
+
+    async def test_success_parses_pnl_fields(self):
+        """损益分析核心字段（盈亏平衡点/最大盈亏）解析，禁 Black-Scholes 近似"""
+        qctx = MagicMock()
+        qctx.get_option_strategy_analysis = lambda legs: (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "code": "AAPL260824C205/P210",
+                        "name": "AAPL 宽跨式策略",
+                        "option_strategy": "STRANGLE",
+                        "max_profit": 999999999999999.0,
+                        "max_loss": -10116.0,
+                        "breakeven_points": [103.84, 311.16],
+                        "prob_of_profit": 34.74,
+                        "delta": 0.99,
+                        "theta": -0.14,
+                    }
+                ]
+            ),
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_strategy_analysis(self.LEGS)
+        assert res["status"] == "success"
+        assert res["data"][0]["option_strategy"] == "STRANGLE"
+        assert res["data"][0]["max_loss"] == -10116.0
+        assert res["data"][0]["breakeven_points"] == [103.84, 311.16]
+
+    async def test_failure(self):
+        qctx = MagicMock()
+        qctx.get_option_strategy_analysis = lambda legs: (1, "err")
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_strategy_analysis(self.LEGS)
+        assert res["status"] == "error"
+
+
+# ── get_option_quote（P0.2 期权快照）────────────────────────────────────────
+class TestGetOptionQuote:
+    LEGS = [
+        {"code": "US.AAPL260824C205000", "action": "BUY", "quantity": 1},
+        {"code": "US.AAPL260824P210000", "action": "BUY", "quantity": 1},
+    ]
+
+    async def test_not_initialized(self):
+        conn = _make_conn_mgr(quote_ctx=None)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_quote(self.LEGS)
+        assert res["status"] == "error"
+        assert "未连接" in res["message"]
+
+    async def test_invalid_legs(self):
+        conn = _make_conn_mgr()
+        res = await OptionFundHandler(conn, CacheManager()).get_option_quote("bad")
+        assert res["status"] == "error"
+        assert "option_legs" in res["message"]
+
+    async def test_success(self):
+        qctx = MagicMock()
+        qctx.get_option_quote = lambda legs: (
+            RET_OK,
+            pd.DataFrame(
+                [{"price": 106.3452, "implied_volatility": "N/A", "delta": 0.99, "breakeven_point": [103.84, 311.16]}]
+            ),
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_quote(self.LEGS)
+        assert res["status"] == "success"
+        assert res["data"][0]["delta"] == 0.99
+
+    async def test_failure(self):
+        qctx = MagicMock()
+        qctx.get_option_quote = lambda legs: (1, "err")
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_quote(self.LEGS)
+        assert res["status"] == "error"
+
+
 # ── get_option_volatility ─────────────────────────────────────────────────
 class TestGetOptionVolatility:
     async def test_not_initialized(self):

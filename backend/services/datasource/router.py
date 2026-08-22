@@ -117,6 +117,8 @@ _FUTU_ACTION_MAP = {
     "short_selling": "SHORT_SELLING",
     # F3: 期权策略 + 期权波动率（G4 支撑）
     "option_strategy": "OPTION_STRATEGY",
+    "option_strategy_analysis": "OPTION_STRATEGY_ANALYSIS",
+    "option_quote": "OPTION_QUOTE",
     "option_volatility": "OPTION_VOLATILITY",
     # F4: P1 资金分布 / FedWatch / 热力图 / 分析师共识（支撑 G3/G5/G6/G7）
     "capital_distribution": "CAPITAL_DISTRIBUTION",

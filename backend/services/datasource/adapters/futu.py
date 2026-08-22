@@ -72,6 +72,8 @@ class FutuDataSource:
             "VALUATION",  # F2: 估值明细
             "SHORT_SELLING",  # F1: 卖空数据分析
             "OPTION_STRATEGY",  # F3: 期权策略组合
+            "OPTION_STRATEGY_ANALYSIS",  # P0.2: 期权损益分析(盈亏平衡点/最大盈亏/Greeks)
+            "OPTION_QUOTE",  # P0.2: 期权快照(组合腿实时行情+Greeks)
             "OPTION_VOLATILITY",  # F3: 期权波动率
             "CAPITAL_DISTRIBUTION",  # F4-1: 主力筹码分层(支撑G3)
             "ANALYST_CONSENSUS",  # F4-4: 分析师共识(卖方观点,支撑G7)

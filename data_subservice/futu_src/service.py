@@ -311,6 +311,28 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    async def get_option_strategy_analysis(self, legs: Any) -> Dict[str, Any]:
+        """P0.2 期权损益分析（盈亏平衡点/最大盈亏/Greeks 敞口，禁 Black-Scholes 近似）。"""
+        return await self._route(
+            "fetch_option_strategy_analysis",
+            {"legs": legs},
+            self.option_fund_handler.get_option_strategy_analysis,
+            legs=legs,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_quote(self, legs: Any) -> Dict[str, Any]:
+        """P0.2 期权快照（组合腿实时行情 + Greeks + 盈亏决策字段）。"""
+        return await self._route(
+            "fetch_option_quote",
+            {"legs": legs},
+            self.option_fund_handler.get_option_quote,
+            legs=legs,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
     async def get_option_volatility(self, ticker: str) -> Dict[str, Any]:
         """F3 期权波动率（入参必须为期权合约代码）。"""
         return await self._route(

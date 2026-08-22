@@ -6,7 +6,7 @@ Futu 期权与资金流处理模块
 import asyncio
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from futu import RET_OK, SortField, SubType, WarrantRequest
@@ -222,6 +222,135 @@ class OptionFundHandler:
         except Exception as e:  # noqa: BLE001
             logger.error("❌ get_option_strategy 失败 %s: %s", market_ticker, e)
             return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
+    @staticmethod
+    def _build_option_legs(legs: Any) -> Optional[List[Any]]:
+        """把 [{code, action, quantity}] dict 列表转成 futu OptionStrategyLeg 对象列表。
+
+        futu 10.10: get_option_quote / get_option_strategy_analysis 的 option_legs
+        每个元素必须是 OptionStrategyLeg 对象（含 code/action/quantity 三字段），
+        传入字符串会报 'each item in option_legs must be OptionStrategyLeg'。
+        """
+        from futu import OptionStrategyLeg
+
+        if not isinstance(legs, (list, tuple)) or len(legs) == 0:
+            return None
+        built = []
+        for leg in legs:
+            if isinstance(leg, OptionStrategyLeg):
+                built.append(leg)
+                continue
+            if not isinstance(leg, dict):
+                return None
+            code = leg.get("code")
+            if not code:
+                return None
+            o = OptionStrategyLeg()
+            o.code = str(code)
+            o.action = str(leg.get("action", "BUY")).upper()
+            o.quantity = int(leg.get("quantity", 1))
+            built.append(o)
+        return built
+
+    @with_global_retry
+    async def get_option_strategy_analysis(
+        self,
+        legs: Any,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.2 期权损益分析（组合策略盈亏决策）。
+
+        get_option_strategy_analysis(option_legs) → (ret, DataFrame)，
+        option_legs 为 OptionStrategyLeg 列表（[{code, action, quantity}]）。
+        实测返回列: code / name / option_strategy / max_profit / max_loss /
+        breakeven_points / prob_of_profit / delta / theta。
+        ⚠️ 损益字段（盈亏平衡点/最大盈亏）必须来自本接口真实返回，严禁 Black-Scholes 近似。
+        """
+        built = self._build_option_legs(legs)
+        if not built:
+            return {
+                "status": "error",
+                "source": "futu",
+                "message": "option_legs 须为非空 [{code, action, quantity}] 列表（组合至少 1 腿）",
+            }
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_option_strategy_analysis, built)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"期权损益分析失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = []
+            for r in rows:
+                item = {
+                    "code": r.get("code"),
+                    "name": r.get("name"),
+                    "option_strategy": r.get("option_strategy"),
+                    "bid1": r.get("bid1"),
+                    "ask1": safe_float(r.get("ask1")),
+                    "max_profit": safe_float(r.get("max_profit")),
+                    "max_loss": safe_float(r.get("max_loss")),
+                    "breakeven_points": r.get("breakeven_points"),
+                    "prob_of_profit": safe_float(r.get("prob_of_profit")),
+                    "delta": safe_float(r.get("delta")),
+                    "theta": safe_float(r.get("theta")),
+                }
+                clean.append(item)
+            return {
+                "status": "success",
+                "source": "futu",
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_strategy_analysis 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_option_quote(
+        self,
+        legs: Any,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.2 期权快照（组合腿的实时行情 + Greeks + 盈亏决策字段）。
+
+        get_option_quote(option_legs) → (ret, DataFrame)。
+        实测返回 38 列: price/implied_volatility/delta/gamma/vega/theta/rho/
+        breakeven_point/prob_of_profit/leverage_ratio/effective_gearing 等。
+        高频行情，短 TTL 缓存（与期权链一致，5 分钟级）。
+        """
+        built = self._build_option_legs(legs)
+        if not built:
+            return {
+                "status": "error",
+                "source": "futu",
+                "message": "option_legs 须为非空 [{code, action, quantity}] 列表（组合至少 1 腿）",
+            }
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_option_quote, built)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"期权快照获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: (safe_float(v) if isinstance(v, (int, float)) else v) for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_quote 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
 
     @with_global_retry
     async def get_option_volatility(

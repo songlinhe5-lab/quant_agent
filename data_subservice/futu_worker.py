@@ -89,6 +89,12 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 strategy_type=params.get("strategy_type", "STRANGLE"),
                 spread=int(params.get("spread", 5)),
             )
+        elif action == "OPTION_STRATEGY_ANALYSIS":
+            # P0.2 期权损益分析（盈亏平衡点/最大盈亏/Greeks 敞口）
+            return await futu_service.get_option_strategy_analysis(params.get("legs"))
+        elif action == "OPTION_QUOTE":
+            # P0.2 期权快照（组合腿实时行情 + Greeks）
+            return await futu_service.get_option_quote(params.get("legs"))
         elif action == "OPTION_VOLATILITY":
             return await futu_service.get_option_volatility(
                 params.get("symbol") or params.get("ticker"),
