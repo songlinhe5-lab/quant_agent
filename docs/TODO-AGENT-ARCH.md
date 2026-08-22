@@ -195,10 +195,28 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     - ✅ Cache boundary splitting logic
     - ✅ Reasoning content extraction
     - ✅ Full pipeline integration test
-- [ ] **[AGENT-12]** **重复/停滞守卫**
-  - **现状**：S1 —— 现在唯一的止损是 `max_iterations = 8`，不区分"在推进"与"在原地打转"
+- [x] **[AGENT-12]** **重复/停滞守卫** ✅ dce3f09
+  - **现状**：S1 —— 现在唯一的止损是 `max_iterations = 8`，不区分"在推进"与"在原地打转" → **已解决**
   - **改法**（hermes `repetition_guard.py`）：检测同参数重复调用、同结论重复输出，命中即中止并说明原因，而不是耗满 8 轮
-  - **验收**：构造死循环工具桩，Agent 在 3 轮内识别停滞并中止
+  - **验收**：✅ 构造死循环工具桩，Agent 在 3 轮内识别停滞并中止（实测：3 iterations detected, 5 iterations saved）
+  - **实现详情**：
+    - ✅ repetition_guard.py (466 lines): 4-dimensional stuck detection
+    - ✅ Identical tool calls detection (3 consecutive)
+    - ✅ Identical outputs detection (2 consecutive)
+    - ✅ No progress detection (4 consecutive same results)
+    - ✅ Loop pattern detection (A→B→A→B)
+    - ✅ Sliding window: Maintains last 10 tool calls
+    - ✅ Early stop: Detects stuck within 3 iterations (vs 8 max)
+    - ✅ Prometheus metrics: agent_stuck_detection_total
+  - **集成到 agent.py**：
+    - ✅ Extended _safe_execute_tool() (L196-226): Record tool calls
+    - ✅ Integrated check_stuck() in _react_loop() (L298-318): Early exit on stuck
+  - **测试覆盖**：
+    - ✅ 13 test cases added (all passed)
+    - ✅ Dead loop detection validation (3 iterations)
+    - ✅ 4 detection dimensions verified
+    - ✅ Iterations saved calculation
+    - ✅ Full pipeline integration test
 - [ ] **[AGENT-05]** （P2，收益最高成本最高）**脚本经 RPC 批量调工具**
   - **现状**：S11
   - **改法**：参考 hermes README 的 "collapsing multi-step pipelines into zero-context-cost turns"，把 N 次带上下文的工具往返压成 1 轮
