@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from hermes_agent.agent import HermesAgent
+from hermes_agent.tool_registry import _AUTO_REGISTERED_TOOLS
 
 
 class TestExtractIntents:
@@ -156,7 +157,7 @@ class TestScopeFilteringIntegration:
             tool_name = schema["function"]["name"]
             # 获取该工具的 scopes
             tool_cls = None
-            for cls in reg._AUTO_REGISTERED_TOOLS:
+            for cls in _AUTO_REGISTERED_TOOLS:
                 if hasattr(cls, "name") and cls.name == tool_name:
                     tool_cls = cls
                     break

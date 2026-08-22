@@ -57,7 +57,7 @@ class TestUsagePricing:
         """测试前缀匹配（如 deepseek-pro/v4 → deepseek-pro）"""
         pricing = calculator.get_pricing("deepseek-pro/v4")
         assert pricing.model_name == "deepseek-pro"
-        assert pricing.prompt_price == 0.00014
+        assert pricing.prompt_price == 0.002
 
     def test_calculate_cost_gpt4(self, calculator):
         """测试 GPT-4 成本计算"""
@@ -77,8 +77,8 @@ class TestUsagePricing:
             prompt_tokens=10000,
             completion_tokens=5000,
         )
-        # DeepSeek: $0.00014/1K prompt + $0.00028/1K completion
-        expected = (10000 / 1000) * 0.00014 + (5000 / 1000) * 0.00028
+        # DeepSeek V3 (deepseek-pro): $0.002/1K prompt + $0.008/1K completion
+        expected = (10000 / 1000) * 0.002 + (5000 / 1000) * 0.008
         assert abs(cost - expected) < 0.00001
 
     @pytest.mark.asyncio

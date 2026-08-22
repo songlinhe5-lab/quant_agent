@@ -466,8 +466,7 @@ class LLMProviderRouter:
                             status_code,
                             e,
                         )
-                        await self.report_failure(provider)
-                        break  # 跳出当前 provider，尝试 fallback
+                        break  # 跳出当前 provider，尝试 fallback（统一由外层 report_failure 处理切换）
 
                     # 检查重试预算（次数 / 总超时）
                     can_retry, reason = retry_budget.can_retry(error_info)
@@ -478,8 +477,7 @@ class LLMProviderRouter:
                             current_provider_attempt,
                             retry_budget.max_attempts,
                         )
-                        await self.report_failure(provider)
-                        break  # 跳出当前 provider，尝试 fallback
+                        break  # 跳出当前 provider，尝试 fallback（统一由外层 report_failure 处理切换）
 
                     # 计算退避延迟：429 优先使用 Retry-After 头
                     if error_info.category.value == "rate_limit" and error_info.retry_after is not None:
@@ -518,8 +516,9 @@ class LLMProviderRouter:
                 print(f"🔄 [LLMProvider] switching provider: {event.from_provider} → {event.to_provider}")
                 continue
 
-            # No more providers
-            raise
+            # No more providers：重抛最后一个真实错误，而非裸 raise（裸 raise 在无
+            # active exception 的上下文中会抛 "No active exception to reraise"）
+            raise last_error or RuntimeError("所有 LLM provider 均不可用")
 
         # All providers and attempts exhausted
         raise last_error or RuntimeError("所有 LLM provider 均不可用")

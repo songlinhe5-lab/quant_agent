@@ -214,7 +214,7 @@ class TestAgentIntegration:
             llm_client=AsyncMock(),
             redis_client=MagicMock(),
         )
-        agent._heal_memory = lambda: None
+        agent._heal_memory = AsyncMock()
         agent._save_session = AsyncMock()
         agent._sink_to_kb = AsyncMock()
 
