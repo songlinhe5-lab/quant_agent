@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/backtest_engine/engine_core/drivers
+title: 回测/实盘执行驱动层（Backtest/Live/Vector/SimBroker）
+scope:
+    - backend/engine/drivers/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/backtest_engine/engine_core/analysis_tools

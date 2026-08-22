@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/alerting
+title: 告警引擎与多通道推送系统
+scope:
+    - backend/services/alert/
+    - backend/services/alert_adapters/
+    - backend/workers/alert_engine.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/workers_daemons

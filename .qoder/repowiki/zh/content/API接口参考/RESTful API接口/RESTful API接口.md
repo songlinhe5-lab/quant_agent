@@ -12,9 +12,20 @@
 - [backend/routers/portfolio.py](file://backend/routers/portfolio.py)
 - [backend/routers/options.py](file://backend/routers/options.py)
 - [backend/routers/system.py](file://backend/routers/system.py)
+- [backend/routers/prompt_governance.py](file://backend/routers/prompt_governance.py)
+- [backend/routers/prompt_approval.py](file://backend/routers/prompt_approval.py)
+- [backend/services/prompt/governance_service.py](file://backend/services/prompt/governance_service.py)
+- [backend/services/prompt/approval_service.py](file://backend/services/prompt/approval_service.py)
 - [backend/core/response.py](file://backend/core/response.py)
 - [backend/core/error_codes.py](file://backend/core/error_codes.py)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增提示词治理API端点，包括版本管理、仪表板聚合、黄金数据集验证、反馈收集、相似提示词搜索和质量评估
+- 新增审批工作流API端点，支持人工审批流程、部署管理和回滚操作
+- 更新了路由注册和API前缀配置
+- 增强了Prompt治理功能的完整实现
 
 ## 目录
 1. [简介](#简介)
@@ -29,7 +40,9 @@
 10. [附录：端点清单与示例](#附录端点清单与示例)
 
 ## 简介
-本文件为 Quant Agent 后端服务的 RESTful API 接口文档，覆盖认证、交易、回测、策略、组合优化、期权、系统监控等核心能力。所有业务接口统一以 /api/v1 前缀暴露（版本控制通过环境变量 API_URL_VERSION 配置），并采用统一的响应封装与错误码体系。文档同时说明 CORS 配置、认证方式、权限控制、速率限制策略以及错误处理规范，并提供集成最佳实践。
+本文件为 Quant Agent 后端服务的 RESTful API 接口文档，覆盖认证、交易、回测、策略、组合优化、期权、系统监控以及新增的提示词治理等核心能力。所有业务接口统一以 /api/v1 前缀暴露（版本控制通过环境变量 API_URL_VERSION 配置），并采用统一的响应封装与错误码体系。文档同时说明 CORS 配置、认证方式、权限控制、速率限制策略以及错误处理规范，并提供集成最佳实践。
+
+**更新** 新增了完整的提示词治理和审批工作流API，支持Prompt的版本管理、质量评估、用户反馈收集和人工审批流程。
 
 ## 项目结构
 后端基于 FastAPI 构建，入口在 backend/main.py，集中注册中间件、CORS、OpenAPI 元数据，并按模块挂载路由。各功能域以 routers/* 划分，通用基础设施位于 core/*。
@@ -45,10 +58,12 @@ C --> C4["策略 /strategy<br/>backend/routers/strategy.py"]
 C --> C5["组合优化 /portfolio<br/>backend/routers/portfolio.py"]
 C --> C6["期权 /options<br/>backend/routers/options.py"]
 C --> C7["系统 /system<br/>backend/routers/system.py"]
+C --> C8["提示词治理 /prompt-governance<br/>backend/routers/prompt_governance.py"]
+C --> C9["审批工作流 /prompt-governance/approval<br/>backend/routers/prompt_approval.py"]
 A --> D["全局响应/错误码<br/>core/response.py, core/error_codes.py"]
 ```
 
-图表来源
+**图表来源**
 - [backend/main.py:125-218](file://backend/main.py#L125-L218)
 - [backend/core/middleware.py:90-133](file://backend/core/middleware.py#L90-L133)
 
@@ -62,6 +77,8 @@ A --> D["全局响应/错误码<br/>core/response.py, core/error_codes.py"]
 - 认证与鉴权：JWT Bearer Token 登录、刷新、登出；可选 Google OAuth 验证后签发内部 Token；WebSocket 行情推送支持 QueryString Token 鉴权。
 - 统一响应与错误码：success/error 封装标准 JSON 结构；ErrorCode 枚举映射 HTTP 状态码。
 - 安全工具：HMAC-SHA256 签名生成与校验，用于内部服务间通信防护。
+- **新增** 提示词治理服务：提供版本管理、质量评估、用户反馈收集和黄金数据集验证功能。
+- **新增** 审批工作流服务：支持人工审批流程、环境部署管理和版本回滚操作。
 
 章节来源
 - [backend/main.py:120-160](file://backend/main.py#L120-L160)
@@ -93,7 +110,7 @@ Svc-->>Router : 返回结果
 Router-->>Client : 统一响应 {code,msg,data,ts}
 ```
 
-图表来源
+**图表来源**
 - [backend/main.py:125-218](file://backend/main.py#L125-L218)
 - [backend/core/middleware.py:90-133](file://backend/core/middleware.py#L90-L133)
 - [backend/routers/auth.py:65-98](file://backend/routers/auth.py#L65-L98)
@@ -237,11 +254,139 @@ Router-->>Client : 统一响应 {code,msg,data,ts}
 章节来源
 - [backend/routers/market.py:73-200](file://backend/routers/market.py#L73-L200)
 
+### 提示词治理（/api/v1/prompt-governance）
+**新增** 完整的提示词治理API，提供版本管理、质量评估和用户反馈收集功能。
+
+#### 版本管理
+- 创建新版本 POST /prompt-governance/versions
+  - 请求体：name（提示词名称）、content（提示词内容）、metadata（元数据）、skip_validation（跳过验证）
+  - 响应：版本历史，包含版本号、校验和、创建时间、元数据
+  - 状态码：200/500
+
+- 获取版本历史 GET /prompt-governance/versions/{name}/history
+  - 参数：name（提示词名称）
+  - 响应：版本历史列表
+  - 状态码：200/404
+
+#### 仪表板聚合
+- 获取所有提示词仪表板 GET /prompt-governance/dashboard
+  - 响应：所有提示词的聚合指标，包括质量分数、趋势、A/B测试结果、反馈统计
+  - 状态码：200
+
+- 获取单个提示词仪表板 GET /prompt-governance/dashboard/{name}
+  - 参数：name（提示词名称）
+  - 响应：单个提示词的详细指标
+  - 状态码：200/404
+
+#### 黄金数据集验证
+- 运行回归测试 POST /prompt-governance/validate/golden-dataset
+  - 请求体：content（提示词内容）
+  - 响应：验证结果，包括通过率、总体评分、各项测试详情
+  - 状态码：200/500
+
+#### 用户反馈收集
+- 记录用户反馈 POST /prompt-governance/feedback
+  - 请求体：prompt_name、version、user_id、rating（-1/0/1）、comment
+  - 响应：确认消息
+  - 状态码：200/400
+
+- 获取反馈统计 GET /prompt-governance/feedback/stats/{name}/{version}
+  - 参数：name（提示词名称）、version（版本号）
+  - 响应：反馈统计数据
+  - 状态码：200/404
+
+#### 相似提示词搜索
+- 搜索相似提示词 POST /prompt-governance/search/similar
+  - 请求体：query（搜索查询）、top_k（结果数量）、min_score（最低相似度）
+  - 响应：相似提示词列表，包含相似度分数和内容片段
+  - 状态码：200/400
+
+#### 质量评估
+- 获取质量指标 GET /prompt-governance/quality/{name}/{version}
+  - 参数：name（提示词名称）、version（版本号）
+  - 响应：质量评估指标
+  - 状态码：200/404
+
+- LLM驱动困惑度评估 POST /prompt-governance/llm-evaluate/perplexity
+  - 请求体：text（待评估文本）
+  - 响应：困惑度分数和解释
+  - 状态码：200/500
+
+#### A/B测试优化
+- 获取优化建议 GET /prompt-governance/ab-test/optimization/{name}
+  - 参数：name（提示词名称）、request（最小改进阈值）
+  - 响应：优化建议和置信度
+  - 状态码：200/404
+
+章节来源
+- [backend/routers/prompt_governance.py:18-323](file://backend/routers/prompt_governance.py#L18-L323)
+- [backend/services/prompt/governance_service.py:1-200](file://backend/services/prompt/governance_service.py#L1-L200)
+
+### 审批工作流（/api/v1/prompt-governance/approval）
+**新增** 完整的人工审批工作流API，支持版本审批、环境部署和回滚操作。
+
+#### 待审批管理
+- 获取待审批列表 GET /prompt-governance/approval/pending
+  - 参数：prompt_name（提示词名称，可选）、limit（限制数量）
+  - 响应：待审批记录列表
+  - 状态码：200/500
+
+#### 版本审批
+- 批准版本 POST /prompt-governance/approval/approve
+  - 请求体：audit_id、comment（可选）、user_id、username
+  - 响应：批准确认
+  - 状态码：200/400/404/500
+
+- 拒绝版本 POST /prompt-governance/approval/reject
+  - 请求体：audit_id、reason（拒绝原因）、user_id、username
+  - 响应：拒绝确认
+  - 状态码：200/400/404/500
+
+#### 环境部署
+- 部署到测试环境 POST /prompt-governance/approval/deploy/staging
+  - 请求体：audit_id、user_id、username
+  - 响应：部署确认
+  - 状态码：200/400/404/500
+
+- 部署到生产环境 POST /prompt-governance/approval/deploy/production
+  - 请求体：audit_id、environment（staging/production/canary）、user_id、username
+  - 响应：部署确认
+  - 状态码：200/400/404/500
+
+#### 版本回滚
+- 执行回滚 POST /prompt-governance/approval/rollback
+  - 请求体：prompt_name、target_version、reason、user_id、username、deploy_environment
+  - 响应：回滚确认
+  - 状态码：200/404/500
+
+#### 历史记录查询
+- 获取审批历史 GET /prompt-governance/approval/{prompt_name}/history
+  - 参数：prompt_name（提示词名称）、limit（限制数量）
+  - 响应：审批历史记录
+  - 状态码：200/500
+
+- 获取部署历史 GET /prompt-governance/approval/{prompt_name}/deployments
+  - 参数：prompt_name（提示词名称）、limit（限制数量）
+  - 响应：部署历史记录
+  - 状态码：200/500
+
+#### 手动触发（测试用）
+- 手动创建审批记录 POST /prompt-governance/approval/manual/create-audit
+  - 参数：prompt_name、from_version、to_version、quality_score
+  - 响应：创建确认
+  - 状态码：200/500
+
+章节来源
+- [backend/routers/prompt_approval.py:27-360](file://backend/routers/prompt_approval.py#L27-L360)
+- [backend/services/prompt/approval_service.py:1-200](file://backend/services/prompt/approval_service.py#L1-L200)
+
 ## 依赖关系分析
 - 路由与中间件：main.py 集中注册 AccessLogMiddleware 与 CORSMiddleware，确保日志先于 CORS 执行，避免 OPTIONS 预检被误拦截。
 - 认证依赖：get_current_user/get_current_user_optional 作为依赖注入，供路由级鉴权。
 - 响应与错误：路由层优先使用 success/error 构造统一响应；错误码映射至 HTTP 状态码。
 - 外部依赖：市场数据、数据湖、Redis、Prometheus 等通过 services 层接入。
+- **新增** 提示词治理服务依赖：hermes_agent.prompt_versioning、数据库会话、向量存储集成。
+- **新增** 审批工作流依赖：SQLAlchemy数据库模型、审批状态管理、部署环境管理。
 
 ```mermaid
 graph LR
@@ -251,9 +396,13 @@ Main --> Routers["routers/*<br/>业务端点"]
 Routers --> Resp["response.py<br/>统一响应"]
 Routers --> Err["error_codes.py<br/>错误码映射"]
 Routers --> Svc["services/*<br/>外部依赖"]
+Routers --> PG["prompt_governance.py<br/>提示词治理"]
+Routers --> PA["prompt_approval.py<br/>审批工作流"]
+PG --> PGS["governance_service.py<br/>治理服务"]
+PA --> PAS["approval_service.py<br/>审批服务"]
 ```
 
-图表来源
+**图表来源**
 - [backend/main.py:125-218](file://backend/main.py#L125-L218)
 - [backend/core/middleware.py:90-133](file://backend/core/middleware.py#L90-L133)
 - [backend/routers/auth.py:65-98](file://backend/routers/auth.py#L65-L98)
@@ -295,6 +444,11 @@ Routers --> Svc["services/*<br/>外部依赖"]
   - 查看 Prometheus 指标 fastapi_requests_total、fastapi_request_duration_seconds 定位慢接口与错误热点。
   - 对外部依赖（数据源、LLM、通知）使用 EXTERNAL_API_* 指标与告警。
   - 对限流触发（429/403）检查 Redis 限流键与黑名单。
+- **新增** 提示词治理相关故障排查：
+  - 检查数据库连接和表结构是否正确初始化
+  - 验证提示词版本管理器的配置文件路径
+  - 确认黄金数据集文件格式和路径
+  - 检查向量存储服务的连接状态
 
 章节来源
 - [backend/core/error_codes.py:15-55](file://backend/core/error_codes.py#L15-L55)
@@ -302,7 +456,7 @@ Routers --> Svc["services/*<br/>外部依赖"]
 - [backend/core/middleware.py:90-133](file://backend/core/middleware.py#L90-L133)
 
 ## 结论
-Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一响应与错误码、完善的鉴权与中间件栈，支撑交易、回测、策略、组合优化、期权与系统监控等场景。通过版本化前缀与 CORS 配置，满足前后端分离与跨域需求；通过限流与指标监控，保障高可用与可观测性。建议在生产环境严格配置 SECRET_KEY、ALLOWED_ORIGINS、BCRYPT_ROUNDS 等敏感参数，并结合 Prometheus/Grafana 建立告警与容量规划。
+Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一响应与错误码、完善的鉴权与中间件栈，支撑交易、回测、策略、组合优化、期权、系统监控以及新增的提示词治理等场景。通过版本化前缀与 CORS 配置，满足前后端分离与跨域需求；通过限流与指标监控，保障高可用与可观测性。新增的提示词治理和审批工作流功能为AI提示词的生命周期管理提供了完整的解决方案。建议在生产环境严格配置 SECRET_KEY、ALLOWED_ORIGINS、BCRYPT_ROUNDS 等敏感参数，并结合 Prometheus/Grafana 建立告警与容量规划。
 
 ## 附录：端点清单与示例
 
@@ -433,6 +587,130 @@ Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一�
 章节来源
 - [backend/routers/market.py:73-200](file://backend/routers/market.py#L73-L200)
 
+### 提示词治理（/api/v1/prompt-governance）
+**新增** 完整的提示词治理API端点
+
+#### 版本管理
+- POST /prompt-governance/versions
+  - 请求体：name, content, metadata, skip_validation
+  - 响应：VersionHistoryResponse
+  - 状态码：200/500
+
+- GET /prompt-governance/versions/{name}/history
+  - 参数：name
+  - 响应：VersionHistoryResponse
+  - 状态码：200/404
+
+#### 仪表板
+- GET /prompt-governance/dashboard
+  - 响应：List[DashboardResponse]
+  - 状态码：200
+
+- GET /prompt-governance/dashboard/{name}
+  - 参数：name
+  - 响应：DashboardResponse
+  - 状态码：200/404
+
+#### 黄金数据集验证
+- POST /prompt-governance/validate/golden-dataset
+  - 请求体：content
+  - 响应：GoldenDatasetValidationResponse
+  - 状态码：200/500
+
+#### 反馈收集
+- POST /prompt-governance/feedback
+  - 请求体：FeedbackRequest
+  - 响应：Dict[str, str]
+  - 状态码：200/400
+
+- GET /prompt-governance/feedback/stats/{name}/{version}
+  - 参数：name, version
+  - 响应：Dict[str, float]
+  - 状态码：200/404
+
+#### 相似搜索
+- POST /prompt-governance/search/similar
+  - 请求体：query, top_k, min_score
+  - 响应：SimilarPromptsResponse
+  - 状态码：200/400
+
+#### 质量评估
+- GET /prompt-governance/quality/{name}/{version}
+  - 参数：name, version
+  - 响应：Dict[str, float]
+  - 状态码：200/404
+
+- POST /prompt-governance/llm-evaluate/perplexity
+  - 请求体：text
+  - 响应：perplexity_score
+  - 状态码：200/500
+
+#### A/B测试
+- GET /prompt-governance/ab-test/optimization/{name}
+  - 参数：name, request
+  - 响应：优化建议
+  - 状态码：200/404
+
+章节来源
+- [backend/routers/prompt_governance.py:18-323](file://backend/routers/prompt_governance.py#L18-L323)
+
+### 审批工作流（/api/v1/prompt-governance/approval）
+**新增** 完整的人工审批工作流API
+
+#### 待审批管理
+- GET /prompt-governance/approval/pending
+  - 参数：prompt_name, limit
+  - 响应：List[PendingApprovalResponse]
+  - 状态码：200/500
+
+#### 版本审批
+- POST /prompt-governance/approval/approve
+  - 请求体：ApproveVersionRequest
+  - 响应：Dict[str, str]
+  - 状态码：200/400/404/500
+
+- POST /prompt-governance/approval/reject
+  - 请求体：RejectVersionRequest
+  - 响应：Dict[str, str]
+  - 状态码：200/400/404/500
+
+#### 环境部署
+- POST /prompt-governance/approval/deploy/staging
+  - 请求体：DeployRequest
+  - 响应：Dict[str, str]
+  - 状态码：200/400/404/500
+
+- POST /prompt-governance/approval/deploy/production
+  - 请求体：DeployRequest
+  - 响应：Dict[str, str]
+  - 状态码：200/400/404/500
+
+#### 版本回滚
+- POST /prompt-governance/approval/rollback
+  - 请求体：RollbackRequestPayload
+  - 响应：Dict[str, str]
+  - 状态码：200/404/500
+
+#### 历史记录
+- GET /prompt-governance/approval/{prompt_name}/history
+  - 参数：prompt_name, limit
+  - 响应：List[ApprovalHistoryResponse]
+  - 状态码：200/500
+
+- GET /prompt-governance/approval/{prompt_name}/deployments
+  - 参数：prompt_name, limit
+  - 响应：List[Dict[str, Any]]
+  - 状态码：200/500
+
+#### 手动触发
+- POST /prompt-governance/approval/manual/create-audit
+  - 参数：prompt_name, from_version, to_version, quality_score
+  - 响应：创建确认
+  - 状态码：200/500
+
+章节来源
+- [backend/routers/prompt_approval.py:27-360](file://backend/routers/prompt_approval.py#L27-L360)
+
 ### 统一响应与错误码
 - 成功响应：{code: 0, msg: "ok", data: {...}, ts: 毫秒时间戳}
 - 错误响应：{code: 业务错误码, msg: "描述", data: 附加信息, ts: 毫秒时间戳, trace_id: 可选}
@@ -475,5 +753,10 @@ Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一�
   - 使用 Prometheus/Grafana 监控接口耗时与错误率，设置告警阈值
   - 对写接口增加幂等键与重试退避，避免重复提交
   - 对长耗时任务使用 SSE/WS 推送进度，提升用户体验
+- **新增** 提示词治理集成：
+  - 在提示词发布前运行黄金数据集验证，确保质量基线
+  - 建立用户反馈收集机制，持续优化提示词效果
+  - 实施人工审批流程，确保生产环境变更的可控性
+  - 利用相似提示词搜索功能，促进知识共享和复用
 
 [本节为概念性指导，不直接分析具体文件]

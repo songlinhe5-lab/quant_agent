@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/backtest_engine/engine_core/analysis_tools
+title: 回测分析工具集（网格搜索/蒙特卡洛/Walk-Forward）
+scope:
+    - backend/engine/grid_search.py
+    - backend/engine/monte_carlo.py
+    - backend/engine/walk_forward.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/backtest_engine/engine_core/drivers

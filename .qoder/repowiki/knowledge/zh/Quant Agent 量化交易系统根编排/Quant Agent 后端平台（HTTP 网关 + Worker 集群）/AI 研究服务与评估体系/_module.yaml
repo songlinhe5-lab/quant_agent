@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: backend/ai_research
+title: AI 研究服务与评估体系
+scope:
+    - backend/services/ai_narrator/
+    - backend/services/expert_team/
+    - backend/app/research/
+    - backend/app/rag/
+    - backend/app/eval/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/api_routers/research_analysis_routers
+    - path: backend/migrations_scripts

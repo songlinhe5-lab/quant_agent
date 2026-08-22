@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend/datasource_market_data
+title: 多数据源市场数据服务聚合层
+scope:
+    - backend/services/datasource/
+    - backend/services/akshare/
+    - backend/services/finnhub/
+    - backend/services/fmp/
+    - backend/services/tushare/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/backtest_engine/event_engine

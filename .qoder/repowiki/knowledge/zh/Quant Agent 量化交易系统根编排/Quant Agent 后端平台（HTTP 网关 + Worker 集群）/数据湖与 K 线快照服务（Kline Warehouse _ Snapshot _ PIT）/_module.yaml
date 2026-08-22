@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: backend/datalake
+title: 数据湖与 K 线快照服务（Kline Warehouse / Snapshot / PIT）
+scope:
+    - backend/services/datalake/
+    - backend/data/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/api_routers/data_source_routers
+    - path: backend/backtest_engine/event_engine
+    - path: backend/workers_daemons
