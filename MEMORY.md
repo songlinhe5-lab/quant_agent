@@ -77,3 +77,10 @@ MTU=1450 **解决不了**北京拉 GHCR。TLS 握手正常，blob 0 字节（Azu
 - **P0.5 全维**：`get_option_underlying_his_volatility`（HV 时间序列）/`get_option_underlying_overview`（20 列 iv_rank+multi-hv）/`get_option_market_statistic`（Put/Call 比）/`get_option_zero_dte_screener`+`contract`（0DTE）/`get_option_earnings_screener`（财报期权）/`get_option_seller_screener`（卖方）/`get_option_exercise_probability`（行权概率）。⚠️ 枚举：`OptionMarket`=US_SECURITY、`SellerType`=COVERED_CALL、`OptionStatisticDataType`=VOLUME；`zero_dte_contract` 入参需 screener 的 `chain_info`。
 - **business 层聚合**：`backend/services/datasource/business/option.py` 8 方法 + `get_option_put_call_panel`（P/C 比派生 latest/avg_5d/signal，<0.7 偏谨慎/>1.0 偏乐观，空数据降级不臆造）；`routers/market.py` 9 个端点。
 - **P1 组合交易（骨架，沙箱）**：`trade_handler.py` 的 `place_combo_order`/`comboorder_tradinginfo_query`，`_resolve_trd_env` 默认 SIMULATE，仅 `REAL_TRADE_EXECUTE=1` **且** `force_real=True` 才 REAL；`ComboLeg` 字段=code/trd_side/qty_ratio/position_id/pred_side。OMS 实盘未实装，SIMULATE 盘推演。
+
+## 12. 另类数据 ALT-01~03 阻塞暂缓（2026-08-22）
+
+`TODO-ops.md` 的 3 项另类数据**均受外部 API 凭据阻塞，暂缓**。核查：全库配置文件**零命中** Reddit/X/链上/财报音频凭据，按零幻觉红线「先验证数据源可用再写代码，禁 mock」，不可盲写。
+- **ALT-01** Reddit WSB + X 散户情绪：需 `REDDIT_CLIENT_ID/SECRET` + X `BEARER_TOKEN`。现有 `data_subservice/_internal/sentiment/apewisdom.py`（热议榜）已部分覆盖散户热度。待凭据就绪可做（最接近可启动，需先权限验证）。
+- **ALT-02** 财报电话会议音频情感分析：需财报音频数据源（Seeking Alpha/IR）+ ASR + 声纹/语气模型，**重工程 + 数据源未就绪**，ROI 最低。
+- **ALT-03** 链上大资金追踪：需链上数据源 key（Glassnode/交易所 API），且加密资产是项目长尾（同新马日无消费场景）。
