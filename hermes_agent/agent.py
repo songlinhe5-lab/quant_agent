@@ -14,6 +14,7 @@ from rich.markdown import Markdown
 from backend.services.ai_narrator.repetition_guard import repetition_guard
 from backend.services.ai_narrator.token_usage_store import token_usage_store
 from backend.services.ai_narrator.usage_pricing import usage_pricing_calculator
+from hermes_agent.llm_provider import LLMProvider, LLMProviderRouter
 from hermes_agent.memory_ops import MemoryOperationsMixin
 from hermes_agent.relay_tools import BatchToolCall, BatchToolExecutor
 
@@ -23,19 +24,21 @@ DEFAULT_SYSTEM_PROMPT_PATH = os.path.join(_REPO_ROOT, "prompts", "system", "HERM
 
 
 # A-3.1: LLM 调用归一化结果（AGENT-04）
+# AGENT-06: 扩展多 provider 归一化（failover_event）
 @dataclass
 class LLMResult:
     """
     LLM 调用的归一化结果。
 
     统一非流式/流式两条路径的返回结构，屏蔽 OpenAI SDK 的 response 对象差异。
-    后续 AGENT-06 (LLM Provider 适配缝) 可在此基础上扩展多 provider 归一化。
+    AGENT-06: 携带 failover_event，当主 provider 故障切换时通知上层 yield SSE 事件。
     """
 
     content: Optional[str]  # 文本内容
     tool_calls: Optional[List[Dict[str, Any]]]  # 工具调用列表（已归一化为 dict 格式）
     usage: Any  # token 使用量对象（可传给 _record_usage）
     reasoning_content: Optional[str] = None  # CoT 推理内容（DeepSeek 等模型的深度思考字段）
+    failover_event: Optional[Any] = None  # AGENT-06: 故障切换事件（FailoverEvent or None）
 
 
 class SessionTitleValidator(BaseModel):
@@ -260,14 +263,24 @@ class HermesAgent(MemoryOperationsMixin):
         return report.to_dict()
 
     # A-3.2: 抽 _call_llm 统一 LLM 调用逻辑（AGENT-04）
+    # AGENT-06: 接入 provider_router 故障降级链
     async def _call_llm(self, request_kwargs: dict) -> LLMResult:
         """
         统一的 LLM 调用辅助函数（非流式）。
 
-        封装 client.chat.completions.create + token 计量 + 响应 debug 输出，
-        返回归一化的 LLMResult。
+        封装 provider_router.execute_with_failover + token 计量 + 响应 debug 输出，
+        返回归一化的 LLMResult。主 provider 故障时自动切到备用，并携带 failover_event。
         """
-        response = await self.client.chat.completions.create(**request_kwargs)
+        # AGENT-06: 用 router 的活跃 provider 覆盖 model（保证与活跃 provider 一致）
+        request_kwargs["model"] = self.provider_router.get_active_model()
+
+        async def _create_func(client, model):
+            """适配函数：将 router 的 (client, model) 映射到 request_kwargs 调用"""
+            kwargs = dict(request_kwargs)
+            kwargs["model"] = model
+            return await client.chat.completions.create(**kwargs)
+
+        response, failover_event = await self.provider_router.execute_with_failover(_create_func)
         msg = response.choices[0].message
 
         # 📊 Token 计量埋点：A-3.2 统一在 _call_llm 内记录（AGENT-04）
@@ -297,6 +310,7 @@ class HermesAgent(MemoryOperationsMixin):
             tool_calls=tool_calls_list,
             usage=getattr(response, "usage", None),
             reasoning_content=getattr(msg, "reasoning_content", None),
+            failover_event=failover_event,  # AGENT-06: 故障切换事件
         )
 
     # A-3.2: 支持熔断恢复路径的模型覆盖（AGENT-04）
@@ -375,31 +389,46 @@ class HermesAgent(MemoryOperationsMixin):
                 # ── 2. LLM 推理（心跳保活 + 流式 chunk 拼接）─────────────
                 llm_response_queue: asyncio.Queue = asyncio.Queue()
 
+                # AGENT-06: 用 router 的活跃 provider 覆盖 model
+                request_kwargs["model"] = self.provider_router.get_active_model()
+
                 async def do_llm_inference():
                     try:
-                        resp = await self.client.chat.completions.create(**request_kwargs)
-                        await llm_response_queue.put(("ok", resp))
+                        # AGENT-06: 经 provider_router 执行，支持自动故障切换
+                        async def _create_func(client, model):
+                            kwargs = dict(request_kwargs)
+                            kwargs["model"] = model
+                            return await client.chat.completions.create(**kwargs)
+
+                        resp, failover_evt = await self.provider_router.execute_with_failover(_create_func)
+                        await llm_response_queue.put(("ok", resp, failover_evt))
                     except Exception as e:
-                        await llm_response_queue.put(("error", e))
+                        await llm_response_queue.put(("error", e, None))
 
                 inference_task = asyncio.create_task(do_llm_inference())
                 llm_heartbeat_count = 0
-                status, response_or_error = None, None
+                status, response_or_error, failover_event = None, None, None
 
                 while not inference_task.done():
                     try:
-                        status, response_or_error = await asyncio.wait_for(llm_response_queue.get(), timeout=15.0)
+                        status, response_or_error, failover_event = await asyncio.wait_for(
+                            llm_response_queue.get(), timeout=15.0
+                        )
                         break
                     except asyncio.TimeoutError:
                         llm_heartbeat_count += 1
                         yield {"type": "heartbeat", "tick": f"llm-{llm_heartbeat_count}"}
                         self.console.print(f"💓 [Heartbeat] LLM 推理中... 已等待 {llm_heartbeat_count * 15}s")
 
-                # 兜底：如果循环因 task 完成而退出但还没拿到结果
+                # 兆底：如果循环因 task 完成而退出但还没拿到结果
                 if status is None:
-                    status, response_or_error = await llm_response_queue.get()
+                    status, response_or_error, failover_event = await llm_response_queue.get()
                 if status == "error":
                     raise response_or_error
+
+                # AGENT-06: 如果发生了故障切换，yield SSE 降级事件通知前端
+                if failover_event is not None:
+                    yield failover_event.to_sse_dict()
 
                 response = response_or_error
                 self.console.print("✅ [Chat API] 已接收到大模型流式响应，开始处理数据流...")
@@ -721,7 +750,7 @@ class HermesAgent(MemoryOperationsMixin):
         # 💡 是否开启 Debug 模式
         self.debug_mode = os.getenv("QUANT_ENV") == "development"
 
-        # 💡 初始化 DeepSeek 客户端 (复用 OpenAI SDK)
+        # 💡 初始化 LLM 客户端 + AGENT-06 Provider 适配缝
         if llm_client:
             self.client = llm_client
         else:
@@ -733,6 +762,30 @@ class HermesAgent(MemoryOperationsMixin):
         self.model = os.getenv("LLM_MODEL", "deepseek-v4-flash")
         self.pro_model = os.getenv("LLM_PRO_MODEL", "deepseek-v4-pro")
         self.vision_model = os.getenv("LLM_VISION_MODEL", "deepseek-v4-pro")  # 保留配置，但暂时禁用
+
+        # AGENT-06: LLM Provider 适配缝（故障降级链）
+        # 主 provider 复用上面的 self.client + self.model
+        primary_provider = LLMProvider(
+            name=f"primary-{self.model}",
+            client=self.client,
+            model=self.model,
+            priority=0,
+        )
+        self.provider_router = LLMProviderRouter(primary_provider)
+        # 如果环境变量配置了 fallback，自动添加
+        fallback_api_key = os.getenv("LLM_FALLBACK_API_KEY")
+        if fallback_api_key:
+            fallback_base_url = os.getenv("LLM_FALLBACK_BASE_URL", "https://api.openai.com/v1")
+            fallback_model = os.getenv("LLM_FALLBACK_MODEL", "gpt-4o-mini")
+            fallback_client = AsyncOpenAI(api_key=fallback_api_key, base_url=fallback_base_url)
+            self.provider_router.add_fallback(
+                LLMProvider(
+                    name=f"fallback-{fallback_model}",
+                    client=fallback_client,
+                    model=fallback_model,
+                    priority=1,
+                )
+            )
 
         # 1. 加载盘中主脑指令 (prompts/system/HERMES.md)
         self.system_prompt = self._load_system_prompt()
