@@ -2,11 +2,13 @@
  * 风控账户面板：KPI 卡片 + 净值曲线 + 雷达/因子/敞口 + 持仓表
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ShieldAlert, Loader2, Info, X, Activity, PieChart, BarChart3, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { ShieldAlert, Loader2, Info, X, Activity, PieChart, BarChart3, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp, ArrowDown, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RISK_COLORS } from '@/lib/constants'
+import { apiClient } from '@/lib/api-client'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 import { NavAreaChart, RiskRadarChart } from './risk-charts'
 import { RiskAdvancedPanel } from './risk-advanced-panel'
 import { RiskAttributionPanel } from './risk-attribution-panel'
@@ -249,6 +251,9 @@ export function AccountSection({ market, account, isDark, loading }: {
         </div>
       )}
 
+      {/* AI-05 风险预警员：雷达维度变红时主动预警（ai05 开关控制，挂载于 overview） */}
+      <AiRiskAlertCard market={market} radar={risk_radar} />
+
       {riskTab === 'factor' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
           {/* Factor list */}
@@ -398,6 +403,88 @@ export function AccountSection({ market, account, isDark, loading }: {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * AI-05 风险预警员：雷达维度变红(current>limit)时调 /risk/alert-narrative → 展示预警。
+ * ai05 开关控制；无超限维度显示"风险可控"；LLM 缺失/失败时诚实降级。
+ */
+function AiRiskAlertCard({ market, radar }: { market: string; radar: RiskRadarData[] }) {
+  const ai05Enabled = useAiPushPrefStore((s) => s.isEnabled('ai05'))
+  const [loading, setLoading] = useState(false)
+  const [data, setData] = useState<{
+    status: string
+    breaches: string[]
+    narrative: string | null
+    suggested_scenarios: string[]
+    hedge_hint: string | null
+    message: string | null
+  } | null>(null)
+
+  const radarKey = JSON.stringify(radar || [])
+  const hasBreach = (radar || []).some((d) => d.current > d.limit)
+
+  useEffect(() => {
+    if (!ai05Enabled) return
+    if (!hasBreach) {
+      setData({ status: 'safe', breaches: [], narrative: '当前六维风险均在限额内,风险可控,无需预警。', suggested_scenarios: [], hedge_hint: null, message: '无超限维度' })
+      return
+    }
+    let alive = true
+    setLoading(true)
+    setData(null)
+    ;(async () => {
+      try {
+        const res = await apiClient.post('/risk/alert-narrative', {
+          dimensions: (radar || []).map((d) => ({ axis: d.axis, current: d.current, limit: d.limit })),
+        })
+        const body = res.data || res
+        if (alive && body) setData(body)
+      } catch (e: any) {
+        if (alive) setData({ status: 'warning', breaches: [], narrative: null, suggested_scenarios: [], hedge_hint: null, message: e?.response?.data?.message || '预警服务调用失败' })
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [ai05Enabled, radarKey, hasBreach])
+
+  if (!ai05Enabled) return null
+
+  if (loading) {
+    return (
+      <div className="glass-card rounded-lg px-2 py-1.5 flex items-center gap-1.5">
+        <Sparkles className="h-3 w-3 text-red-400" />
+        <span className="text-[10px] text-muted-foreground">风险预警研判中…</span>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const isBreach = data.status === 'warning'
+  return (
+    <div className={cn('glass-card rounded-lg px-2 py-1.5', isBreach ? 'border-red-500/30' : 'border-emerald-500/30')}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Sparkles className={cn('h-3 w-3', isBreach ? 'text-red-400' : 'text-emerald-400')} />
+        <span className="text-[10px] font-semibold text-foreground">AI 风险预警</span>
+        {isBreach && data.breaches.length > 0 && (
+          <span className="text-[9px] text-red-400">超限:{data.breaches.join('、')}</span>
+        )}
+      </div>
+      {data.narrative && <p className="text-[10px] text-foreground/90 leading-relaxed">{data.narrative}</p>}
+      {data.hedge_hint && <p className="text-[10px] text-amber-500/90 mt-0.5">⚠ {data.hedge_hint}</p>}
+      {data.suggested_scenarios.length > 0 && (
+        <p className="text-[9px] text-muted-foreground mt-0.5">建议压测:{data.suggested_scenarios.join('、')}</p>
+      )}
+      {data.message && !data.narrative && <p className="text-[10px] text-muted-foreground/80">{data.message}</p>}
+      <p className="pt-1 mt-1 text-[9px] text-muted-foreground/50 border-t border-border/30">
+        AI 生成 · 仅供参考，不构成风控决策
+      </p>
     </div>
   )
 }
