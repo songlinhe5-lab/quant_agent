@@ -78,6 +78,14 @@ async def _put_history_cache(ticker: str, ktype: str, num: int, payload: dict) -
         logger.warning(f"[history-cache] 写入失败 {key}: {e}")
 
 
+# PERF: /option-iv-summary 短 TTL 结果缓存（IV 指标变化慢，10min）
+async def _put_iv_cache(key: str, payload: dict) -> None:
+    try:
+        await redis_client.set(key, json.dumps(payload, ensure_ascii=False), ex=600)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[iv-cache] 写入失败 {key}: {e}")
+
+
 # PERF-02: 数仓优先读取 —— 历史 K 线不可变，优先从 L2 Parquet 极速读取。
 # 命中则直接返回（避免穿透 OpenD），并异步触发 update_ticker 补齐最新 bar。
 async def _try_read_kline_warehouse(ticker: str, ktype: str, num: int):
@@ -689,22 +697,35 @@ async def get_option_iv_summary(ticker: str):
     Returns:
         dict: {"status": "success", "data": OptionIvSummary}
     """
+    # PERF: IV 指标变化慢，加 10min 结果缓存，避免每次请求重拉期权链+日K 外部源
+    iv_key = f"market:iv-summary:v1:{ticker.upper()}"
+    try:
+        cached_iv = await redis_client.get(iv_key)
+        if cached_iv is not None:
+            return {**json.loads(cached_iv), "cached": True}
+    except Exception:  # noqa: BLE001
+        pass
+
     facade_res = await _facade_market.get_option_iv_summary(ticker)
     if isinstance(facade_res, dict):
         # get_option_iv_summary 返回的是扁平 dict（非 Result），直接包信封
-        return {
+        payload = {
             "data": facade_res,
             "source": "facade+market",
             "degraded": not facade_res.get("available", False),
         }
+        await _put_iv_cache(iv_key, payload)
+        return payload
     if hasattr(facade_res, "is_error") and facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "期权 IV 指标数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    return {
+    payload = {
         "data": facade_res.data if hasattr(facade_res, "data") else facade_res,
         "source": f"facade+{getattr(facade_res, 'source', 'market')}",
         "degraded": getattr(facade_res, "status", None) == ResultStatus.DEGRADED,
     }
+    await _put_iv_cache(iv_key, payload)
+    return payload
 
 
 @router.get("/option-strategy-lab")

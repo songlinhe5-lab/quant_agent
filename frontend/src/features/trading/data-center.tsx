@@ -34,7 +34,7 @@ export const DCNavTab = ({ active, id, label, icon: Icon, onClick }: { active: b
 
 export function DataCenterContent() {
   const [activeTab, setActiveTab] = useState<HubTab>('overview')
-  const d = useDashboardData()
+  const d = useDashboardData(activeTab)
   const wsStatus = useSystemStore((s) => s.wsStatus)
 
   const tabs: { id: HubTab; label: string; icon: any }[] = [
