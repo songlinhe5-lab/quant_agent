@@ -40,7 +40,26 @@
 
 - ❌ **无交易下单接口**（官方文档仅行情侧，未列 `place_event_contract_order`）。
 - ❌ 未明确支持市场/标的（大概率以美股事件为主）。
-- ❌ 未说明权限要求（需先验证 OpenD 账户是否开通事件合约行情权限）。
+- ⚠️ **权限要求**：需 OpenD 账户开通事件合约行情权限。**SDK 侧已确认暴露完整接口族（见下），运行期权限待 OpenD 上线实测**（当前 dev 环境 OpenD 端口 11111 CLOSED，P0.1 运行期验证暂阻塞）。
+
+#### 2.3.1 futu-api 10.10.7008 接口可用性静态核查（P0.1 第一步，已执行 2026-08-22）
+
+> 在 OpenD 离线状态下，对 `futu.OpenQuoteContext` 做符号 introspection（不连 OpenD），确认 10.10 SDK 真实暴露事件合约接口族。**文档 2.1/2.2 列的 10.9 旧命名部分已改名，以 SDK 实际符号为准：**
+
+| 文档/10.9 命名 | SDK 10.10 实际符号 | 用途 |
+|---|---|---|
+| `get_event_contract_category` | ✅ 同名存在 | 发现链：事件分类列表 |
+| `get_event_contract_snapshot` | ✅ 同名存在 | **P0.3 核心：事件合约快照（隐含概率来源）** |
+| `get_event_contract_by_id` | ❌ 不存在 → 用 `get_event_contract` | 按 id 取详情 |
+| `get_event_contract_list` | ❌ 不存在 → 用 `get_event_contract_event_list` / `get_event_contract_series_list` | 关联事件/系列 |
+| （未列） | ✅ `get_event_contract_event_list` | 关联事件 |
+| （未列） | ✅ `get_event_contract_series_list` | 系列/条件列表 |
+| （未列） | ✅ `get_event_contract_milestone_list` | 里程碑 |
+| （未列） | ✅ `get_event_contract_kline` / `request_history_event_contract_kline` | K线/历史 |
+| （未列） | ✅ `get_event_contract_order_book` / `get_event_contract_ticker` | 盘口/逐笔 |
+| （未列） | ✅ `subscribe_event_contract` / `unsubscribe_event_contract` | 实时推送订阅 |
+
+**结论（P0.1 SDK 侧）**：事件合约行情能力在 `futu-api 10.10.7008` 完整可用，接口名以 SDK 实际符号为准（避免 10.9 文档命名误导）。**待 OpenD 上线后补：运行期权限实测 + `get_event_contract_snapshot` 真实返回列结构核查（零幻觉硬要求，禁 mock）**。
 
 ---
 
@@ -55,7 +74,7 @@
 
 ### 阶段 P0：发现链 + 快照（ROI 最高，同步 REST 拉取，先做）
 
-- [ ] **P0.1** 验证权限：确认 OpenD 账户是否开通事件合约行情权限（先验证再写代码，同 Finnhub 403 教训）。
+- [x] **P0.1** 验证权限（SDK 静态核查部分）：✅ 2026-08-22 已对 `futu-api 10.10.7008` 做符号 introspection，确认 SDK 完整暴露事件合约接口族（`get_event_contract_category` / `get_event_contract_snapshot` / `get_event_contract` / `get_event_contract_event_list` / `get_event_contract_series_list` / `subscribe_event_contract` 等），10.9 文档旧命名（`get_event_contract_by_id`/`get_event_contract_list`）已改名，已回填 §2.3.1 映射表。⏳ **运行期权限实测待 OpenD 上线补**（当前 dev 环境 OpenD 11111 CLOSED，且 `get_event_contract_snapshot` 真实返回列需实测，禁 mock）。
 - [ ] **P0.2** 实现发现链：`get_event_contract_category` → `get_event_contract_series_list` → `get_event_contract_event_list` → `get_event_contract`。
 - [ ] **P0.3** 实现快照：`get_event_contract_snapshot`（最新价/累计成交量/YES/NO 一档）。
 - [ ] **P0.4** 接入 `futu_worker.py` 的 `_FUTU_ACTION_MAP`：新增 action（如 `EVENT_CONTRACT_SNAPSHOT` / `EVENT_CONTRACT_DISCOVERY`）。
