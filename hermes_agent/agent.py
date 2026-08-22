@@ -11,6 +11,7 @@ from pydantic import BaseModel, field_validator
 from rich.console import Console
 from rich.markdown import Markdown
 
+from backend.services.ai_narrator.repetition_guard import repetition_guard
 from backend.services.ai_narrator.token_usage_store import token_usage_store
 from backend.services.ai_narrator.usage_pricing import usage_pricing_calculator
 from hermes_agent.memory_ops import MemoryOperationsMixin
@@ -207,7 +208,17 @@ class HermesAgent(MemoryOperationsMixin):
         try:
             args = json.loads(arguments_str)
             # 💡 核心修复：execute 是 async 函数，必须 await
-            return await self.tool_registry.execute(tool_name, **args)
+            result = await self.tool_registry.execute(tool_name, **args)
+
+            # AGENT-12: 记录工具调用到重复守卫（用于停滞检测）
+            await repetition_guard.record_tool_call(
+                tool_name=tool_name,
+                arguments=args,
+                result=result,
+                output_summary=str(result)[:200],  # 取前 200 字符作为摘要
+            )
+
+            return result
         except Exception as e:
             # AGENT-10: 异常消息脱敏，防止凭据泄漏进模型上下文
             from hermes_agent.redact import redact_exception
@@ -285,6 +296,26 @@ class HermesAgent(MemoryOperationsMixin):
         collected_content = ""
 
         for i in range(max_iterations):
+            # AGENT-12: 停滞检测 — 在每轮开始前检查是否陷入死循环
+            stuck_result = await repetition_guard.check_stuck(
+                current_iteration=i,
+                max_iterations=max_iterations,
+            )
+            if stuck_result.is_stuck:
+                # 检测到停滞，提前退出循环
+                session_id = getattr(self, "session_id", "default")
+                await repetition_guard.record_stuck_detection(
+                    session_id=session_id,
+                    reason=stuck_result.reason,
+                    iterations_saved=stuck_result.iterations_saved,
+                )
+                yield {
+                    "type": "error",
+                    "message": f"🛑 [RepetitionGuard] 检测到停滞模式，提前终止循环。原因: {stuck_result.reason}",
+                    "details": stuck_result.details,
+                }
+                return  # 提前退出循环
+
             # AGENT-01: 轮次开始事件（append-only）
             self.event_log.record_turn_start(i + 1)
             # 💡 心跳保活：每轮 ReAct 开始前发送心跳
