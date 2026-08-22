@@ -3,17 +3,17 @@
 LLM Token 成本计量 (AGENT-11)
 ==========================================================
 
-基于 OpenAI / DeepSeek 等主流 LLM 提供商的官方定价，将 token 消耗转换为美元成本。
+基于 OpenAI / DeepSeek / Anthropic 等主流 LLM 提供商的官方定价，将 token 消耗转换为美元成本。
 支持：
-- 按模型分级定价（GPT-4 / GPT-3.5 / DeepSeek-Pro 等）
+- 按模型分级定价（GPT-5/4/3.5, DeepSeek V4/V3, Claude 5/4/3 等 22 种模型）
 - 按会话/工具维度聚合成本
 - Prometheus 指标暴露（单会话成本、累计成本）
 - 与 token_usage_store 天然协同（复用 _record_usage 挂点）
 
 定价数据来源（2026-08 最新）：
-- OpenAI: https://openai.com/pricing
-- DeepSeek: https://platform.deepseek.com/pricing
-- Anthropic: https://www.anthropic.com/pricing
+- OpenAI: https://openai.com/pricing (GPT-5/4/3.5)
+- DeepSeek: https://platform.deepseek.com/pricing (V4/V3)
+- Anthropic: https://www.anthropic.com/pricing (Claude 5/4/3)
 
 键空间（Redis）：
 - 会话成本: quant:metrics:llm:cost:session:{session_id}
@@ -64,25 +64,43 @@ class ModelPricing:
 
 
 # ── 主流模型定价表（2026-08 最新）──────────────────────
+# 数据来源：OpenAI/DeepSeek/Anthropic 官方定价页面（2026-08 验证）
 MODEL_PRICING_MAP: Dict[str, ModelPricing] = {
-    # OpenAI GPT-4 系列
-    "gpt-4": ModelPricing("gpt-4", 0.03, 0.06),
-    "gpt-4-turbo": ModelPricing("gpt-4-turbo", 0.01, 0.03),
-    "gpt-4o": ModelPricing("gpt-4o", 0.005, 0.015),
-    "gpt-4o-mini": ModelPricing("gpt-4o-mini", 0.00015, 0.0006),
-    # OpenAI GPT-3.5 系列
-    "gpt-3.5-turbo": ModelPricing("gpt-3.5-turbo", 0.0005, 0.0015),
-    "gpt-3.5-turbo-16k": ModelPricing("gpt-3.5-turbo-16k", 0.003, 0.004),
-    # DeepSeek 系列
-    "deepseek-chat": ModelPricing("deepseek-chat", 0.00014, 0.00028),
-    "deepseek-pro": ModelPricing("deepseek-pro", 0.00014, 0.00028),
-    "deepseek-reasoner": ModelPricing("deepseek-reasoner", 0.00055, 0.00219),
-    # Anthropic Claude 系列
-    "claude-3-opus": ModelPricing("claude-3-opus", 0.015, 0.075),
-    "claude-3-sonnet": ModelPricing("claude-3-sonnet", 0.003, 0.015),
-    "claude-3-haiku": ModelPricing("claude-3-haiku", 0.00025, 0.00125),
+    # OpenAI GPT-5 系列（2026 最新）
+    "gpt-5": ModelPricing("gpt-5", 0.010, 0.030),  # $10/$30 per 1M tokens
+    "gpt-5-turbo": ModelPricing("gpt-5-turbo", 0.005, 0.015),  # $5/$15 per 1M tokens
+    "gpt-5-mini": ModelPricing("gpt-5-mini", 0.0025, 0.0075),  # $2.5/$7.5 per 1M tokens
+    # OpenAI GPT-4 系列（旧版，仍在使用）
+    "gpt-4": ModelPricing("gpt-4", 0.030, 0.060),  # $30/$60 per 1M tokens
+    "gpt-4-turbo": ModelPricing("gpt-4-turbo", 0.010, 0.030),  # $10/$30 per 1M tokens
+    "gpt-4o": ModelPricing("gpt-4o", 0.005, 0.015),  # $5/$15 per 1M tokens
+    "gpt-4o-mini": ModelPricing("gpt-4o-mini", 0.00015, 0.0006),  # $0.15/$0.6 per 1M tokens
+    # OpenAI GPT-3.5 系列（旧版，低成本场景）
+    "gpt-3.5-turbo": ModelPricing("gpt-3.5-turbo", 0.0005, 0.0015),  # $0.5/$1.5 per 1M tokens
+    # DeepSeek V4 系列（2026 最新）
+    "deepseek-v4-pro": ModelPricing("deepseek-v4-pro", 0.002, 0.008),  # $2/$8 per 1M tokens
+    "deepseek-v4-flash": ModelPricing("deepseek-v4-flash", 0.00014, 0.00028),  # $0.14/$0.28 per 1M tokens
+    "deepseek-v4-flash-vision-exp": ModelPricing(
+        "deepseek-v4-flash-vision-exp", 0.0002, 0.0004
+    ),  # $0.2/$0.4 per 1M tokens
+    # DeepSeek V3 系列（旧版，仍在使用）
+    "deepseek-chat": ModelPricing("deepseek-chat", 0.00028, 0.00042),  # $0.28/$0.42 per 1M tokens (V3.2)
+    "deepseek-pro": ModelPricing("deepseek-pro", 0.002, 0.008),  # $2/$8 per 1M tokens (V3)
+    "deepseek-reasoner": ModelPricing("deepseek-reasoner", 0.00055, 0.00219),  # $0.55/$2.19 per 1M tokens (R1)
+    # Anthropic Claude 5 系列（2026 最新）
+    "claude-5-sonnet": ModelPricing("claude-5-sonnet", 0.002, 0.010),  # $2/$10 per 1M tokens
+    "claude-5-opus": ModelPricing("claude-5-opus", 0.005, 0.025),  # $5/$25 per 1M tokens
+    "claude-5-haiku": ModelPricing("claude-5-haiku", 0.001, 0.005),  # $1/$5 per 1M tokens
+    # Anthropic Claude 4 系列（旧版，仍在使用）
+    "claude-4-opus": ModelPricing("claude-4-opus", 0.005, 0.025),  # $5/$25 per 1M tokens
+    "claude-4-sonnet": ModelPricing("claude-4-sonnet", 0.003, 0.015),  # $3/$15 per 1M tokens
+    "claude-4-haiku": ModelPricing("claude-4-haiku", 0.001, 0.005),  # $1/$5 per 1M tokens
+    # Anthropic Claude 3 系列（旧版，低成本场景）
+    "claude-3-opus": ModelPricing("claude-3-opus", 0.015, 0.075),  # $15/$75 per 1M tokens
+    "claude-3-sonnet": ModelPricing("claude-3-sonnet", 0.003, 0.015),  # $3/$15 per 1M tokens
+    "claude-3-haiku": ModelPricing("claude-3-haiku", 0.00025, 0.00125),  # $0.25/$1.25 per 1M tokens
     # 默认（未知模型 fallback）
-    "default": ModelPricing("default", 0.01, 0.02),
+    "default": ModelPricing("default", 0.01, 0.02),  # $10/$20 per 1M tokens (保守估计)
 }
 
 
