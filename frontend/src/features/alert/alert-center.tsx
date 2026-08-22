@@ -12,6 +12,7 @@ import { useAlertOverlayStore } from '@/stores/useAlertOverlayStore'
 import type { CreateRulePayload } from '@/types/alert'
 import { RulesList, EventsList } from './alert-lists'
 import { CreateRuleForm } from './create-rule-form'
+import { AiTriageCard } from './ai-triage-card'
 
 // ─── 主组件 ────────────────────────────────────────────────────────
 
@@ -100,6 +101,9 @@ export function AlertCenterModule() {
           </Button>
         </div>
       </div>
+
+      {/* AI-06 告警分诊员：受 ai06 开关控制，自动关联分析当前告警 */}
+      <AiTriageCard alerts={events} />
 
       {/* Main Content: Two-Panel Layout */}
       <div className="flex-1 flex gap-3 min-h-0">

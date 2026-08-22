@@ -16,6 +16,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from jose import jwt as _jwt
+from pydantic import BaseModel
 
 from backend.app.alert_app import (  # noqa: F401  (测试夹具访问共享状态)
     CreateRuleRequest,
@@ -40,8 +41,10 @@ from backend.app.alert_app import (  # noqa: F401  (测试夹具访问共享状�
 )
 from backend.core import models
 from backend.core.alert_models import AlertSeverity
+from backend.core.config import settings
 from backend.core.logger import logger
 from backend.routers.auth import get_current_user
+from backend.routers.chat import get_current_username
 
 # 💡 FIX-274: 移除 router 级 dependencies=[Depends(get_current_user)]。
 # 原因: router 级依赖会套用到 /ws WebSocket 端点, 而 OAuth2PasswordBearer
@@ -208,3 +211,59 @@ async def alert_websocket(websocket: WebSocket):
     finally:
         _ws_connections.remove(websocket)
         logger.info(f"[AlertWS] 连接关闭，剩余活跃: {len(_ws_connections)}")
+
+
+# ── AI-06 告警分诊员 ──────────────────────────────────────────────────────
+class AiTriageRequest(BaseModel):
+    alerts: List[dict]  # 当前触发的告警列表 [{symbol, type, detail, time}]
+    portfolio_context: Optional[str] = None  # 组合上下文（持仓/行业暴露）
+
+
+class AiTriageResponse(BaseModel):
+    status: str  # success | warning
+    triage: Optional[dict]  # {summary, correlation, priority_order, rule_suggestion}
+    message: Optional[str] = None
+
+
+@router.post("/ai-triage", response_model=AiTriageResponse)
+async def ai_triage(
+    req: AiTriageRequest,
+    username: str = Depends(get_current_username),
+):
+    """AI-06 告警分诊：关联分析 + 智能排序 + 规则建议。
+
+    无 LLM / 无告警时返回 warning + 空 triage，不编造分析。
+    """
+    if not req.alerts:
+        return AiTriageResponse(status="warning", triage=None, message="无告警可供分诊")
+
+    from backend.bootstrap.lifecycle import global_llm_client
+
+    if global_llm_client is None:
+        return AiTriageResponse(status="warning", triage=None, message="LLM 客户端未初始化")
+
+    alerts_text = "\n".join(
+        f"- {a.get('symbol', '?')} | {a.get('type', '?')} | {a.get('detail', '')}" for a in req.alerts[:30]
+    )
+    ctx = f"\n组合上下文：{req.portfolio_context}" if req.portfolio_context else ""
+    prompt = (
+        "你是告警分诊员。基于以下同时触发的告警，输出 JSON："
+        '{"summary":"一句话总览","correlation":"板块性/关联性分析","priority_order":["按优先级排序的告警标识"],'
+        '"rule_suggestion":"新建告警时的过滤规则建议(如 RSI>75 过滤假突破)"}。'
+        "仅输出 JSON，不要额外解释。\n"
+        f"告警列表：\n{alerts_text}{ctx}"
+    )
+    try:
+        resp = await global_llm_client.chat.completions.create(
+            model=settings.llm_model or "deepseek-v4-flash",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        import json
+
+        raw = resp.choices[0].message.content
+        triage = json.loads(raw) if raw else {}
+        return AiTriageResponse(status="success", triage=triage)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[AI-06] 告警分诊失败: {e}")
+        return AiTriageResponse(status="warning", triage=None, message=f"分诊失败: {e}")
