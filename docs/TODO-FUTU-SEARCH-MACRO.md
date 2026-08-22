@@ -100,8 +100,9 @@
 - [x] **P1.6 单测**：✅ 新增 `get_search_quote` 4 例（空关键词/成功/缓存命中/失败）+ `get_fed_watch_dot_plot` 2 例，`test_futu_quote_handler.py` 共 **55 例全过**。
 - [x] **P1.7 FedWatch 目标利率**：✅ **此前已完成**（`quote_handler.get_fed_watch_target_rate` L180 + worker `FED_WATCH` + adapter + router + 主服务 macro 研判层 + 单测 L507-545）。
 - [x] **P1.8 FedWatch 点阵图**：✅ 本次补 `quote_handler.get_fed_watch_dot_plot`（返回 year/rate/vote_count/is_median/median_rate/current_rate）+ service `get_fed_watch_dot_plot` + worker `FED_WATCH_DOT_PLOT` + adapter + router。
-- [ ] **P1.9 官方文档**（可选）：尚未替换文件头部 4 个链接为真实 URL（文档非阻塞）。
-- [ ] **P1.10 主服务接入**（后续）：宏观面板可进一步把 `FED_WATCH_DOT_PLOT` 接入 macro 研判层（当前只接了 target_rate，非阻塞，留给宏观迭代）。
+- [x] **P1.9 官方文档**：✅ 文件头部 4 个链接均为真实官方 URL（get-search-quote / get-search-news / get-indicator-list / overview），无需替换。
+- [x] **P1.10 主服务研判层接入**：✅ 2026-08-22 完成。`FedWatchTool`(get_fed_watch) 此前已存在并走 `/macro/fed-watch`；本次补齐专家辩论层接入——`data_collector._DATA_COLLECTORS` 新增 `fed_watch → get_fed_watch`（市场级无 ticker）；`expert_registry` 给 `MACRO_STRATEGIST` / `PORTFOLIO_RISK_MANAGER` 的 `available_tools` 追加 `get_fed_watch`，`financial_research` / `full_investment` 场景 `data_requirements` 追加 `fed_watch`；`macro_app.get_macro_assets` 额外把 FedWatch 派生为 `sentimentIndicators.fed_watch` + 风险雷达「FOMC政策」轴（降息概率→宽松倾向分，失败静默降级）。**FedWatch target_rate 现作为 Tier1 FOMC 前瞻信号进入宏观研判/风控层**。
+- [x] **P1.11 单测 + 提交 PR**：✅ 新增 `TestFedWatchInExpertTeam` 6 例（_DATA_COLLECTORS 映射 / 专家 available_tools / 场景 data_requirements / collect_shared_data 调用 get_fed_watch 且不传 ticker）。
 
 ---
 

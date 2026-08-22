@@ -74,7 +74,7 @@ MACRO_STRATEGIST = ExpertRole(
     domain="finance",
     team="analyst",
     bias="neutral",
-    available_tools=["get_macro_news", "get_macro_calendar", "get_fred_macro_data"],
+    available_tools=["get_macro_news", "get_macro_calendar", "get_fred_macro_data", "get_fed_watch"],
     description="专注政策影响、利率周期、行业景气度、全球资金流向",
 )
 
@@ -176,7 +176,7 @@ PORTFOLIO_RISK_MANAGER = ExpertRole(
     domain="finance",
     team="risk",
     bias="bearish",
-    available_tools=["get_macro_sentiment_history", "get_fred_macro_data"],
+    available_tools=["get_macro_sentiment_history", "get_fred_macro_data", "get_fed_watch"],
     description="专注组合层面风险度量(VaR/CVaR)、相关性矩阵、压力测试、对冲策略、回撤控制",
 )
 
@@ -338,7 +338,7 @@ SCENARIO_TEMPLATES: dict[str, ScenarioTemplate] = {
             "risk_officer",
             "valuation_expert",
         ],
-        data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment"],
+        data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment", "fed_watch"],
         chief_prompt_file="chief_analyst.md",
     ),
     "full_investment": ScenarioTemplate(
@@ -359,7 +359,7 @@ SCENARIO_TEMPLATES: dict[str, ScenarioTemplate] = {
             "portfolio_risk_manager",
             "chief_investment_officer",
         ],
-        data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment"],
+        data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment", "fed_watch"],
         chief_prompt_file="chief_analyst.md",
     ),
     "trading_decision": ScenarioTemplate(

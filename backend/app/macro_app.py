@@ -1422,6 +1422,49 @@ async def get_macro_assets(
                 "fear_greed": {"value": fg_score, "status": fg_status},
             }  # noqa: E501
 
+            # ── P1.10: FedWatch FOMC 前瞻信号（Tier1 利率前瞻）─────────────
+            # 从 Futu FedWatch 派生下一会议隐含利率、政策斜率、降息概率，
+            # 并入情绪指标 + 作为风险雷达的「FOMC政策」轴。失败则静默降级（不阻塞雷达）。
+            fed_panel = None
+            fomc_score = None
+            fomc_status = "N/A"
+            cut_prob = None
+            try:
+                from backend.services.datasource.business.macro import macro_data_service
+
+                fw_res = await macro_data_service.get_fed_watch_panel()
+                fw_data = fw_res.data if hasattr(fw_res, "data") else fw_res
+                if isinstance(fw_data, dict) and fw_data.get("status") == "success":
+                    panel = fw_data.get("panel") or fw_data.get("data") or {}
+                    fed_panel = panel
+                    cut_prob = panel.get("cut_probability")
+                    slope = panel.get("policy_slope")
+                    # 降息概率越高→风险偏好越高(FOMC 轴分数越高)；斜率转鹰→压低
+                    base = float(cut_prob) * 100 if cut_prob is not None else 50
+                    if slope == "dovish":
+                        base += 5
+                    elif slope == "hawkish":
+                        base -= 10
+                    fomc_score = round(max(0, min(100, base)), 1)
+                    fomc_status = "偏宽松" if fomc_score > 60 else ("偏紧缩" if fomc_score < 40 else "中性")
+            except Exception as e:  # noqa: BLE001
+                logging.warning("FedWatch FOMC 轴派生失败(降级): %s", e)
+
+            if fed_panel is not None:
+                sentiment_indicators["fed_watch"] = {
+                    "value": {
+                        "next_meeting_date": (
+                            fed_panel.get("next_meeting_date") if isinstance(fed_panel, dict) else None
+                        ),
+                        "next_meeting_implied_rate": (
+                            fed_panel.get("next_meeting_implied_rate") if isinstance(fed_panel, dict) else None
+                        ),
+                        "policy_slope": (fed_panel.get("policy_slope") if isinstance(fed_panel, dict) else None),
+                        "cut_probability": cut_prob,
+                    },
+                    "status": fomc_status,
+                }
+
             radar_data = [
                 {
                     "axis": "流动性",
@@ -1470,6 +1513,12 @@ async def get_macro_assets(
                     "current": crypto,
                     "benchmark": 50,
                     "desc": "加密资产投机情绪。",
+                },  # noqa: E501
+                {
+                    "axis": "FOMC政策",
+                    "current": fomc_score if fomc_score is not None else 50,
+                    "benchmark": 50,
+                    "desc": "FedWatch 降息概率派生的 FOMC 前瞻宽松/紧缩倾向(Tier1)。",
                 },  # noqa: E501
             ]
 

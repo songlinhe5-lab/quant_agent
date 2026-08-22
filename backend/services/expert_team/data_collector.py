@@ -43,6 +43,11 @@ _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
         "param_key": "market",
         "description": "市场复盘(宏观判因)",
     },
+    "fed_watch": {
+        "tool": "get_fed_watch",
+        "param_key": None,  # 市场级，无需 ticker
+        "description": "FedWatch FOMC 目标利率隐含概率(Tier1 前瞻)",
+    },
     "code_context": {
         "tool": None,  # 由请求直接提供，不需要工具采集
         "param_key": None,
