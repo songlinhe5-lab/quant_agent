@@ -56,12 +56,20 @@ export function OptionPcrPanel() {
     const dates = rows.map((r) =>
       ((r as any).time || r.timestamp || '').replace('T', ' ').slice(0, 16),
     )
-    const pcr = rows.map((r) => (r.pc_ratio != null ? Number(r.pc_ratio.toFixed(3)) : null))
-    const vix = rows.map((r) =>
-      ((r as any).vix ?? r.vix_value) != null
-        ? Number(((r as any).vix ?? r.vix_value).toFixed(2))
-        : null,
-    )
+    // 🔧 防御：pc_ratio/vix 可能是对象/字符串(后端结构变化)，仅取有限数值，避免 toFixed 崩溃
+    const toFiniteNum = (v: any): number | null => {
+      if (v == null) return null
+      const n = typeof v === 'number' ? v : Number(v)
+      return isFinite(n) ? n : null
+    }
+    const pcr = rows.map((r) => {
+      const n = toFiniteNum(r.pc_ratio)
+      return n != null ? Number(n.toFixed(3)) : null
+    })
+    const vix = rows.map((r) => {
+      const n = toFiniteNum((r as any).vix ?? r.vix_value)
+      return n != null ? Number(n.toFixed(2)) : null
+    })
     return {
       backgroundColor: 'transparent',
       tooltip: {
@@ -186,7 +194,12 @@ export function OptionPcrPanel() {
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-baseline gap-3">
           <span className={'text-3xl font-bold font-mono tabular-nums leading-none ' + verdict.cls}>
-            {(latest?.pc_ratio ?? NaN).toFixed(2)}
+            {(() => {
+              // 🔧 防御：pc_ratio 可能是对象/字符串(后端结构变化)，仅当为有限数值才 toFixed，否则显示 —
+              const pcrRaw = latest?.pc_ratio
+              const pcrNum = typeof pcrRaw === 'number' && isFinite(pcrRaw) ? pcrRaw : Number(pcrRaw)
+              return isFinite(pcrNum) ? pcrNum.toFixed(2) : '—'
+            })()}
           </span>
           <span className={cn(
             'text-[10px] font-bold px-2 py-0.5 rounded',

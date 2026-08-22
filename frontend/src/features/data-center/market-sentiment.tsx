@@ -38,9 +38,24 @@ function SentimentHistoryChart({ history }: { history: any[] }) {
   const ref = useEChart((): EChartsCoreOption | null => {
     if (!history || history.length === 0) return null
     const dates = history.map(r => (r.time || '').slice(0, 11))
-    const vix = history.map(r => (r.vix != null ? Number(r.vix.toFixed(2)) : null))
-    const pc = history.map(r => (r.pc_ratio != null ? Number(r.pc_ratio.toFixed(3)) : null))
-    const heat = history.map(r => (r.retail_heat_change_pct != null ? Number((r.retail_heat_change_pct * 100).toFixed(1)) : null))
+    // 🔧 防御：vix/pc/heat 可能是对象/字符串(后端结构变化)，仅取有限数值，避免 toFixed 崩溃
+    const finiteNum = (v: any): number | null => {
+      if (v == null) return null
+      const n = typeof v === 'number' ? v : Number(v)
+      return isFinite(n) ? n : null
+    }
+    const vix = history.map(r => {
+      const n = finiteNum(r.vix)
+      return n != null ? Number(n.toFixed(2)) : null
+    })
+    const pc = history.map(r => {
+      const n = finiteNum(r.pc_ratio)
+      return n != null ? Number(n.toFixed(3)) : null
+    })
+    const heat = history.map(r => {
+      const n = finiteNum(r.retail_heat_change_pct)
+      return n != null ? Number((n * 100).toFixed(1)) : null
+    })
     return {
       grid: { left: 38, right: 40, top: 24, bottom: 24 },
       tooltip: { trigger: 'axis', backgroundColor: ECHART_DARK.tooltipBg, borderColor: ECHART_DARK.split, textStyle: { color: ECHART_DARK.text, fontSize: 10 } },
