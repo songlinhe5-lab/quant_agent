@@ -11,6 +11,7 @@ try:
 except ImportError:
     zoneinfo = None
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 from sqlalchemy.orm import Session
 
@@ -659,6 +660,39 @@ async def get_capital_flow_dashboard(force_refresh: bool = False):
         if any_ok:
             await redis_client.set(cache_key, json.dumps(result), ex=300 + random.randint(10, 60))
         return result
+
+
+# ── FUNDFLOW-02: A股龙虎榜 ────────────────────────────────────────────────────
+async def get_a_share_lhb(force_refresh: bool = False) -> Dict[str, Any]:
+    """A股龙虎榜（机构 vs 游资 + 区间净买额）。
+
+    数据来自 AKShare 子服务的 LHB_DETAIL / LHB_STOCK_STAT，经 data_source_router 远程调用。
+    无数据源时返回 status=warning / data=None（前端走诚实空态）。
+    """
+    from backend.services.fund_flow.a_share_lhb import get_a_share_lhb as _fetch_lhb
+
+    payload = await _fetch_lhb(force_refresh=force_refresh)
+    if payload is None:
+        return {"status": "warning", "data": None, "message": "龙虎榜数据不可用"}
+    return {"status": "success", "data": payload}
+
+
+# ── FUNDFLOW-02: 港股经纪商席位 (Broker Queue) ─────────────────────────────────
+async def get_hk_broker_queue(symbol: str, force_refresh: bool = False) -> Dict[str, Any]:
+    """港股指定标的的经纪商买卖队列（席位异动）。
+
+    数据来自 Futu 实时推送，经 subscription.get_broker 取进程内缓存的 broker_queue。
+    无 Futu 实时节点时返回 status=warning / data=None。
+    """
+    from backend.services.datasource.subscription import get_broker
+
+    try:
+        broker = await get_broker(symbol, force_refresh=force_refresh)
+    except Exception as e:
+        return {"status": "warning", "data": None, "message": f"经纪商队列获取失败: {e}"}
+    if not broker:
+        return {"status": "warning", "data": None, "message": "经纪商队列暂无数据（需 Futu 实时推送）"}
+    return {"status": "success", "data": broker}
 
 
 # ── 跨市场资金流向 ──────────────────────────────────────────────────────────

@@ -20,12 +20,14 @@ from sqlalchemy.orm import Session
 
 from backend.app import macro_app
 from backend.app.macro_app import (
+    get_a_share_lhb,
     get_capital_flow,
     get_capital_flow_dashboard,
     get_data_center_dashboard,
     get_earnings_calendar,
     get_economic_calendar_facade,
     get_fed_watch_panel,
+    get_hk_broker_queue,
     get_macro_assets,
     get_macro_calendar,
     get_macro_news,
@@ -103,6 +105,23 @@ async def get_capital_flow_dashboard_route(
 ):
     """FUNDFLOW-01: 北向/南向资金 + 三市场板块资金流聚合看板"""
     return await get_capital_flow_dashboard(force_refresh)
+
+
+@router.get("/a-share-lhb")
+async def get_a_share_lhb_route(
+    force_refresh: bool = Query(False, description="是否绕过缓存强制刷新"),
+):
+    """FUNDFLOW-02: A股龙虎榜（机构 vs 游资 + 区间净买额）"""
+    return await get_a_share_lhb(force_refresh)
+
+
+@router.get("/hk-broker-queue")
+async def get_hk_broker_queue_route(
+    symbol: str = Query(..., description="港股代码，如 HK.00700"),
+    force_refresh: bool = Query(False, description="是否绕过缓存强制刷新"),
+):
+    """FUNDFLOW-02: 港股指定标的经纪商买卖队列（席位异动）"""
+    return await get_hk_broker_queue(symbol, force_refresh)
 
 
 @router.get("/news")
