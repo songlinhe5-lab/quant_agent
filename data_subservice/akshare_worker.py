@@ -61,6 +61,12 @@ async def handle_akshare(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
             return await akshare_service.get_sector_flow_a()
         elif action == "SECTOR_FLOW_HK":
             return await akshare_service.get_sector_flow_hk()
+        elif action == "LHB_DETAIL":
+            return await akshare_service.get_lhb_detail(params.get("date"))
+        elif action == "LHB_STOCK_STAT":
+            return await akshare_service.get_lhb_stock_statistic(params.get("period", "近一月"))
+        elif action == "LHB_INSTITUTION":
+            return await akshare_service.get_lhb_institution(params.get("start_date"), params.get("end_date"))
         else:
             return {"error": f"未知 akshare action: {action}"}
     except Exception as e:

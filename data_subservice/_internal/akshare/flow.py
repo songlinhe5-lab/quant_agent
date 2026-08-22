@@ -524,3 +524,98 @@ def get_hk_sector_flow() -> Dict[str, Any]:
             "message": f"港股南向行业资金流获取失败: {e}",
             "data": None,
         }
+
+
+# ───────────────────────── FUNDFLOW-02: A股龙虎榜 ─────────────────────────
+def _col(row: Any, *names: str) -> Any:
+    """按候选列名取数，容错中/英列名。"""
+    for n in names:
+        if n in row and row[n] is not None and str(row[n]) not in ("", "None"):
+            return row[n]
+    # 退化：取第一个非空列
+    for k, v in row.items():
+        if v is not None and str(v) not in ("", "None"):
+            return v
+    return None
+
+
+def get_lhb_detail(date: str) -> Dict[str, Any]:
+    """龙虎榜个股明细 (stock_lhb_detail_em)。
+
+    返回 {"status","data":[{"code","name","close","change_pct","turnover",
+    "reason","net_buy","buy_amount","sell_amount","buy_departments","sell_departments","label"}]}。
+    """
+    try:
+        df = ak.stock_lhb_detail_em(date=date)
+        if df is None or df.empty:
+            return {"status": "success", "data": [], "source": "akshare_stock_lhb_detail_em"}
+        rows = []
+        for _, r in df.iterrows():
+            rows.append(
+                {
+                    "code": str(_col(r, "代码", "股票代码", "code") or ""),
+                    "name": str(_col(r, "名称", "股票名称", "name") or ""),
+                    "close": _to_float(_col(r, "收盘价", "close")),
+                    "change_pct": _to_float(_col(r, "涨跌幅", "change_pct")),
+                    "turnover": _to_float(_col(r, "成交额", "turnover")),
+                    "reason": str(_col(r, "原因", "龙虎榜原因", "reason") or ""),
+                    "net_buy": _to_float(_col(r, "净额", "净买额", "net_buy")),
+                    "buy_amount": _to_float(_col(r, "买入额", "buy_amount")),
+                    "sell_amount": _to_float(_col(r, "卖出额", "sell_amount")),
+                    # 买卖方营业部（取前若干家），后续机构/游资标签由主服务聚合层推断
+                    "buy_departments": str(_col(r, "买入机构", "买方机构", "buy_departments") or ""),
+                    "sell_departments": str(_col(r, "卖出机构", "卖方机构", "sell_departments") or ""),
+                    "label": "机构" if "机构" in str(_col(r, "原因", "龙虎榜原因") or "") else "游资",
+                }
+            )
+        return {"status": "success", "data": rows, "source": "akshare_stock_lhb_detail_em"}
+    except Exception as e:
+        logger.error(f"[AKShare] 龙虎榜明细失败: {e}")
+        return {"status": "error", "message": f"龙虎榜明细获取失败: {e}", "data": None}
+
+
+def get_lhb_stock_statistic(period: str = "近一月") -> Dict[str, Any]:
+    """龙虎榜个股统计 (stock_lhb_stock_statistic_em)。"""
+    try:
+        df = ak.stock_lhb_stock_statistic_em(symbol=period)
+        if df is None or df.empty:
+            return {"status": "success", "data": [], "source": "akshare_stock_lhb_stock_statistic_em"}
+        rows = []
+        for _, r in df.iterrows():
+            rows.append(
+                {
+                    "code": str(_col(r, "代码", "股票代码", "code") or ""),
+                    "name": str(_col(r, "名称", "股票名称", "name") or ""),
+                    "count": _to_int(_col(r, "上榜次数", "count")),
+                    "net_buy": _to_float(_col(r, "净额", "净买额", "net_buy")),
+                    "buy_amount": _to_float(_col(r, "买入额", "buy_amount")),
+                    "sell_amount": _to_float(_col(r, "卖出额", "sell_amount")),
+                }
+            )
+        return {"status": "success", "data": rows, "source": "akshare_stock_lhb_stock_statistic_em"}
+    except Exception as e:
+        logger.error(f"[AKShare] 龙虎榜个股统计失败: {e}")
+        return {"status": "error", "message": f"龙虎榜个股统计获取失败: {e}", "data": None}
+
+
+def get_lhb_institution(start_date: str, end_date: str) -> Dict[str, Any]:
+    """机构买卖统计 (stock_lhb_jgmmtj_em)，用于机构 vs 游资标签。"""
+    try:
+        df = ak.stock_lhb_jgmmtj_em(start_date=start_date, end_date=end_date)
+        if df is None or df.empty:
+            return {"status": "success", "data": [], "source": "akshare_stock_lhb_jgmmtj_em"}
+        rows = []
+        for _, r in df.iterrows():
+            rows.append(
+                {
+                    "code": str(_col(r, "代码", "股票代码", "code") or ""),
+                    "name": str(_col(r, "名称", "股票名称", "name") or ""),
+                    "net_buy": _to_float(_col(r, "净额", "净买额", "net_buy")),
+                    "buy_amount": _to_float(_col(r, "买入额", "buy_amount")),
+                    "sell_amount": _to_float(_col(r, "卖出额", "sell_amount")),
+                }
+            )
+        return {"status": "success", "data": rows, "source": "akshare_stock_lhb_jgmmtj_em"}
+    except Exception as e:
+        logger.error(f"[AKShare] 龙虎榜机构统计失败: {e}")
+        return {"status": "error", "message": f"龙虎榜机构统计获取失败: {e}", "data": None}
