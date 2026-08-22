@@ -323,17 +323,16 @@
 
 ##### 资金流向增强（已有 `action="FUND_FLOW"` 后端基础）
 
-- [ ] **[FUNDFLOW-01]** 北向资金/主力资金实时看板（P1）：
-  - A股：北向资金净流入（日/周/月）+ 行业分布饼图
-  - 港股：南向资金 + 港股通十大成交榜
-  - 美股：大单（Block Trade）净流入 + 机构持仓变化 Tide Chart
-  - 前端组件：`FundFlowDashboard`（Tab 切换三市场）
+- [x] **[FUNDFLOW-01]** 北向资金/主力资金实时看板（P1）：
+  - 后端：`GET /api/v1/macro/capital-flow-dashboard` 聚合 northbound/southbound/hk_connect(双通道)/三市场板块/us_big_order，子任务失败降级 None 不造假
+  - 前端：`CapitalFlowTab` 三市场 Tab，区1跨市场+港股南向双通道、区3美股 ETF+大单(us_big_order.total_net_inflow+breakdown)、行业分布由 SectorFlowPanel 承载
+  - 说明：北向净买入因港交所 2024-08 停披露改为"成交额口径"中性卡（UIRF-07）；数据未接入时诚实空态占位
   - 预期工时：FE 8h + BE 4h
-- [ ] **[FUNDFLOW-02]** 龙虎榜/经纪商席位排行（P2）：
-  - 港股 Broker Queue（买入最多 / 卖出最多经纪商）+ 席位异动标记
-  - A股龙虎榜：机构 vs 游资标签 + 近3日净买额排序
-  - 依赖 FUNDFLOW-01 后端数据管道
+- [x] **[FUNDFLOW-02]** 龙虎榜/经纪商席位排行（P2）：
+  - 后端：`GET /api/v1/macro/a-share-lhb` + `GET /api/v1/macro/hk-broker-queue`
+  - 前端：`DragonTigerBoard`(机构 vs 游资净买榜 + 近区间净买额排序) + `BrokerQueuePanel`(买入/卖出经纪商队列 + 席位异动标记)
   - 预期工时：FE 6h + BE 4h
+  - 注：FUNDFLOW-01/02 于本会话早期已实现并合入 develop，本次仅补齐 TODO 标记
 
 ##### 财报与研报本地 RAG（后端 `analyze_financial_report`/`search_global_knowledge` 于 EARN-02 实现，复用 `WebpageKnowledgeBase` 余弦检索）
 
