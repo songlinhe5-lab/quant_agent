@@ -33,6 +33,9 @@ class ExpertTeamService:
 
     def __init__(self, tool_registry: Optional[ToolRegistry] = None):
         self.orchestrator = DebateOrchestrator(tool_registry=tool_registry)
+        # 追踪后台 PG 落盘任务，避免事件循环关闭时任务悬挂触发
+        # "Task was destroyed but it is pending" 告警 / The operation was canceled
+        self._pg_tasks: set[asyncio.Task] = set()
 
     async def analyze_stream(self, request: AnalyzeRequest) -> AsyncGenerator[str, None]:
         """
@@ -153,7 +156,9 @@ class ExpertTeamService:
         await self._redis_set(session)
 
         # Layer 2: 异步 PG 落盘 (不阻塞 SSE 流)
-        asyncio.create_task(self._pg_upsert(session))
+        task = asyncio.create_task(self._pg_upsert(session))
+        self._pg_tasks.add(task)
+        task.add_done_callback(self._pg_tasks.discard)
 
     # ─── 内部持久化原语 ─────────────────────────────────────────
 
@@ -189,7 +194,11 @@ class ExpertTeamService:
                         db.add(ExpertTeamSession(session_id=session.session_id, session_data=data))
                     db.commit()
 
-            await asyncio.to_thread(upsert)
+            # 超时保护：避免 PG 不可达时任务无限悬挂（测试/loop 关闭时泄漏）
+            await asyncio.wait_for(asyncio.to_thread(upsert), timeout=5.0)
+        except asyncio.CancelledError:
+            # 事件循环关闭时任务被取消，静默返回，避免 "Task was destroyed" 告警
+            return
         except Exception as e:
             logger.warning(f"[ExpertTeam] PG 写入失败: {e}")
 
