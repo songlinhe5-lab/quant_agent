@@ -14,8 +14,10 @@ import {
   Newspaper,
   LineChart,
   Gauge,
+  Sparkles,
 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 import { AssetButton } from '@/features/data-center/shared'
 import { MacroChartPanel } from '@/features/data-center/macro-chart'
 import { NewsStream } from '@/features/data-center/news-stream'
@@ -703,16 +705,8 @@ export function CalendarsModule() {
         <span className="ml-2 text-muted-foreground/80">宏观日历多源聚合完成</span>
       </div>
 
-      {/* AI 主脑前瞻推演卡（对齐 Figma 设计稿：紫色顶部 + 标题 + 文字说明） */}
-      <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 px-4 py-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-[10px] font-bold text-purple-400 tracking-wide">AI 生成 · 仅供学习</span>
-          <span className="text-sm font-bold text-foreground">主脑前瞻推演</span>
-        </div>
-        <p className="text-xs text-foreground/80 leading-relaxed">
-          本周焦点 - 新西兰7月电子销售数据，月度与年度趋势显示消费价格敏感度上升，或对NZD交叉盘形成提振，关注USDCAD、NZDJPY联动。
-        </p>
-      </div>
+      {/* AI-08 主脑前瞻推演卡：由 /macro/event-inference 驱动，ai08 开关控制 */}
+      <AiEventInferenceCard />
 
       {/* 顶部：全球市场行情（Markets）默认展示 — 不占子 tab 位，对齐 Figma 设计稿 */}
       <MarketsView snapshot={snapshot} />
@@ -762,3 +756,86 @@ export function CalendarsModule() {
 }
 
 export default CalendarsModule
+
+/**
+ * AI-08 主脑前瞻推演卡：拉取高危宏观事件 → 调 /macro/event-inference → 展示推演研判。
+ * 由 ai08 开关控制；无高危事件 / LLM 未配置时诚实降级，不编造。
+ */
+function AiEventInferenceCard() {
+  const ai08Enabled = useAiPushPrefStore((s) => s.isEnabled('ai08'))
+  const [loading, setLoading] = useState(false)
+  const [inference, setInference] = useState<string | null>(null)
+  const [confidence, setConfidence] = useState<number | null>(null)
+  const [warn, setWarn] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!ai08Enabled) return
+    let alive = true
+    setLoading(true)
+    setInference(null)
+    setWarn(null)
+    ;(async () => {
+      try {
+        // 1) 取高危宏观事件
+        const cal = await apiClient.get('/macro/calendar', { params: { days_ahead: 7, days_back: 0 } })
+        const events = (cal.data?.events || cal.data || []).filter(
+          (e: any) => e.impact === 'high' || e.impact === 'High' || e.importance === 'high'
+        )
+        if (!events.length) {
+          if (alive) setWarn('暂无高危事件，推演待命中')
+          return
+        }
+        // 2) 调推演端点
+        const res = await apiClient.post('/macro/event-inference', {
+          events: events.slice(0, 3).map((e: any) => ({
+            title: e.title,
+            country: e.country,
+            date: e.date,
+            impact: e.impact,
+          })),
+        })
+        const body = res.data || res
+        if (body.status === 'success' && body.inference) {
+          if (alive) {
+            setInference(body.inference)
+            setConfidence(body.confidence ?? null)
+          }
+        } else {
+          if (alive) setWarn(body.message || '推演暂不可用')
+        }
+      } catch (e: any) {
+        if (alive) setWarn(e?.response?.data?.message || '推演服务调用失败')
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [ai08Enabled])
+
+  if (!ai08Enabled) return null
+
+  return (
+    <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 px-4 py-3">
+      <div className="flex items-center gap-2 mb-1.5">
+        <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+        <span className="text-[10px] font-bold text-purple-400 tracking-wide">AI 生成 · 仅供学习</span>
+        <span className="text-sm font-bold text-foreground">主脑前瞻推演</span>
+        {loading && <span className="text-[9px] text-muted-foreground">研判中…</span>}
+      </div>
+      {inference ? (
+        <>
+          <p className="text-xs text-foreground/80 leading-relaxed">{inference}</p>
+          {confidence != null && (
+            <p className="text-[9px] text-muted-foreground/70 mt-1">置信度 {(confidence * 100).toFixed(0)}%</p>
+          )}
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground/80 leading-relaxed">
+          {warn || '主脑前瞻推演加载中…'}
+        </p>
+      )}
+    </div>
+  )
+}
