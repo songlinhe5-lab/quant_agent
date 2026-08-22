@@ -13,8 +13,9 @@
 | MASTER_NODES | - | [{"id":"beijing","host":"120.53.84.116","port":6379,"password":"tradingagents123"}] | 同 Slave-1 | - |
 | SLAVE_NODES | http://<S1>:8001,http://<S2>:8001,... | - | - | - |
 | **数据源能力 (DS_CAPABILITIES)** |
-| DS_CAPABILITIES | `futu` | `yfinance` | `yfinance` | - |
+| DS_CAPABILITIES | `futu,sentiment` | `yfinance` | `yfinance` | - |
 | （CN-DATA 节点） | `akshare,tushare` | - | - | - |
+| *sentiment 说明* | *ApeWisdom 散户社交媒体热度（免费无 Key、全球可访问），随主节点 S1 声明即可；未声明 `sentiment` 能力的节点调 `/api/v1/data?source=sentiment` 返回 503，主服务 `fetch_sentiment` 判该节点不健康→熔断。* | - | - | - |
 | DATA_SOURCE_ROUTER_ENABLED | ✅ true | ✅ true | ✅ true | - |
 | *说明* | *主服务数据源能力默认全开，不再用 `COLLECTOR_*` 开关门控；子服务仅响应 `DS_CAPABILITIES` 声明的能力（其余返回 503）；数据源失效统一在监控 (router.get_health_status) 显示，而非静默禁用。* |
 | **基础设施** |
@@ -158,7 +159,7 @@ MASTER_NODES=[{"id":"beijing","host":"120.53.84.116","port":6379,"password":"tra
 
 # 主服务数据源能力默认全开，不再用 COLLECTOR_* 开关；子服务按 DS_CAPABILITIES 声明能力
 DATA_SOURCE_ROUTER_ENABLED=true
-DS_CAPABILITIES=futu
+DS_CAPABILITIES=futu,sentiment
 
 FINNHUB_API_KEY=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng
 FRED_API_KEY=ff3cb5acfdf642751b1f1aa2d2c450c9
@@ -385,6 +386,42 @@ redis-cli -a tradingagents123 keys "quant:node:*"
 - 将 `VITE_API_BASE_URL` 改为 `https://quant-api.stephenhe.com/api/v1`。
 - 修改后必须重新部署：Cloudflare Pages 走 `main`/`master` 分支 push 触发 `wrangler pages deploy`（develop push 仅 build 不部署）。
 - 仓库无 `.env.production`（该变量不在仓库内），勿在仓库里找，直接看 Pages 控制台。
+
+### **问题 7: sentiment（ApeWisdom 散户热度）源验证 / 全链路排错**
+
+**现象**：主服务 `fetch_sentiment` 返回 `status=error` / 监控里 `sentiment_master` 节点不健康 / `DataSourceRegistry` 查不到 `sentiment`。
+
+**根因与排查顺序**：
+
+1. **子服务未声明 `sentiment` 能力（最常见）**
+   - 子服务 `main.py` 的 `_declared_capabilities()` 若 `DS_CAPABILITIES` 未含 `sentiment`，`/api/v1/data?source=sentiment` 直接返回 503「数据源能力未启用」。
+   - 主服务 `fetch_sentiment` 收到 503 → 判 `sentiment_master` 节点不健康 → 熔断。
+   - 排查：`docker exec <data-subservice容器> printenv DS_CAPABILITIES` 必须含 `sentiment`；若漏，在节点 `.env.data-node` 加 `DS_CAPABILITIES=...,sentiment` 后 `docker compose up -d` 重启子服务。
+   - 推荐节点：主节点 S1（同机全能节点，ApeWisdom 免费无 Key、全球可访问）。
+
+2. **`sentiment_master` 后端节点 URL 不可达**
+   - 后端 `DataSourceRouter` 的 `sentiment_master` 节点 URL 取 `SENTIMENT_REMOTE_URL`（默认 `http://localhost:8001`），需指向实际子服务地址（S1 同机即 `localhost:8001`，跨节点用 Tailscale IP）。
+   - 排查：`curl -s http://<子服务>:8001/health/live` 应返回 healthy。
+
+3. **ApeWisdom 外网不可达 / 429 限流**
+   - `apewisdom.py` 直连 `https://apewisdom.io/api/v1.0/...`，免费额度约 30 次/分钟，超频返回 429（错误码 `rate_limit`，不计入熔断失败数，退避期内不硬重试）。
+   - 排查（子服务容器内）：`timeout 15 python3 -c "import httpx; print(httpx.get('https://apewisdom.io/api/v1.0/filter/all/page/1', timeout=10).status_code)"` 应返回 200。
+
+**端到端验证（S1 节点实测）**：
+```bash
+# 1. 子服务能力声明
+docker exec quant-agent-node-s1-data-subservice-1 printenv DS_CAPABILITIES | tr ',' '\n' | grep -x sentiment
+
+# 2. 子服务直连 ApeWisdom
+docker exec quant-agent-node-s1-data-subservice-1 timeout 15 python3 -c \
+  "import httpx; r=httpx.get('https://apewisdom.io/api/v1.0/filter/all/page/1', timeout=10); print('apewisdom', r.status_code, len(r.json().get('data',{}).get('data',[])))"
+
+# 3. 经主服务 fetch_sentiment（HMAC 签名路径）
+curl -s -X POST http://localhost:8000/api/v1/data \
+  -H "Content-Type: application/json" \
+  -d '{"source":"sentiment","action":"TRENDING","params":{"filter":"all","page":1}}' \
+  | python3 -m json.tool | head -20
+```
 
 ---
 

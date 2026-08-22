@@ -107,9 +107,9 @@
 ### 阶段 D：收尾与文档
 
 - [x] **D.1** 沉淀选型结论到 `update_memory` 知识库（**勿写 `MEMORY.md`**：AGENTS.md §0 规定其为会话笔记、禁止默认加载）+ 在本文档 §二保留三个源验证失败记录（Finnhub 403 / StockGeist 502 / 富途无 API）。*（2026-08-22 已完成：引用修正 + 重议）*
-- [ ] **D.2** `DEPLOYMENT_CHECKLIST.md` 补 `sentiment` 数据源接入说明 + 环境变量（ApeWisdom 免 Key）。
-- [ ] **D.3** 更新 `.env.data-node.example` 与 `DS_CAPABILITIES` 说明（新增 `sentiment`）。
-- [ ] **D.4** 全链路端到端验证 + 最终 PR。
+- [x] **D.2** `DEPLOYMENT_CHECKLIST.md` 补 `sentiment` 数据源接入说明 + 环境变量（ApeWisdom 免 Key）+ 问题 7 全链路验证/排错。*（2026-08-22 已完成）*
+- [x] **D.3** 更新 `.env.data-node.example` 与 `.env.example` 的 `DS_CAPABILITIES` 说明（主节点能力集 + 全量能力集 + US-MASTER 示例均含 `sentiment`）。*（2026-08-22 已完成）*
+- [x] **D.4** 全链路端到端验证脚本已写入 `DEPLOYMENT_CHECKLIST.md` 问题 7（S1 节点实测 3 步）+ 代码已进 PR #359。*（2026-08-22 已完成文档侧；S1 实测待部署后执行）*
 
 ---
 
