@@ -677,6 +677,50 @@ class FutuService:
             page=page,
         )
 
+    # ── G8: 数据正确性基座（复权因子/交易日历/K线额度/市场状态）───────────
+    async def get_rehab(self, ticker: str) -> Dict[str, Any]:
+        """G8 复权因子（回测/技术指标地基）。"""
+        return await self._route(
+            "fetch_rehab",
+            {"ticker": ticker},
+            self.quote_handler.get_rehab,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_trading_days(
+        self, market: str = "HK", start: Optional[str] = None, end: Optional[str] = None, ticker: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """G8 交易日历（T-1 语义/K线对齐/是否交易日判定）。"""
+        return await self._route(
+            "fetch_trading_days",
+            {"market": market, "start": start, "end": end, "ticker": ticker},
+            self.quote_handler.get_trading_days,
+            market=market,
+            start=start,
+            end=end,
+            ticker=ticker,
+        )
+
+    async def get_history_kl_quota(self, get_detail: bool = True) -> Dict[str, Any]:
+        """G8 历史 K 线额度（批量拉取前查询，防静默失败）。"""
+        return await self._route(
+            "fetch_history_kl_quota",
+            {"get_detail": get_detail},
+            self.quote_handler.get_history_kl_quota,
+            get_detail=get_detail,
+        )
+
+    async def get_market_state(self, codes: Any) -> Dict[str, Any]:
+        """G8 市场状态（区分盘后正常空 vs 故障空）。"""
+        return await self._route(
+            "fetch_market_state",
+            {"codes": codes},
+            self.quote_handler.get_market_state,
+            codes=codes,
+        )
+
     async def get_heat_map(self, market: str = "HK") -> Dict[str, Any]:
         """F4-3 板块热力图（需 market 参数，支撑 G6）。"""
         return await self._route(

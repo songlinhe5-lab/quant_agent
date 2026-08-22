@@ -891,3 +891,73 @@ class TestInstitutionArk:
         conn_mgr.quote_ctx.get_institution_list.return_value = (-1, "no permission")
         result = await handler.get_institution_list("US", 1, 1)
         assert result["status"] == "error"
+
+
+# ── G8 数据正确性基座（复权/交易日/额度/市场状态）────────────────────────
+class TestG8DataCorrectness:
+    """G8 复权因子 / 交易日历 / K线额度 / 市场状态"""
+
+    async def test_rehab_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_rehab.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [{"ex_div_date": "2005-04-19", "per_cash_div": 0.07, "forward_adj_factorA": 1.0, "split_ratio": None}]
+            ),
+        )
+        result = await handler.get_rehab("HK.00700")
+        assert result["status"] == "success"
+        assert result["data"][0]["per_cash_div"] == 0.07
+        assert result["data"][0]["split_ratio"] is None  # nan → None
+
+    async def test_rehab_unsupported(self):
+        handler, conn_mgr, _ = _make_handler()
+        result = await handler.get_rehab(
+            "GC=F", is_unsupported_func=lambda t: t.startswith("GC"), format_ticker_func=lambda t: t
+        )
+        assert result["status"] == "error"
+
+    async def test_trading_days_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.request_trading_days.return_value = (
+            RET_OK,
+            [{"time": "2026-01-02", "trade_date_type": "WHOLE"}],
+        )
+        result = await handler.get_trading_days("HK", "2026-01-01", "2026-01-31")
+        assert result["status"] == "success"
+        assert result["data"][0]["trade_date_type"] == "WHOLE"
+
+    async def test_history_kl_quota_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_history_kl_quota.return_value = (
+            RET_OK,
+            (2, 298, [{"code": "US.MU", "name": "美光科技", "request_time": "2026-08-21 10:26:32"}]),
+        )
+        result = await handler.get_history_kl_quota(True)
+        assert result["status"] == "success"
+        assert result["quota_used"] == 2
+        assert result["quota_remaining"] == 298
+        assert result["data"][0]["code"] == "US.MU"
+
+    async def test_market_state_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_market_state.return_value = (
+            RET_OK,
+            pd.DataFrame([{"code": "HK.00700", "stock_name": "腾讯控股", "market_state": "CLOSED"}]),
+        )
+        result = await handler.get_market_state(["HK.00700"])
+        assert result["status"] == "success"
+        assert result["data"][0]["market_state"] == "CLOSED"
+
+    async def test_g8_disconnected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_rehab("HK.00700")
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    async def test_g8_failure(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_rehab.return_value = (-1, "fail")
+        result = await handler.get_rehab("HK.00700")
+        assert result["status"] == "error"

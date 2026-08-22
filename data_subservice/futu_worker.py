@@ -231,6 +231,23 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 count=int(params.get("count", 20)),
                 page=int(params.get("page", 1)),
             )
+        elif action == "REHAB":
+            # G8 复权因子（回测/技术指标地基）
+            return await futu_service.get_rehab(params.get("symbol") or params.get("ticker"))
+        elif action == "TRADING_DAYS":
+            # G8 交易日历（T-1 语义/K线对齐/是否交易日判定）
+            return await futu_service.get_trading_days(
+                market=params.get("market", "HK"),
+                start=params.get("start"),
+                end=params.get("end"),
+                ticker=params.get("ticker"),
+            )
+        elif action == "KL_QUOTA":
+            # G8 历史 K 线额度（批量拉取前查询）
+            return await futu_service.get_history_kl_quota(get_detail=bool(params.get("get_detail", True)))
+        elif action == "MARKET_STATE":
+            # G8 市场状态（区分盘后正常空 vs 故障空）
+            return await futu_service.get_market_state(params.get("codes") or params.get("symbol"))
         elif action == "HEAT_MAP":
             # F4-3 板块热力图（需 market 参数）
             return await futu_service.get_heat_map(market=params.get("market", "HK"))

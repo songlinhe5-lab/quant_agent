@@ -1095,3 +1095,156 @@ class QuoteHandler:
         except Exception as e:  # noqa: BLE001
             logger.error("❌ get_ark_active_transaction 失败: %s", e)
             return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── G8: 数据正确性基座（复权因子/交易日历/K线额度/市场状态）───────────
+    @with_global_retry
+    async def get_rehab(self, ticker: str, format_ticker_func=None, is_unsupported_func=None) -> Dict[str, Any]:
+        """G8 复权因子（回测与技术指标地基，因子错 = 全部信号错）。
+
+        get_rehab(code) → (ret, DataFrame)。实测列: ex_div_date/split_ratio/per_cash_div/
+        forward_adj_factorA/B/backward_adj_factorA/B/allotment_price/spin_off_ratio 等 30 列。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": code,
+            }
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_rehab, code)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"复权因子获取失败: {data}",
+                    "code": code,
+                }
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: (None if pd.isna(v) else v) for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_rehab 失败 %s: %s", code, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
+    @with_global_retry
+    async def get_trading_days(
+        self,
+        market: str = "HK",
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        ticker: Optional[str] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G8 交易日历（G2 T-1 语义 / K线对齐 / 是否交易日判定）。
+
+        10.10 方法名 request_trading_days（非 get_trading_days）。返回 list：
+        [{time, trade_date_type=WHOLE/HALF/NONE}]。market 有效值: HK/US/CN/SH/SZ 等。
+        """
+        from futu import Market
+
+        mkt = getattr(Market, str(market).upper(), Market.HK)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.request_trading_days, mkt, start, end, ticker)
+            if ret != RET_OK or not isinstance(data, list):
+                return {"status": "error", "source": "futu", "message": f"交易日历获取失败: {data}"}
+            clean = [{"time": d.get("time"), "trade_date_type": d.get("trade_date_type")} for d in data]
+            return {
+                "status": "success",
+                "source": "futu",
+                "market": str(market).upper(),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_trading_days 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_history_kl_quota(
+        self,
+        get_detail: bool = True,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G8 历史 K 线额度（批量拉取前查询，防静默失败）。
+
+        get_history_kl_quota(get_detail) → (ret, (used, remaining, detail_list))。
+        实测 detail 列: code/name/request_time。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_history_kl_quota, bool(get_detail))
+            if ret != RET_OK or not isinstance(data, tuple):
+                return {"status": "error", "source": "futu", "message": f"K线额度获取失败: {data}"}
+            used, remaining = data[0], data[1]
+            detail = data[2] if len(data) > 2 and isinstance(data[2], list) else []
+            clean = [
+                {"code": d.get("code"), "name": d.get("name"), "request_time": d.get("request_time")} for d in detail
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "quota_used": used,
+                "quota_remaining": remaining,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_history_kl_quota 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_market_state(
+        self,
+        codes: Any,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G8 市场状态（区分「盘后正常空」与「故障空」，消除误报与假 STALE）。
+
+        get_market_state(code_list) → (ret, DataFrame)。实测列: code/stock_name/market_state。
+        market_state 有效值: CLOSED/AUCTION/MATCHING/... 等。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        code_list = codes if isinstance(codes, (list, tuple)) else [str(codes)]
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_market_state, list(code_list))
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"市场状态获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {"code": r.get("code"), "name": r.get("stock_name"), "market_state": r.get("market_state")}
+                for r in rows
+            ]
+            return {"status": "success", "source": "futu", "count": len(clean), "data": clean}
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_market_state 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}

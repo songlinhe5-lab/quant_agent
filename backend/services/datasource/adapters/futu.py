@@ -97,6 +97,11 @@ class FutuDataSource:
             "INSTITUTION_PROFILE",  # P2.2: 机构画像
             "ARK_FUND_HOLDING",  # P2.2: ARK基金持仓(Finnhub无此数据)
             "ARK_ACTIVE_TRANSACTION",  # P2.2: ARK活跃交易(每日买卖)
+            # ── G8 数据正确性基座 ─────────────────────────────────────
+            "REHAB",  # G8: 复权因子(回测/技术指标地基)
+            "TRADING_DAYS",  # G8: 交易日历(T-1语义/K线对齐)
+            "KL_QUOTA",  # G8: 历史K线额度(批量拉取防静默失败)
+            "MARKET_STATE",  # G8: 市场状态(区分盘后空vs故障空)
             "HEAT_MAP",  # F4-3: 板块热力图(支撑G6)
             "HK_SECTOR_FLOW",  # F4-5: 港股行业板块资金流聚合(支撑板块资金流向面板)
             # ── P1.2~P1.7: 基本面接口族（按需填坑）────────────────────

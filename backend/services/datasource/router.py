@@ -141,6 +141,10 @@ _FUTU_ACTION_MAP = {
     "institution_profile": "INSTITUTION_PROFILE",
     "ark_fund_holding": "ARK_FUND_HOLDING",
     "ark_active_transaction": "ARK_ACTIVE_TRANSACTION",
+    "rehab": "REHAB",
+    "trading_days": "TRADING_DAYS",
+    "kl_quota": "KL_QUOTA",
+    "market_state": "MARKET_STATE",
     "heat_map": "HEAT_MAP",
     # P1.2~P1.6: 基本面接口族（按需填坑）
     "rating_summary": "RATING_SUMMARY",
