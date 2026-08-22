@@ -122,6 +122,8 @@ _FUTU_ACTION_MAP = {
     "capital_distribution": "CAPITAL_DISTRIBUTION",
     "analyst_consensus": "ANALYST_CONSENSUS",
     "fed_watch": "FED_WATCH",
+    "fed_watch_dot_plot": "FED_WATCH_DOT_PLOT",
+    "search_quote": "SEARCH_QUOTE",
     "heat_map": "HEAT_MAP",
     # P1.2~P1.6: 基本面接口族（按需填坑）
     "rating_summary": "RATING_SUMMARY",

@@ -106,6 +106,15 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         elif action == "FED_WATCH":
             # F4-2 FedWatch FOMC 隐含概率（市场级，无 code 参数）
             return await futu_service.get_fed_watch()
+        elif action == "FED_WATCH_DOT_PLOT":
+            # P1.8 FedWatch 点阵图（FOMC 委员利率预测散点）
+            return await futu_service.get_fed_watch_dot_plot()
+        elif action == "SEARCH_QUOTE":
+            # P1.2 行情搜索（关键词→标的，补「名称→代码」盲区）
+            return await futu_service.get_search_quote(
+                params.get("keyword") or params.get("symbol") or params.get("query") or "",
+                max_count=int(params.get("max_count", 10)),
+            )
         elif action == "HEAT_MAP":
             # F4-3 板块热力图（需 market 参数）
             return await futu_service.get_heat_map(market=params.get("market", "HK"))

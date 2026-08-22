@@ -14,7 +14,7 @@ from data_subservice._internal.logger import logger
 from data_subservice._internal.retry_utils import with_global_retry
 
 from ._compat import safe_float
-from .cache_manager import CacheManager
+from .cache_manager import _SEARCH_QUOTE_TTL, CacheManager
 
 
 def _map_heat_market(market: str) -> Any:
@@ -175,6 +175,59 @@ class QuoteHandler:
             )
         return {"status": "success", "data": news, "source": "futu", "count": len(news)}
 
+    # ── P1.2: 行情搜索（关键词 → 标的列表，补「名称→代码」盲区）─────────
+    @with_global_retry
+    async def get_search_quote(self, keyword: str, max_count: int = 10) -> Dict[str, Any]:
+        """按关键词搜索标的（补「名称→代码」盲区，Agent 高频刚需）。
+
+        Futu ``get_search_quote(keyword, max_count)`` → (ret, DataFrame)，
+        列: market / code / name / sec_type / is_watched。
+        支持中文名（如「腾讯」→ HK.00700）与代码（如 AAPL → US.AAPL）。
+        高频刚需，带 L1 内存缓存（10 分钟），避免频繁穿透 OpenD。
+        """
+        keyword = str(keyword or "").strip()
+        if not keyword:
+            return {"status": "error", "source": "futu", "message": "搜索关键词为空"}
+        try:
+            max_count = max(1, min(int(max_count), 50))
+        except (TypeError, ValueError):
+            max_count = 10
+
+        cache_key = f"futu_search_quote_{keyword.lower()}_{max_count}"
+        now = time.time()
+        cached = self.cache_mgr.get_search_quote_cache(cache_key)
+        if cached and now - cached[0] < _SEARCH_QUOTE_TTL:
+            return cached[1]
+
+        if not self.conn_mgr.quote_ctx:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_search_quote, keyword, max_count)
+            if ret != RET_OK or not isinstance(df, pd.DataFrame):
+                res = {"status": "error", "source": "futu", "message": f"行情搜索失败: {df}"}
+                self.cache_mgr.set_search_quote_cache(cache_key, now, res)
+                return res
+            results = []
+            for _, row in df.iterrows():
+                results.append(
+                    {
+                        "code": str(row.get("code", "")),
+                        "name": str(row.get("name", "")),
+                        "market": str(row.get("market", "")),
+                        "sec_type": str(row.get("sec_type", "")),
+                        "is_watched": bool(row.get("is_watched", False)),
+                    }
+                )
+            res = {"status": "success", "source": "futu", "keyword": keyword, "count": len(results), "data": results}
+            self.cache_mgr.set_search_quote_cache(cache_key, now, res)
+            return res
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_search_quote 失败 %s: %s", keyword, e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
     # ── F4-2: FedWatch FOMC 隐含概率（市场级，无 code 参数）──────────────
     @with_global_retry
     async def get_fed_watch_target_rate(self) -> Dict[str, Any]:
@@ -202,6 +255,37 @@ class QuoteHandler:
             }
         except Exception as e:  # noqa: BLE001
             logger.error("❌ get_fed_watch_target_rate 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── P1.8: FedWatch 点阵图（FOMC 委员利率预测散点）──────────────────
+    @with_global_retry
+    async def get_fed_watch_dot_plot(self) -> Dict[str, Any]:
+        """获取 FedWatch 点阵图（FOMC 委员各年利率预测散点）。
+
+        get_fed_watch_dot_plot() → (ret, data) 二元组，无 code 参数（全市场）。
+        实测返回 DataFrame 列: year / rate / vote_count / is_median / median_rate / current_rate。
+        低频数据，可长 TTL 缓存。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_fed_watch_dot_plot)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"FedWatch 点阵图获取失败: {data}"}
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_fed_watch_dot_plot 失败: %s", e)
             return {"status": "error", "source": "futu", "message": str(e)}
 
     # ── F4-3: 板块热力图（需 market 参数）──────────────────────────────

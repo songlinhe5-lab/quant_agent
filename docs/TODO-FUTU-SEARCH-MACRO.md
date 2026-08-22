@@ -90,6 +90,21 @@
 
 ---
 
+## 四.5、P1 执行状态（2026-08-22）
+
+- [x] **P1.1 权限验证**：✅ `get_search_quote` / `get_fed_watch_dot_plot` 均 OpenD 在线实跑通过，真实返回结构已拿到（零幻觉）。
+- [x] **P1.2 行情搜索**：✅ 实现 `quote_handler.get_search_quote(keyword, max_count)` + L1 内存缓存（`cache_mgr.search_quote`，TTL 10 分钟）+ service `get_search_quote` + worker `SEARCH_QUOTE` + adapter capability + router `search_quote` 映射 + facade `search_quote`。实测：中文「腾讯」→HK.00700、「AAPL」→US.AAPL 均正确。
+- [x] **P1.3 缓存**：✅ `_SEARCH_QUOTE_TTL=600`，10 分钟缓存（Agent 高频刚需，降频防穿透）。
+- [x] **P1.4 限流**：✅ 依赖既有全局 `with_global_retry` + worker 线程池，配合缓存已足够；搜索不在 ticker 流内，无额外限流瓶颈。
+- [x] **P1.5 Agent 对接**：✅ facade 层 `search_quote(keyword)`（`_dispatch("SEARCH_QUOTE")`，prefer futu），供 Agent 工具链「名称→代码」解析，替代硬编码映射。
+- [x] **P1.6 单测**：✅ 新增 `get_search_quote` 4 例（空关键词/成功/缓存命中/失败）+ `get_fed_watch_dot_plot` 2 例，`test_futu_quote_handler.py` 共 **55 例全过**。
+- [x] **P1.7 FedWatch 目标利率**：✅ **此前已完成**（`quote_handler.get_fed_watch_target_rate` L180 + worker `FED_WATCH` + adapter + router + 主服务 macro 研判层 + 单测 L507-545）。
+- [x] **P1.8 FedWatch 点阵图**：✅ 本次补 `quote_handler.get_fed_watch_dot_plot`（返回 year/rate/vote_count/is_median/median_rate/current_rate）+ service `get_fed_watch_dot_plot` + worker `FED_WATCH_DOT_PLOT` + adapter + router。
+- [ ] **P1.9 官方文档**（可选）：尚未替换文件头部 4 个链接为真实 URL（文档非阻塞）。
+- [ ] **P1.10 主服务接入**（后续）：宏观面板可进一步把 `FED_WATCH_DOT_PLOT` 接入 macro 研判层（当前只接了 target_rate，非阻塞，留给宏观迭代）。
+
+---
+
 ## 五、参考资料
 
 - 现有搜索适配器：`backend/services/datasource/adapters/search.py`

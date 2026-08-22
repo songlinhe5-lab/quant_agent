@@ -353,6 +353,24 @@ class FutuService:
             self.quote_handler.get_fed_watch_target_rate,
         )
 
+    async def get_fed_watch_dot_plot(self) -> Dict[str, Any]:
+        """P1.8 FedWatch 点阵图（FOMC 委员利率预测散点）。"""
+        return await self._route(
+            "fetch_fed_watch_dot_plot",
+            {},
+            self.quote_handler.get_fed_watch_dot_plot,
+        )
+
+    async def get_search_quote(self, keyword: str, max_count: int = 10) -> Dict[str, Any]:
+        """P1.2 行情搜索（关键词→标的列表，补「名称→代码」盲区）。"""
+        return await self._route(
+            "fetch_search_quote",
+            {"keyword": keyword, "max_count": max_count},
+            self.quote_handler.get_search_quote,
+            keyword=keyword,
+            max_count=max_count,
+        )
+
     async def get_heat_map(self, market: str = "HK") -> Dict[str, Any]:
         """F4-3 板块热力图（需 market 参数，支撑 G6）。"""
         return await self._route(

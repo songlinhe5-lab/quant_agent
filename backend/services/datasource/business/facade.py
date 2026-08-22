@@ -1018,6 +1018,22 @@ class DataServiceFacade:
             enable_merge=False,
         )
 
+    async def search_quote(
+        self, keyword: str, max_count: int = 10, prefer_sources: Optional[list[str]] = None
+    ) -> Result:
+        """P1.2·行情搜索：关键词→标的列表（补「名称→代码」盲区）。
+
+        供 Agent 工具链「自然语言查股票」使用：输入中文名（如「腾讯」）或代码（如 AAPL），
+        返回候选标的（code/name/market/sec_type），替代前端/Agent 侧硬编码名称→代码映射。
+        Futu SEARCH_QUOTE 已带 L1 缓存（10 分钟），高频搜索不重复穿透 OpenD。
+        """
+        return await self._dispatch(
+            "SEARCH_QUOTE",
+            {"keyword": keyword, "max_count": max_count},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
     async def get_hsgt_holders(self, symbol: str, prefer_sources: Optional[list[str]] = None) -> Result:
         """沪深港通持股数据（AKShare 专属能力）。"""
         return await self._dispatch(

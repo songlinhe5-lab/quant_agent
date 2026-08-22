@@ -546,6 +546,82 @@ class TestQuoteHandlerNewsFedHeat:
         assert result["status"] == "error"
         assert "kaboom" in result["message"]
 
+    # ── get_fed_watch_dot_plot（P1.8）───────────────────────────────
+    @pytest.mark.asyncio
+    async def test_fed_watch_dot_plot_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        df = pd.DataFrame(
+            [
+                {
+                    "year": 2026,
+                    "rate": 3.375,
+                    "vote_count": 1,
+                    "is_median": False,
+                    "median_rate": 3.875,
+                    "current_rate": 3.63,
+                }
+            ]
+        )
+        conn_mgr.quote_ctx.get_fed_watch_dot_plot.return_value = (RET_OK, df)
+        result = await handler.get_fed_watch_dot_plot()
+        assert result["status"] == "success"
+        assert result["count"] == 1
+        assert result["data"][0]["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_dot_plot_fail(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_fed_watch_dot_plot.return_value = (-1, "fail")
+        result = await handler.get_fed_watch_dot_plot()
+        assert result["status"] == "error"
+
+    # ── get_search_quote（P1.2 行情搜索）────────────────────────────
+    @pytest.mark.asyncio
+    async def test_search_quote_empty_keyword(self):
+        handler, _, _ = _make_handler()
+        result = await handler.get_search_quote("")
+        assert result["status"] == "error"
+        assert "空" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_search_quote_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_search_quote.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [{"market": "HK", "code": "HK.00700", "name": "腾讯控股", "sec_type": "STOCK", "is_watched": True}]
+            ),
+        )
+        result = await handler.get_search_quote("腾讯", 5)
+        assert result["status"] == "success"
+        assert result["count"] == 1
+        assert result["data"][0]["code"] == "HK.00700"
+        assert result["data"][0]["name"] == "腾讯控股"
+
+    @pytest.mark.asyncio
+    async def test_search_quote_cache_hit(self):
+        handler, conn_mgr, cache_mgr = _make_handler()
+        cache_mgr.set_search_quote_cache(
+            "futu_search_quote_腾讯_5", time.time(), {"status": "success", "count": 1, "data": [{"code": "HK.00700"}]}
+        )
+        called = {"n": 0}
+
+        def fake_get_search_quote(*args, **kw):
+            called["n"] += 1
+            return (RET_OK, pd.DataFrame())
+
+        conn_mgr.quote_ctx.get_search_quote.side_effect = fake_get_search_quote
+        result = await handler.get_search_quote("腾讯", 5)
+        assert result["status"] == "success"
+        assert called["n"] == 0, "缓存命中不应调 SDK"
+
+    @pytest.mark.asyncio
+    async def test_search_quote_fail(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_search_quote.return_value = (-1, "fail")
+        result = await handler.get_search_quote("腾讯")
+        assert result["status"] == "error"
+
     # ── get_heat_map_data ───────────────────────────────────────────
     @pytest.mark.asyncio
     async def test_heat_map_not_connected(self):
