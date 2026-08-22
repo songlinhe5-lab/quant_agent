@@ -72,8 +72,8 @@
 
 ### 阶段 0：环境与决策确认
 
-- [ ] **0.1** 确认新增独立 `sentiment` 数据源（而非并入 `search`）：热度/情绪是结构化数值序列，与 `search` 非结构化文本语义不同。
-- [ ] **0.2** 确认消费方式：走 `DataSourceRouter.fetch_sentiment` HTTP 代理（禁止前端/主服务直连外部）。
+- [x] **0.1** 确认新增独立 `sentiment` 数据源（而非并入 `search`）：热度/情绪是结构化数值序列，与 `search` 非结构化文本语义不同。*（2026-08-22 已落地：`_internal/sentiment/` + `sentiment_worker.py`，阶段 A 实现）*
+- [x] **0.2** 确认消费方式：走 `DataSourceRouter.fetch_sentiment` HTTP 代理（禁止前端/主服务直连外部）。*（2026-08-22 已落地：`router.py` 加 `fetch_sentiment` + `sentiment_master` 节点，commit 79ef0ba）*
 - [x] **0.3** 本文件即决策记录，落地后摘要沉淀到 `update_memory` 知识库（**勿写 `MEMORY.md`**：AGENTS.md §0 规定其为会话笔记、禁止默认加载，本仓记忆机制已迁移至 `update_memory`）。*（2026-08-22 已修正引用并完成重议）*
 
 ### 阶段 A：热度榜（ApeWisdom，✅ 已可用，2026-08-22 已实现）
