@@ -41,10 +41,14 @@ class MemoryOperationsMixin:
         return int(len(raw) / 1.6)
 
     # ── 记忆压缩 ────────────────────────────────────────────────────
-    def _compress_memory(self, max_messages: int = 30, max_tool_len: int = 800, hard_cap_tokens: int = 60000):
+    async def _compress_memory(self, max_messages: int = 30, max_tool_len: int = 800, hard_cap_tokens: int = 60000):
         """上下文记忆智能压缩机制：防止历史记录过长导致 Token 溢出与性能下降
 
-        AGENT-16: 新增摘要压缩路径（compact.py）取代纯截断
+        AGENT-16: 摘要压缩取代破坏性截断
+        流程：
+          1. 有损压缩：截断非最新轮次的巨型 Tool 返回值
+          2. 摘要压缩：尝试用 Pro 模型将被裁部分生成摘要（写回 messages 头部）
+          3. 滑动窗口：摘要失败或未触发时，才执行破坏性截断（兜底）
         """
         if len(self.messages) <= 2:
             return
@@ -54,7 +58,7 @@ class MemoryOperationsMixin:
         eff_max_messages = 20 if aggressive else max_messages
 
         # 1. 有损压缩：截断非最新轮次的巨型 Tool 返回值（保留至最后几条，避免误删关键上下文）
-        from backend.utils.text_utils import safe_truncate
+        from backend.core.utils import safe_truncate
 
         for i in range(1, len(self.messages) - 4):
             msg = self.messages[i]
@@ -66,54 +70,59 @@ class MemoryOperationsMixin:
                         suffix="\n... [老旧数据被折叠，省略 {omitted} 字符以释放内存] ...",
                     )
 
-        # 2. AGENT-16: 摘要压缩优先尝试（异步，不阻塞主流程）
-        import asyncio
+        # 2. AGENT-16: 摘要压缩优先尝试（取代破坏性截断）
+        summary_succeeded = False
+        try:
+            summary_succeeded = await self._try_compress_with_llm(eff_max_messages, eff_tool_len)
+        except Exception as e:
+            print(f"ℹ️ [Agent-16] 摘要压缩跳过：{e}")
 
-        asyncio.create_task(self._maybe_compress_with_llm(eff_max_messages, eff_tool_len))
-
-        # 2. 滑动窗口
-        if len(self.messages) > eff_max_messages:
+        # 3. 滑动窗口（仅在摘要未成功时执行，作为兆底）
+        if not summary_succeeded and len(self.messages) > eff_max_messages:
             self.console.print(
                 f"[dim yellow]🗜️ [Memory] 上下文达 {len(self.messages)} 条，触发滑动窗口自动瘦身...[/dim yellow]"
             )
             system_msg = [self.messages[0]]
             cut_idx = len(self.messages) - eff_max_messages
-            while cut_idx < len(self.messages) and self.messages[cut_idx].get("role") in ["tool", "assistant"]:
-                cut_idx += 1
+            # AGENT-16: 向后寻找 user 消息作为干净断点（避免截断在 tool/assistant 中间）
+            while cut_idx > 1 and self.messages[cut_idx].get("role") != "user":
+                cut_idx -= 1
+            if cut_idx <= 1:
+                cut_idx = max(1, len(self.messages) - eff_max_messages)
             self.messages = system_msg + self.messages[cut_idx:]
             # AGENT-01: 压缩只影响运行时窗口，事件日志不被删改，仅记录事件
             _evlog = getattr(self, "event_log", None)
             if _evlog is not None:
                 _evlog.record_memory_op("compress", f"window_cut={cut_idx} aggressive={aggressive}")
 
-    async def _maybe_compress_with_llm(self, max_messages: int, max_tool_len: int):
-        """AGENT-16: 异步尝试摘要压缩（失败则无感降级）"""
-        try:
-            from hermes_agent.compact import CompactConfig, ContextCompressor
+    async def _try_compress_with_llm(self, max_messages: int, max_tool_len: int) -> bool:
+        """AGENT-16: 尝试摘要压缩（失败则返回 False，由调用方决定 fallback）
 
-            # AGENT-16-NEXT: 支持运行时配置重载（watchdog hot reload）
-            config = CompactConfig.from_env()
+        Returns:
+            True: 摘要压缩成功，旧消息已被摘要取代
+            False: 未触发或失败，调用方应执行滑动窗口兆底
+        """
+        from hermes_agent.compact import CompactConfig, ContextCompressor
 
-            compressor = ContextCompressor(
-                llm_client=self.client,
-                event_log=getattr(self, "event_log", None),
-                model=self.model,
-                pro_model="deepseek-pro",
-                config=config,  # 注入配置
-            )
+        config = CompactConfig.from_env()
 
-            await compressor.maybe_compress(
-                messages=self.messages,
-                estimate_tokens_func=self._estimate_tokens,
-                max_messages=max_messages,
-                max_tool_len=max_tool_len,
-            )
-        except Exception as e:
-            # 静默降级：摘要失败不影响主流程
-            print(f"ℹ️ [Agent-16] 摘要压缩跳过：{e}")
+        compressor = ContextCompressor(
+            llm_client=self.client,
+            event_log=getattr(self, "event_log", None),
+            model=self.model,
+            pro_model=os.getenv("HERMES_COMPACT_PRO_MODEL", "deepseek-pro"),
+            config=config,
+        )
+
+        return await compressor.maybe_compress(
+            messages=self.messages,
+            estimate_tokens_func=self._estimate_tokens,
+            max_messages=max_messages,
+            max_tool_len=max_tool_len,
+        )
 
     # ── 记忆自愈 ────────────────────────────────────────────────────
-    def _heal_memory(self):
+    async def _heal_memory(self):
         """修复因为异常中断导致的孤立 tool_calls 破坏上下文记录的问题"""
         healed = []
         for m in self.messages:
@@ -169,7 +178,7 @@ class MemoryOperationsMixin:
             if _evlog is not None:
                 _evlog.record_memory_op("heal", f"delta={_heal_delta}")
 
-        self._compress_memory()
+        await self._compress_memory()
 
     # ── 会话持久化 (Redis 热 + PG 冷) ──────────────────────────────
     async def _save_session(self):
@@ -375,7 +384,7 @@ class MemoryOperationsMixin:
             self.console.print(
                 f"[red]🚨 [TokenGuard] 单次上下文估算 {est} token 超预算 {max_input_tokens}，强制激进压缩...[/red]"
             )
-            self._compress_memory(hard_cap_tokens=1)
+            await self._compress_memory(hard_cap_tokens=1)
             est = self._estimate_tokens()
             if est > max_input_tokens:
                 raise RuntimeError(

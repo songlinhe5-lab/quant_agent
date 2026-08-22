@@ -32,13 +32,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-try:
-    from pydantic import Field
-except ImportError:
-    # Fallback: if pydantic not installed, define a no-op Field
-    def Field(default):  # type: ignore
-        return default
-
 
 @dataclass
 class CompactConfig:
@@ -52,13 +45,14 @@ class CompactConfig:
     """
 
     # System Prompts (可配置)
-    summary_system_prompt: str = Field(
-        default="你是一个专业的量化交易记忆压缩助手。请高度凝练地总结以下对话中的关键事实、决策依据和结论，用简洁专业的中文输出（不超过 2000 字）。"
+    summary_system_prompt: str = (
+        "你是一个专业的量化交易记忆压缩助手。请高度凝练地总结以下对话中的关键事实、决策依据和结论，"
+        "用简洁专业的中文输出（不超过 2000 字）。"
     )
-    compact_system_prompt: str = Field(default="以下是需要压缩的历史对话片段，请提取核心事实与决策。")
+    compact_system_prompt: str = "以下是需要压缩的历史对话片段，请提取核心事实与决策。"
 
     # Token Limits (可配置)
-    max_summary_tokens: int = Field(default=2000)
+    max_summary_tokens: int = 2000
 
     @classmethod
     def from_env(cls) -> "CompactConfig":
@@ -142,10 +136,15 @@ class ContextCompressor:
         max_tool_len: int = 800,
     ) -> bool:
         """
-        检查是否需要压缩，若需要则执行摘要压缩或 fallback 截断。
+        检查是否需要压缩，若需要则执行摘要压缩。
+
+        流程：
+        1. 检查 token 是否超阈值
+        2. 尝试 LLM 摘要压缩
+        3. 摘要失败 → 抛异常，由调用方决定 fallback（滑动窗口等）
 
         Returns:
-            True 已压缩（摘要或 fallback），False 未触发
+            True 已压缩，False 未触发
         """
         current_tokens = estimate_tokens_func()
 
@@ -155,11 +154,7 @@ class ContextCompressor:
 
         print(f"🗜️ [Agent-16] 上下文达 {current_tokens} tokens，触发摘要压缩...")
 
-        try:
-            return await self._compress_with_summary(messages, max_messages, max_tool_len)
-        except Exception as e:
-            print(f"⚠️ [Agent-16] 摘要压缩失败：{e}，降级为 fallback 截断")
-            return await self._fallback_truncate(messages, max_messages, max_tool_len)
+        return await self._compress_with_summary(messages, max_messages, max_tool_len)
 
     async def _compress_with_summary(
         self, messages: List[Dict[str, Any]], max_messages: int, max_tool_len: int
@@ -232,52 +227,14 @@ class ContextCompressor:
         except Exception as e:
             raise RuntimeError(f"Pro 模型摘要失败：{e}")
 
-    async def _fallback_truncate(self, messages: List[Dict[str, Any]], max_messages: int, max_tool_len: int) -> bool:
-        """Fallback 降级：现有有损截断逻辑"""
-        from backend.utils.text_utils import safe_truncate
-
-        # 1. 截断巨型 Tool 返回值
-        for i in range(1, len(messages) - 4):
-            msg = messages[i]
-            if msg.get("role") == "tool" and isinstance(msg.get("content"), str):
-                if len(msg["content"]) > max_tool_len:
-                    msg["content"] = safe_truncate(
-                        msg["content"],
-                        max_tool_len,
-                        suffix=f"\n... [老旧数据被折叠，省略 {len(msg['content']) - max_tool_len} 字符以释放内存] ...",
-                    )
-
-        # 2. 滑动窗口截断
-        if len(messages) > max_messages:
-            system_msg = [messages[0]]
-            cut_idx = len(messages) - max_messages
-            while cut_idx < len(messages) and messages[cut_idx].get("role") in ["tool", "assistant"]:
-                cut_idx += 1
-
-            truncated_items = messages[cut_idx : -self.min_items_retained]
-            truncated_count = len(truncated_items)
-            truncated_tokens = sum(len(str(item)) for item in truncated_items)
-
-            messages[:] = system_msg + messages[cut_idx:]
-
-            # 3. 审计记录
-            if self.event_log:
-                metadata = CompactMetadata(
-                    original_range_start=1,
-                    original_range_end=cut_idx,
-                    token_before=truncated_tokens,
-                    token_after=sum(len(str(m)) for m in messages),
-                    compaction_method="fallback_truncate",
-                )
-                self.event_log.record_memory_op(
-                    "compact",
-                    f"method={metadata.compaction_method} range=[{metadata.original_range_start}:{metadata.original_range_end}] items={truncated_count}",
-                )
-
-            print(f"✅ [Agent-16] Fallback 截断完成：{truncated_count} 条消息被丢弃 ({truncated_tokens} tokens)")
-            return True
-
-        return False
+    async def _fallback_record(self, messages: List[Dict[str, Any]], max_messages: int) -> None:
+        """Fallback 降级：仅记录审计事件，滑动窗口由调用方 _compress_memory 统一处理"""
+        if self.event_log:
+            self.event_log.record_memory_op(
+                "compact",
+                f"method=fallback_truncate msg_count={len(messages)} max_messages={max_messages}",
+            )
+        print(f"⚠️ [Agent-16] 摘要降级为滑动窗口截断（{len(messages)} 条消息）")
 
     def _build_compaction_prompt(self, items_to_compact: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """构建压缩 Prompt（使用配置的模板）"""

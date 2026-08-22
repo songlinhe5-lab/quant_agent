@@ -904,7 +904,7 @@ class HermesAgent(MemoryOperationsMixin):
                 if not user_input:
                     continue
 
-                self._heal_memory()
+                await self._heal_memory()
                 self.messages.append({"role": "user", "content": user_input})
                 self.event_log.record_user_message(user_input)  # AGENT-01
                 await self._save_session()
@@ -936,7 +936,7 @@ class HermesAgent(MemoryOperationsMixin):
             await self._save_session()
             return "🧹 历史记忆已彻底清空，大脑已重置！"
 
-        self._heal_memory()
+        await self._heal_memory()
 
         if user_input.strip():
             self.messages.append({"role": "user", "content": user_input.strip()})
@@ -977,7 +977,7 @@ class HermesAgent(MemoryOperationsMixin):
             yield {"type": "text_chunk", "content": "🧹 历史记忆已彻底清空，大脑已重置！"}
             return
 
-        self._heal_memory()
+        await self._heal_memory()
 
         # MRKT-05: 个股分析时自动注入宏观判因上下文
         # 💡 [Prefix-Cache 优化] market_ctx 折叠进 user message 末尾
