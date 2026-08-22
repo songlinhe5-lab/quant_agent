@@ -7,7 +7,7 @@ VPS_HOST="root@38.60.126.42"
 REMOTE_DIR="/opt/quant-agent/scripts"
 LOCAL_DIR="/Users/stephenhe/Development/workspace/quant_agent/scripts"
 VERIFY_MASTER="verify_on_master.py"        # 数据源缓存/健康验证
-VERIFY_OPEND="verify_futu_opend.py"        # F0-4 容器内 OpenD 接口级等价探针
+VERIFY_OPEND="probes/verify_futu_opend.py"  # F0-4 容器内 OpenD 接口级等价探针（BE-ARCH-07o 归口 scripts/probes/）
 
 echo "🚀 开始部署验证脚本到 VPS..."
 echo "目标：$VPS_HOST:$REMOTE_DIR"

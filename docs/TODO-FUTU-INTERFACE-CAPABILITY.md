@@ -240,7 +240,7 @@ F5（未实测能力补探针）────────────────
 - [x] ~~**F0-1** `connection_manager.py`: `from futu import OpenD` → 新 context 类~~ — **误报撤销**，`connection_manager.py:15-18` 早已是 `OpenQuoteContext`/`OpenSecTradeContext`
 - [x] ~~**F0-2** `futu_service` 内部 `OpenD` 引用替换~~ — **误报撤销**，全文无 `OpenD` 类引用
 - [x] **F0-3** S1 容器 `socat` 转发固化为 systemd —— ✅ **已有脚本**：`scripts/deploy/docker-gw-forward@.service` 完整 systemd template unit（端口 11111 → 宿主 loopback，含安装/校验说明）。实际 S1 是否已启用为部署动作。
-- [ ] **F0-4** S1 容器内经 `data_subservice` 复跑 `_test_futu_local.py` 等价验证 —— ✅ **脚本已就绪（2026-08-22），执行待 S1**：新增 `scripts/verify_futu_opend.py`（容器内 OpenD 等价探针，连 `host.docker.internal:11111`，对已接入核心接口做字段级断言：QUOTE/HISTORY/REHAB/TRADING_DAYS/MARKET_STATE/OWNER_PLATE/FINANCIALS + 容器→OpenD 连通，汇总 passed/failed，失败 exit 1）。`scripts/deploy_verify.sh` 已改造：一并 SCP 两脚本 + 容器内前置检查（socat 状态/futu-api 版本）+ 执行探针。本机已验证脚本语法与逻辑（复用 `_test_futu_local.py` 模式）；实际执行需 S1 环境（`docker exec quant_app python3 .../verify_futu_opend.py`）。
+- [ ] **F0-4** S1 容器内经 `data_subservice` 复跑 `_test_futu_local.py` 等价验证 —— ✅ **脚本已就绪（2026-08-22），执行待 S1**：新增 `scripts/probes/verify_futu_opend.py`（容器内 OpenD 等价探针，BE-ARCH-07o 归口 `scripts/probes/`，连 `host.docker.internal:11111`，对已接入核心接口做字段级断言：QUOTE/HISTORY/REHAB/TRADING_DAYS/MARKET_STATE/OWNER_PLATE/FINANCIALS + 容器→OpenD 连通，汇总 passed/failed，失败 exit 1）。`scripts/deploy_verify.sh` 已改造：一并 SCP 两脚本 + 容器内前置检查（socat 状态/futu-api 版本）+ 执行探针。本机已验证脚本语法与逻辑（复用 `_test_futu_local.py` 模式）；实际执行需 S1 环境（`docker exec quant_app python3 .../probes/verify_futu_opend.py`）。
 
 ### F5 — 未实测能力补探针
 
@@ -356,7 +356,7 @@ F5（未实测能力补探针）────────────────
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
-| 2026-08-22 | v0.6 | **落地状态刷新（逐项按代码核实）**：**G6 轮动前置补全**（接入 `get_owner_plate` 标的→所属板块，`OWNER_PLATE` action + `TestG6OwnerPlate` 4 例）；**F5-2 探针字段级断言确认已完成**（`_test_futu_local.py` 已字段级）；**F0-4 容器等价探针脚本就绪**（新增 `scripts/verify_futu_opend.py` + `deploy_verify.sh` 纳入 socat/futu-api 前置检查与执行；执行待 S1 环境） |
+| 2026-08-22 | v0.6 | **落地状态刷新（逐项按代码核实）**：**G6 轮动前置补全**（接入 `get_owner_plate` 标的→所属板块，`OWNER_PLATE` action + `TestG6OwnerPlate` 4 例）；**F5-2 探针字段级断言确认已完成**（`_test_futu_local.py` 已字段级）；**F0-4 容器等价探针脚本就绪**（新增 `scripts/probes/verify_futu_opend.py`（BE-ARCH-07o 归口）+ `deploy_verify.sh` 纳入 socat/futu-api 前置检查与执行；执行待 S1 环境） |
 | 2026-08-22 | v0.5 | **落地状态刷新（逐项按代码核实）**：F2-4/G1 已收口（`get_fundamental_merged` 三源合并 + `_fetch_futu_fundamental` 走 FINANCIALS/VALUATION，假基本面已戳破）；F0-3 已有 systemd 脚本（`docker-gw-forward@.service`）；**G8 数据正确性基座全链路完成**（REHAB/TRADING_DAYS/MARKET_STATE/KL_QUOTA 四 action，OpenD 实跑零幻觉 + `TestG8DataCorrectness` 7 例）。剩 F0-4 容器验证（部署级）/ F5-2 探针字段级 / G6 轮动 |
 | 2026-08-16 23:30 | v0.4 | **落地状态刷新（逐项按代码核实）**：F1/F3/F4 + G2~G7 全链路完成（含前端面板）；F5-1 探针已扩至 533 行；`BE-ARCH-08a` 上线阻塞已解除。**遗留三项**：F2-4/G1 收口未做（`facade.py:454` 仍单源，假基本面照旧）、G8 四个基座 action 零落地、F0-3/F0-4 容器侧未验 |
 | 2026-08-16 | v0.3 | 功能规划定稿：新增 G1~G8 功能级任务 + F5 补探针；纠正 F0 误报（`connection_manager` 早已 10.10 适配）；标注"26/26 ≠ 字段级验证"；落地清单 7 步 → 10 步全链路；补 §0.4 假基本面代码证据、§0.5 空结果语义陷阱 |
