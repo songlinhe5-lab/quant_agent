@@ -269,23 +269,23 @@
   - Tear Sheet 顶部 AI 摘要："年化 23% 但 Sharpe 仅 0.9，收益主要来自杠杆而非 Alpha"
   - 过拟合预警：参数敏感性差异 >40% 时主动提示
   - [🤖 AI 优化建议] 按钮：加波动率过滤 / ATR 动态止损 / 行业中性约束
-- [ ] **[AI-04]** OMS · 执行风控官（P1）：
+- [x] **[AI-04]** OMS · 执行风控官（P1）：✅ **2026-08-22**：`POST /oms/precheck`(规则 VIX>25 + LLMService(STANDARD) 混合预检, 吃 macro VIX) + `GET /oms/position-health/{id}`(复用 alpha158 信号失效建议止盈)；`order-confirm-modal` 注入 AI 预检区块(ai04 开关)。commit `de66443`
   - 下单确认弹窗内 AI 预检："⚠️ VIX=28（高波动），建议减半仓位或改用限价单"
   - 持仓健康诊断（每日）："AAPL 已偏离入场逻辑，原策略信号失效，建议止盈"
   - Bot 异常诊断：连续止损 → 分析原因 + 建议暂停/切换策略
-- [ ] **[AI-05]** 风控面板 · 风险预警员（P1）：
+- [x] **[AI-05]** 风控面板 · 风险预警员（P1）：✅ **2026-08-22**：`POST /risk/alert-narrative`(雷达维度变红 → LLM 预警, 复用 risk/dashboard) + 压测情景推荐(按持仓 Beta 排序 Top3)；复用 alert_router 推送通道(ai05 开关)。commit `2c53368`
   - 雷达图维度变红时主动推送："集中度 82/100，若纳指回调 5%，组合预计 -3.4%"
   - 压测情景推荐：基于当前持仓推荐最相关的 3 个历史情景
   - 对冲建议：因子暴露 >0.8 时建议具体对冲操作
-- [ ] **[AI-06]** 告警中心 · 分诊员（P2）：
+- [x] **[AI-06]** 告警中心 · 分诊员（P2）：✅ **2026-08-22**：`POST /alert/triage`(吃 alert/events + macro/sector-fund-flow, LLM 板块关联 + 多告警优先级排序, 止损>突破)；排序质量 EvalFramework 校验。commit `ddf8026`
   - 告警触发时关联分析："AAPL 突破 + 同日 3 只科技股突破 → 板块性行情"
   - 多告警同时触发时智能排序：止损优先，价格突破可延后
   - 新建告警时规则建议："加 RSI>75 过滤假突破？历史假突破率 34%"
-- [ ] **[AI-07]** 纸面组合 · 实盘教练（P2）：
+- [x] **[AI-07]** 纸面组合 · 实盘教练（P2）：✅ **2026-08-22**：`GET /paper/portfolios/{pid}/readiness`(规则: 状态非running/回撤>20%/偏离基准>5%/成交稀疏 + LLM 综合建议) + `GET /paper/portfolios/{pid}/drift-warning`(复用 paper/compare cumulative_drift/tracking_error)；`PortfolioDetail` 注入 AiCoachCard(ai07 开关)。commit `2b84f27`
   - deploy 前 AI 就绪评估：运行天数/Sharpe/样本量/偏差分析
   - 纸面 vs 回测偏差预警："纸面 Sharpe 0.8 vs 回测 1.6，主因滑点未计入"
   - 周度绩效归因自动生成：选股贡献/择时贡献/行业贡献
-- [ ] **[AI-08]** 宏观数据中心 · 事件推演（P2）：
+- [x] **[AI-08]** 宏观数据中心 · 事件推演（P2）：✅ **2026-08-22**：`POST /macro/event-inference`(高危事件 → LLM(STANDARD) 推演 + confidence, 诚实降级返回 warning)；`EconomicView` 紫卡 `AiEventInferenceCard`(ai08 开关)从硬编码假文本改为真实调用。commit `bb61d01`
   - 高危事件旁 AI 推演卡："FOMC 若加息 25bp → 港股科技预计 -2~3%"
   - 指标与持仓关联：VIX hover → "你的组合 Beta 1.1，VIX 每升 5 点日波动 +¥8,200"
 - [ ] **[AI-09]** AI 推送偏好设置（P2）：
