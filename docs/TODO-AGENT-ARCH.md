@@ -351,10 +351,15 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     - `event_log.py` +3 行：`load_from_rollout` 支持 `base_dir` 参数（测试隔离）
     - `routers/chat.py` +83 行：3 个 Rollout 查询 API（分页/统计/会话列表）
     - `test_rollout_storage_ag15.py`：32/32 测试全通过
-- [ ] **[AGENT-16]** **摘要压缩取代破坏性截断**
+- [x] **[AGENT-16]** **摘要压缩取代破坏性截断** ✅
   - **现状**：S15 —— 现在滑动窗口直接丢消息，被丢内容不可恢复（仅事件日志可重建，但模型看不到的部分没有摘要承接）
   - **改法**：`_compress_memory` 新增摘要路径：被裁部分用 pro 模型生成摘要，产出 `ContextCompactionItem` 写回 messages 头部与事件日志（压缩本身可审计）；摘要失败时 fallback 现有有损截断（codex `compact_model_fallback` 范式）；token-based 截断策略统一事件日志 4KB / tool 内容 800 字两处口径
   - **验收**：压缩后窗口含摘要项且旧消息不可见；摘要模型注入故障时自动降级且测试通过；事件日志有 memory/compact 事件与摘要引用
+  - **实现** (commit `c0e1d8a`)：
+    - `compact.py` -43 net：移除 pydantic Field 依赖 + 简化 fallback 为审计记录 + 修正 import 路径
+    - `memory_ops.py` +44/-38：`_compress_memory` async 化 + 摘要优先→滑动窗口兜底 + 修复滑动窗口断点方向
+    - `agent.py` +3/-3：`_heal_memory` async 化 + 3 处 await
+    - `test_agent_16_compaction.py` (17 tests) + `test_compact_ag16.py` (10 tests)：27/27 全通过
 - [ ] **[AGENT-17]** **轮次身份与计时元数据**
   - **现状**：S16
   - **改法**：`_react_loop` 每轮生成 `turn_id`（uuid），turn/start|end 事件携带：iteration / model / prompt_tokens / completion_tokens / latency 分解（inference_ms / tool_ms / save_ms）；预留 parent_turn_id / root_turn_id 字段（AGENT-14 血缘）；Prometheus `agent_turn_duration_seconds` histogram
