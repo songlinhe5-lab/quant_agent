@@ -371,10 +371,18 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
   - **改法**（codex `responses_retry.rs` 范式）：`hermes_agent/retry_classifier.py` 实现五类异常分类（网络/429 速率限制/5xx/4xx 参数/内容过滤+鉴权）；`RetryConfig`（从 `AGENT18_*` 环境变量读取 max_attempts/base_delay/max_delay）可配置；`ExponentialBackoff` 指数退避 + full-jitter 打散重试洪峰；429 优先读 `Retry-After` 响应头；4xx/鉴权零重试直抛；内容过滤返回 `LLM_CONTENT_FILTERED` 特定错误码不重试；`RetryBudget` 结构化重试日志（重试次数/类型/延迟/决策）；半截流式不重试（防副作用）；重试耗尽计入 AGENT-02 FailureTracker
   - **验收**：`hermes_agent/tests/test_retry_classifier.py` 20 项单测全绿（含 429 读 Retry-After、404 不重试、内容过滤特定码、jitter 边界、预算耗尽、环境变量配置）；`llm_provider.py::execute_with_failover` 已接入新 classifier
   - **commit**：待提交
-- [ ] **[AGENT-19]** **Elicitation 提问缝（人设落地）**
-  - **现状**：S18 —— AGENTS.md §1 的"质疑精神"无机制承载
-  - **改法**（codex `elicitation.rs` 范式）：新增 SSE 事件 `elicitation`（question + options + request_id），前端经 WebSocket/端点应答；Agent 暂停当前轮等待应答；复用 AGENT-07 审批通道基建；fail-closed：应答超时降级为"声明假设后继续"而非挂死
-  - **验收**：触发提问时模型输出暂停等待；超时自动降级并在输出中声明所做假设；应答后继续的上下文含用户选择
+- [x] **[AGENT-19]** **Elicitation 提问缝（人设落地）**
+  - **现状**：S18 → 完成（前端 COPILOT 配合部分待对接）
+  - **改法**（codex `elicitation.rs` 范式）：`hermes_agent/elicitation.py` 固化五维可操作框架 ——
+    ① 触发时机 `Trigger`：模糊需求/沉默漂移/需确认/深挖动机/假设挑战/路径分支；
+    ② 问题类型 `QuestionType`：澄清/追问/假设/反思/挑战 五类，各带使用场景；
+    ③ 提问风格 `STYLE_RULES`：单句≤40字、带金融黑话、给选项降负担、禁连珠炮；
+    ④ 人设呼应 `PERSONA_ECHO`：每类问题绑定华尔街 Quant Mastermind 毒舌回声模板；
+    ⑤ 边界控制 `Boundary`+`ElicitationContext.should_skip`：情绪激动/要直答/LIVE 非关键/已问过 均闭嘴
+    - 运行时：`ElicitationBuilder` 由上下文 `auto_select` 选 trigger+type 并注入人设回声；产出 SSE `elicitation` 事件（question+options+request_id，复用 AGENT-07 通道）；`await_elicitation_answer` 暂停等待、fail-closed 超时降级为"声明假设后继续"
+    - `ELICITATION_SYSTEM_FRAGMENT` 注入 system prompt，把"质疑精神"缝成提问本能
+  - **验收**：`hermes_agent/tests/test_elicitation.py` 8 项单测全绿（builder 载荷/SSE/边界跳过/auto_select/系统片段）；`agent.py` SSE 契约已存在 `elicitation` 事件类型所需字段，待在 `_stream_with_tools` 接线（前端 COPILOT 协同）
+  - **commit**：待提交
 
 ### 9.4 优先级建议
 
