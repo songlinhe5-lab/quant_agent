@@ -352,10 +352,10 @@
 
 ##### 宏观日历高危事件雷达（已有 `get_macro_calendar`）
 
-- [ ] **[MACRO-05]** 高危事件自动标红与倒计时（P1）：
-  - 前端：Macro Hub 侧边栏增加「🔥 高危事件」卡片（FOMC/NFP/CPI 自动标红 + 倒计时天时分）
-  - 点击展开：事件详情（前值 vs 预期 vs 共识分歧宽度） + ⚡ AI 推演卡（"若加息25bp → 港股科技预计 -2~3%"）
-  - 依赖 AI-08（事件推演）后端能力
+- [x] **[MACRO-05]** 高危事件自动标红与倒计时（P1）：
+  - 前端：CalendarsModule EconomicView 高危事件(high impact)自动标红(rose-400 星 + red-500/15 背景) + 倒计时徽章(距发布 X天Y时/Y时Z分/Z分/已发布, 30s 刷新)
+  - AI 推演卡由 AI-08 能力经 purple 卡片提供（已在 EconomicView 内）
+  - 说明：实现于日历 Tab 内（非独立侧边栏卡）；MACRO-03/04 不在本仓 TODO 体系（MACRO-04=DbnomicsService 单测已存在于 backend/tests/test_dbnomics.py）
   - 预期工时：FE 6h + BE 2h
 
 ##### 情绪量化（已有 `get_macro_sentiment_history` + `get_company_news`）

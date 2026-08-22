@@ -257,6 +257,21 @@ function impactBadge(impact: string) {
   return map[impact] || map.low
 }
 
+// 倒计时：基于事件 date（ISO，可能含空格）与目标时刻差值，返回 "X天Y时"/"Y时Z分"/"Z分"/已发布
+function countdown(targetIso: string, now: number) {
+  if (!targetIso) return null
+  const t = new Date(targetIso.replace(' ', 'T')).getTime()
+  if (Number.isNaN(t)) return null
+  const diff = t - now
+  if (diff <= 0) return { label: '已发布', past: true }
+  const totalMin = Math.floor(diff / 60000)
+  const d = Math.floor(totalMin / 1440)
+  const h = Math.floor((totalMin % 1440) / 60)
+  const m = totalMin % 60
+  const label = d > 0 ? `${d}天${h}时` : h > 0 ? `${h}时${m}分` : `${m}分`
+  return { label, past: false }
+}
+
 function EconomicView() {
   const [loading, setLoading] = useState(true)
   const [events, setEvents] = useState<any[]>([])
@@ -264,6 +279,12 @@ function EconomicView() {
   // 默认 'core'：优先展示核心（数据中最高影响级别）经济数据；无核心则降级显示级别高的项
   const [impactFilter, setImpactFilter] = useState<string>('core')
   const [dateFilter, setDateFilter] = useState<string>('all')
+  // MACRO-05：高危事件倒计时实时刷新（精度到分钟）
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(iv)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -361,6 +382,7 @@ function EconomicView() {
             )}
             {filtered.map((e, i) => {
               const s = stars(e.impact)
+              const cd = e.impact === 'high' ? countdown(e.date, now) : null
               return (
                 <tr key={i} className="border-b border-border/10 hover:bg-secondary/30 transition-colors">
                   <td className="px-3 py-2 whitespace-nowrap font-mono">{String(e.date || '').slice(0, 10) || '--'}</td>
@@ -369,6 +391,17 @@ function EconomicView() {
                   <td className="px-3 py-2 whitespace-nowrap text-foreground/90">{e.event || '--'}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {s.n > 0 ? <span className={s.cls}>{Array.from({ length: s.n }).map(() => '★').join('')}</span> : <span className="text-muted-foreground/40">—</span>}
+                    {cd && (
+                      <span
+                        className={cn(
+                          'ml-1.5 inline-flex items-center gap-0.5 px-1 rounded text-[9px] tabular-nums',
+                          cd.past ? 'bg-muted-foreground/10 text-muted-foreground' : 'bg-red-500/15 text-red-400',
+                        )}
+                      >
+                        <Clock className="h-2.5 w-2.5" />
+                        {cd.label}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-right">{e.actual ?? '—'}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-right text-muted-foreground">{e.estimate ?? '—'}</td>
