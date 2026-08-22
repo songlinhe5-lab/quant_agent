@@ -109,7 +109,8 @@ function useOmsBadge(): string | null {
   const [badge, setBadge] = useState<string | null>(null)
   useEffect(() => {
     let mounted = true
-    apiClient.get('/oms/initial-state')
+    // UIRF-23: 后端 OMS 初始状态接口实为 /oms/state（后端无 /oms/initial-state，旧路径会 404）
+    apiClient.get('/oms/state')
       .then((res: any) => {
         if (!mounted) return
         const data = res?.data?.data

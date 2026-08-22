@@ -47,10 +47,8 @@ export function OptionPcrPanel() {
     }
   }, [])
 
-  if (loading) return <div className="p-6 text-sm text-slate-400">加载 PCR 情绪…</div>
-  if (error) return <div className="p-6 text-sm text-red-400">PCR 情绪获取失败：{error}</div>
-  if (!rows || rows.length === 0) return <div className="p-6 text-sm text-slate-400">暂无 PCR 情绪数据</div>
-
+  // 🔧 Hooks 规则修复：useEChart(内部 useRef) 必须在所有条件 return 之前无条件调用。
+  // 之前放在 `if (loading) return` 之后，导致 Hooks 调用次数随状态变化不一致 → React #310 无限重渲染崩溃。
   const buildOption = () => {
     if (!rows || !rows.length) return null
     const dates = rows.map((r) =>
