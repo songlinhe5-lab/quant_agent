@@ -33,18 +33,25 @@ from backend.services.expert_team.orchestrator import DebateOrchestrator
 
 @pytest.fixture(autouse=True)
 def _mock_pg_upsert_globally():
-    """隔离 ExpertTeamService 后台 PG 落盘任务,避免测试事件循环关闭时任务悬挂泄漏
+    """隔离 ExpertTeamService 后台落盘任务,避免测试事件循环关闭时任务悬挂泄漏
 
     测试本意是「Mock Redis + PG 均不可用 → 走内存兜底」。但 save_session 会
-    fire-and-forget 一个 _pg_upsert 任务去连真实 PG,在 pytest-asyncio 关闭 loop 时
-    触发 "Task was destroyed but it is pending" / The operation was canceled。
-    通过 patch 类方法,使单例与所有实例的 _pg_upsert 均不创建真实后台任务。
+    fire-and-forget 多个后台任务(_pg_upsert 连真实 PG、_redis_set 连 Redis),
+    在 pytest-asyncio 关闭 loop 时触发 "Task was destroyed but it is pending"
+    / The operation was canceled。
+    通过 patch 类方法,使单例与所有实例均不创建真实异步后台任务。
     """
     from unittest.mock import AsyncMock, patch
 
-    with patch(
-        "backend.services.expert_team.expert_team_service.ExpertTeamService._pg_upsert",
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            "backend.services.expert_team.expert_team_service.ExpertTeamService._pg_upsert",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.services.expert_team.expert_team_service.ExpertTeamService._redis_set",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         yield
 
