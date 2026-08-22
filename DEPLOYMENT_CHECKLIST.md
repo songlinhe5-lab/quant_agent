@@ -48,6 +48,8 @@
 | FUTU_PORT | - | 11111 | - | 11111 |
 | FUTU_TRD_ENV | - | SIMULATE | - | SIMULATE |
 | FUTU_PWD_UNLOCK | - | (留空) | - | (留空) |
+| REAL_TRADE_EXECUTE | - | 0(默认) | - | 0(默认) |
+> **期权接入说明（2026-08-22 追加）**：组合期权行情（策略/损益/全维）已接入（`business/option.py` + `routers/market.py` `/option-*` 端点），需 Futu 账户开通对应市场**期权数据权限**（P0.5.1 实跑 US/HK 期权可通，无额外权限卡）。组合交易（`PLACE_COMBO_ORDER`）为骨架：默认 `FUTU_TRD_ENV=SIMULATE` 沙箱；实盘需 `REAL_TRADE_EXECUTE=1` **且** 下单二次确认（AGENTS.md §6 红线，无标志回落 SIMULATE）。
 | **通知与告警** |
 | FEISHU_WEBHOOK_URL | https://open.feishu.cn/... | - | - | https://open.feishu.cn/... |
 | SERVERCHAN_SENDKEY | SCT355206TnmTEBt52Wucy6fkm3naW9lXM | - | - | SCT355206TnmTEBt52Wucy6fkm3naW9lXM |
