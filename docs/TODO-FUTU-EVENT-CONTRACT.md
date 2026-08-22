@@ -40,7 +40,7 @@
 
 - ❌ **无交易下单接口**（官方文档仅行情侧，未列 `place_event_contract_order`）。
 - ❌ 未明确支持市场/标的（大概率以美股事件为主）。
-- ⚠️ **权限要求**：需 OpenD 账户开通事件合约行情权限。**SDK 侧已确认暴露完整接口族（见下），运行期权限待 OpenD 上线实测**（当前 dev 环境 OpenD 端口 11111 CLOSED，P0.1 运行期验证暂阻塞）。
+- ⚠️ **权限要求**：需 OpenD 账户开通事件合约行情权限。**🔴 2026-08-22 运行期实测：当前 OpenD 账户返回「无事件合约行情权限，不支持该接口」→ 权限未开通，P0.2~P0.8 代码暂缓（禁 mock，需权限开通后验 snapshot 字段）**。SDK 侧接口族已确认存在（§2.3.1）。
 
 #### 2.3.1 futu-api 10.10.7008 接口可用性静态核查（P0.1 第一步，已执行 2026-08-22）
 
@@ -74,7 +74,7 @@
 
 ### 阶段 P0：发现链 + 快照（ROI 最高，同步 REST 拉取，先做）
 
-- [x] **P0.1** 验证权限（SDK 静态核查部分）：✅ 2026-08-22 已对 `futu-api 10.10.7008` 做符号 introspection，确认 SDK 完整暴露事件合约接口族（`get_event_contract_category` / `get_event_contract_snapshot` / `get_event_contract` / `get_event_contract_event_list` / `get_event_contract_series_list` / `subscribe_event_contract` 等），10.9 文档旧命名（`get_event_contract_by_id`/`get_event_contract_list`）已改名，已回填 §2.3.1 映射表。⏳ **运行期权限实测待 OpenD 上线补**（当前 dev 环境 OpenD 11111 CLOSED，且 `get_event_contract_snapshot` 真实返回列需实测，禁 mock）。
+- [x] **P0.1** 验证权限（已完成）：✅ **2026-08-22 运行期实测**（OpenD 在线，本机账户）已对 `futu-api 10.10.7008` 调 `get_event_contract_category`，返回 **「无事件合约行情权限，不支持该接口」** → **结论：当前 OpenD 账户未开通事件合约行情权限**。`_test_futu_local.py` 的「七、事件合约」探针已固化可复跑（权限开通后一键重测即可拿到 snapshot 真实字段）。SDK 静态核查（§2.3.1）此前已完成：接口族存在、10.9 旧命名已改名。🔴 **阻塞**：P0.2~P0.8 在权限开通前无法验证 `get_event_contract_snapshot` 返回结构（零幻觉硬要求），故代码暂缓。
 - [ ] **P0.2** 实现发现链：`get_event_contract_category` → `get_event_contract_series_list` → `get_event_contract_event_list` → `get_event_contract`。
 - [ ] **P0.3** 实现快照：`get_event_contract_snapshot`（最新价/累计成交量/YES/NO 一档）。
 - [ ] **P0.4** 接入 `futu_worker.py` 的 `_FUTU_ACTION_MAP`：新增 action（如 `EVENT_CONTRACT_SNAPSHOT` / `EVENT_CONTRACT_DISCOVERY`）。

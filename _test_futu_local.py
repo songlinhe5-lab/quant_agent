@@ -509,6 +509,90 @@ def main():
 
     results["SUBSCRIBE"] = run("SUBSCRIBE (subscribe)", _subscribe)
 
+    # ============ 七、事件合约 Event Contract（P0 缺口，核心增量） ============
+    # 探测目的：验证 OpenD 是否开通事件合约行情权限 + 确认 get_event_contract_snapshot
+    # 真实返回结构（零幻觉硬要求，禁 mock）。全部只读，不动交易态。
+    # 符号以 futu-api 10.10 实际暴露为准（10.9 文档命名已改名，见
+    # docs/TODO-FUTU-EVENT-CONTRACT.md §2.3.1）。
+    section("七、事件合约 Event Contract（P0 缺口，验证 OpenD 权限）")
+    # 样本透传：category 返回的第一个事件合约 code/id，供后续 snapshot/detail 复用
+    EC_SAMPLE = {"code": None, "id": None}
+
+    def _ec_category():
+        # 发现链第一步：事件分类（最轻量，直接验证事件合约权限是否开通）
+        ret, data = quote_ctx.get_event_contract_category()
+        if ret != RET_OK:
+            return False, data
+        if hasattr(data, "__len__") and len(data) > 0:
+            row = data.iloc[0]
+            for c in ("code", "event_contract_code", "contract_code"):
+                if c in data.columns:
+                    EC_SAMPLE["code"] = row.get(c)
+                    break
+            for c in ("event_contract_id", "id", "contract_id"):
+                if c in data.columns:
+                    EC_SAMPLE["id"] = row.get(c)
+                    break
+            return True, f"事件分类 {len(data)} 行, 列={list(data.columns)} | 样本code={EC_SAMPLE['code']}"
+        cols = list(data.columns) if hasattr(data, "columns") else "n/a"
+        return True, f"事件分类 0 行(列={cols})"
+
+    results["P0_ec_category"] = run("P0 get_event_contract_category", _ec_category)
+
+    def _ec_snapshot():
+        # 核心：事件合约快照 = 隐含概率来源（宏观风控接入点）
+        sample = EC_SAMPLE["code"]
+        if not sample:
+            return False, "无样本 code（category 未返回），无法探测 snapshot"
+        ret, data = quote_ctx.get_event_contract_snapshot([sample])
+        if ret != RET_OK:
+            return False, data
+        ok, detail = _row_count_expect("EC_SNAPSHOT", data)
+        return ok, f"快照 {len(data)} 行, 列={list(data.columns)} | {detail}"
+
+    results["P0_ec_snapshot"] = run("P0 get_event_contract_snapshot(核心)", _ec_snapshot)
+
+    def _ec_detail():
+        if not EC_SAMPLE["id"] and not EC_SAMPLE["code"]:
+            return False, "无样本 id/code"
+        ret, data = quote_ctx.get_event_contract(EC_SAMPLE["id"] or EC_SAMPLE["code"])
+        if ret != RET_OK:
+            return False, data
+        cols = list(data.columns) if hasattr(data, "columns") else "n/a"
+        return True, f"详情 OK, 列={cols}"
+
+    results["P0_ec_detail"] = run("P0 get_event_contract(详情)", _ec_detail)
+
+    def _ec_event_list():
+        if not EC_SAMPLE["code"]:
+            return False, "无样本 code"
+        ret, data = quote_ctx.get_event_contract_event_list(EC_SAMPLE["code"])
+        if ret != RET_OK:
+            return False, data
+        return True, f"关联事件 {len(data)} 行" if hasattr(data, "__len__") else "OK"
+
+    results["P0_ec_event_list"] = run("P0 get_event_contract_event_list", _ec_event_list)
+
+    def _ec_series_list():
+        if not EC_SAMPLE["code"]:
+            return False, "无样本 code"
+        ret, data = quote_ctx.get_event_contract_series_list(EC_SAMPLE["code"])
+        if ret != RET_OK:
+            return False, data
+        return True, f"系列 {len(data)} 行" if hasattr(data, "__len__") else "OK"
+
+    results["P0_ec_series_list"] = run("P0 get_event_contract_series_list", _ec_series_list)
+
+    def _ec_subscribe():
+        if not EC_SAMPLE["code"]:
+            return False, "无样本 code"
+        ret, data = quote_ctx.subscribe_event_contract([EC_SAMPLE["code"]])
+        if ret != RET_OK:
+            return False, data
+        return True, f"订阅 OK: {EC_SAMPLE['code']}"
+
+    results["P0_ec_subscribe"] = run("P0 subscribe_event_contract", _ec_subscribe)
+
     # ============ 汇总 ============
     section("测试汇总")
     pass_count = sum(1 for ok, _ in results.values() if ok)
