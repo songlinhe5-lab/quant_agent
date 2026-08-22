@@ -441,3 +441,69 @@ async def batch_execute_tools(
         return {"status": "success", "data": report}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"批量执行失败: {str(e)}")
+
+
+# ========================================================================
+# AGENT-14: 子代理并行编排 API
+# ========================================================================
+
+
+class SubAgentTaskRequest(BaseModel):
+    """子代理任务请求"""
+
+    task_id: str
+    target: str
+    instruction: str
+    scopes: Optional[list[str]] = None
+
+
+class ParallelAnalyzeRequest(BaseModel):
+    """并行分析请求"""
+
+    tasks: list[SubAgentTaskRequest]
+    orchestration_id: str = "default"
+
+
+@router.post("/agent/parallel-analyze")
+async def parallel_analyze(
+    request: ParallelAnalyzeRequest,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-14: 子代理并行编排（多标的横截面分析加速）。
+
+    每个子代理拥有隔离的上下文，继承父级的 ToolRegistry 和审批策略，
+    不得提权。子代理执行完毕后汇总结果返回。
+
+    约束：
+    - 子代理只能使用只读数据工具（quote/indicators/fund_flow/fundamental/macro/news）
+    - 交易类工具不可访问
+    - 最大并发 5 个子代理，单个超时 60s，整体超时 120s
+    """
+    from hermes_agent.agent import HermesAgent
+    from hermes_agent.tool_registry import ToolRegistry
+
+    try:
+        registry = ToolRegistry()
+        agent = HermesAgent(tool_registry=registry)
+
+        # 转换请求格式
+        tasks = [
+            {
+                "task_id": t.task_id,
+                "target": t.target,
+                "instruction": t.instruction,
+                "scopes": t.scopes,
+            }
+            for t in request.tasks
+        ]
+
+        # 执行并行分析
+        report = await agent.parallel_analyze(
+            tasks=tasks,
+            orchestration_id=request.orchestration_id,
+        )
+
+        return {"status": "success", "data": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"并行分析失败: {str(e)}")

@@ -17,6 +17,7 @@ from backend.services.ai_narrator.usage_pricing import usage_pricing_calculator
 from hermes_agent.llm_provider import LLMProvider, LLMProviderRouter
 from hermes_agent.memory_ops import MemoryOperationsMixin
 from hermes_agent.relay_tools import BatchToolCall, BatchToolExecutor
+from hermes_agent.subagent import SubAgentTask, run_parallel_analysis
 
 # 盘中主脑 prompt（与 IDE 编码宪法 AGENTS.md 分离）
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -259,6 +260,46 @@ class HermesAgent(MemoryOperationsMixin):
                 for tc in tool_calls
             ],
             batch_id=batch_id,
+        )
+        return report.to_dict()
+
+    # AGENT-14: 子代理并行编排（多标的横截面分析加速）
+    async def parallel_analyze(
+        self,
+        tasks: List[Dict[str, Any]],
+        orchestration_id: str = "default",
+    ) -> Dict[str, Any]:
+        """
+        并行编排子代理执行多标的横截面分析。
+
+        每个子代理拥有隔离的上下文，继承父级的 ToolRegistry 和审批策略，
+        不得提权。子代理执行完毕后汇总结果返回。
+
+        Args:
+            tasks: 子代理任务列表
+                [{"task_id": "aapl", "target": "AAPL", "instruction": "分析技术面", "scopes": ["quote", "indicators"]}, ...]
+            orchestration_id: 编排标识
+
+        Returns:
+            编排报告 dict（含 summary + results）
+        """
+        subagent_tasks = [
+            SubAgentTask(
+                task_id=t.get("task_id", f"task_{i}"),
+                target=t.get("target", ""),
+                instruction=t.get("instruction", ""),
+                scopes=t.get("scopes"),
+                metadata=t.get("metadata", {}),
+            )
+            for i, t in enumerate(tasks)
+        ]
+
+        report = await run_parallel_analysis(
+            tool_registry=self.tool_registry,
+            tasks=subagent_tasks,
+            system_prompt=self.system_prompt,
+            provider_router=self.provider_router,
+            orchestration_id=orchestration_id,
         )
         return report.to_dict()
 
