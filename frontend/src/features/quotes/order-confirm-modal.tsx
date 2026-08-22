@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { X, ArrowUp, ArrowDown, ShieldAlert, Target } from 'lucide-react'
+import { X, ArrowUp, ArrowDown, ShieldAlert, Target, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { apiClient } from '@/lib/api-client'
 import { useTradeStore, type OrderSide, type OrderType } from '@/stores/useTradeStore'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 
 /**
  * PROD-09：拖拽设置价格线松手后弹出的下单确认弹窗。
@@ -17,6 +19,15 @@ export function OrderConfirmModal() {
   const [sl, setSl] = useState<string>('')
   const [tp, setTp] = useState<string>('')
 
+  const ai04Enabled = useAiPushPrefStore((s) => s.isEnabled('ai04'))
+  const [precheck, setPrecheck] = useState<{
+    vix: number | null
+    rule_warning: string | null
+    llm_advice: { advice?: string; caution?: string; confidence?: number } | null
+    message: string | null
+  } | null>(null)
+  const [precheckLoading, setPrecheckLoading] = useState(false)
+
   // PROD-09: 每次新草稿进入时重置表单（默认限价买入，用户可在弹窗内调整）
   useEffect(() => {
     if (!pending) return
@@ -26,6 +37,39 @@ export function OrderConfirmModal() {
     setSide('BUY')
     setType('LIMIT')
   }, [pending])
+
+  // AI-04: 弹窗内参数变化时调用 OMS 执行风控官预检（ai04 开关控制）
+  useEffect(() => {
+    if (!pending || !ai04Enabled) {
+      setPrecheck(null)
+      return
+    }
+    const priceNum = Number(pending.price)
+    const qtyNum = Number(qty) || 0
+    let alive = true
+    setPrecheckLoading(true)
+    setPrecheck(null)
+    ;(async () => {
+      try {
+        const res = await apiClient.post('/oms/precheck', {
+          symbol: pending.symbol,
+          side: side,
+          order_type: type,
+          price: priceNum,
+          qty: qtyNum,
+        })
+        const body = res.data || res
+        if (alive && body) setPrecheck(body)
+      } catch (e: any) {
+        if (alive) setPrecheck({ vix: null, rule_warning: null, llm_advice: null, message: e?.response?.data?.message || '预检调用失败' })
+      } finally {
+        if (alive) setPrecheckLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [pending, ai04Enabled, side, type, qty])
 
   if (!pending) return null
 
@@ -110,6 +154,44 @@ export function OrderConfirmModal() {
           <span>预估金额</span>
           <span className="font-mono font-semibold text-foreground">{notional.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
         </div>
+
+        {ai04Enabled && (
+          <div className="mb-3 rounded-lg border border-primary/20 bg-primary/5 p-2.5">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-semibold text-primary">AI 执行风控预检</span>
+              {precheckLoading && <span className="text-[9px] text-muted-foreground">研判中…</span>}
+            </div>
+            {precheck?.vix != null && (
+              <p className="text-[10px] text-muted-foreground mb-1">
+                当前 VIX <span className="font-mono font-semibold text-foreground">{precheck.vix.toFixed(1)}</span>
+              </p>
+            )}
+            {precheck?.rule_warning && (
+              <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-1.5 py-1 mb-1">{precheck.rule_warning}</p>
+            )}
+            {precheck?.llm_advice?.advice && (
+              <div className="text-[10px] text-foreground/90 space-y-0.5">
+                <p>{precheck.llm_advice.advice}</p>
+                {precheck.llm_advice.caution && (
+                  <p className="text-amber-500/90">⚠ {precheck.llm_advice.caution}</p>
+                )}
+                {precheck.llm_advice.confidence != null && (
+                  <p className="text-muted-foreground">置信度 {(precheck.llm_advice.confidence * 100).toFixed(0)}%</p>
+                )}
+              </div>
+            )}
+            {!precheck && !precheckLoading && (
+              <p className="text-[10px] text-muted-foreground">预检暂不可用</p>
+            )}
+            {precheck?.message && (
+              <p className="text-[9px] text-muted-foreground/70 mt-1">{precheck.message}</p>
+            )}
+            <p className="pt-1 mt-1 text-[9px] text-muted-foreground/50 border-t border-border/30">
+              AI 生成 · 仅供参考，不构成投资建议
+            </p>
+          </div>
+        )}
 
         <div className="flex gap-2">
           <button onClick={cancelPending} className="flex-1 h-9 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:bg-secondary">取消</button>
