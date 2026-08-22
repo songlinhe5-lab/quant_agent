@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1600" />
+<title>高频回测引擎 · Figma 导入稿</title>
+<style>
+  :root{
+    --bg:#0F0F14; --panel:#16181F; --panel-2:#1C1F28; --line:rgba(255,255,255,.07);
+    --txt:#F9FAFB; --txt-2:#9CA3AF; --txt-3:#6B7280;
+    --up:#34D399; --down:#F87171; --warn:#FBBF24; --ai:#A78BFA; --blue:#60A5FA;
+    --r:12px; --gap:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0A0A0E;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--txt);padding:24px 0;display:flex;flex-direction:column;align-items:center;gap:32px;}
+  .import-note{width:1600px;background:#101827;border:1px solid #1E3A5F;color:#93C5FD;padding:10px 16px;border-radius:8px;font-size:13px;}
+  .import-note b{color:#DBEAFE;}
+  /* ===== Frame ===== */
+  .frame{width:1600px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .frame-label{padding:10px 24px;background:#101018;color:var(--txt-3);font-size:13px;border-bottom:1px solid var(--line);}
+  /* ===== Header ===== */
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--line);}
+  .brand{font-size:19px;font-weight:700;}
+  .brand .en{font-size:12px;font-weight:400;color:var(--txt-3);margin-left:8px;letter-spacing:.5px;}
+  .hd-right{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--txt-2);}
+  .pill{padding:3px 10px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;}
+  .pill.sandbox{color:var(--warn);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);font-weight:600;}
+  .btn-mini{font-size:12px;color:var(--blue);border:1px solid #1E3A5F;background:#101827;border-radius:8px;padding:5px 12px;}
+  .btn-primary{font-size:13px;font-weight:600;color:#fff;background:#2563EB;border:1px solid #3B82F6;border-radius:8px;padding:10px 20px;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
+  .btn-primary.dis{opacity:.45;}
+  .btn-ghost{font-size:12px;color:var(--txt-2);border:1px solid var(--line);background:transparent;border-radius:8px;padding:8px 16px;display:inline-flex;align-items:center;justify-content:center;}
+  .btn-danger{font-size:13px;font-weight:600;color:#fff;background:#B91C1C;border:1px solid #DC2626;border-radius:8px;padding:10px 20px;}
+  /* ===== Mode banner ===== */
+  .mode-banner{display:flex;align-items:center;gap:12px;padding:9px 24px;background:rgba(251,191,36,.08);border-bottom:1px solid rgba(251,191,36,.25);font-size:12.5px;}
+  .mode-banner .mdot{width:8px;height:8px;border-radius:50%;background:var(--warn);flex:none;}
+  /* ===== Body ===== */
+  .bd{padding:20px 24px;display:flex;flex-direction:column;gap:var(--gap);}
+  .sec-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .sec-sub{font-size:12px;color:var(--txt-3);font-weight:400;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);}
+  .card-pad{padding:16px;}
+  .grow{flex:1;}
+  .lbl{font-size:12px;color:var(--txt-3);}
+  .up-t{color:var(--up);} .down-t{color:var(--down);} .warn-t{color:var(--warn);}
+  .bdg{font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;}
+  .bdg.up{color:var(--up);background:rgba(52,211,153,.12);}
+  .bdg.down{color:var(--down);background:rgba(248,113,113,.12);}
+  .bdg.flat{color:var(--txt-3);background:rgba(107,114,128,.15);}
+  .bdg.warn{color:var(--warn);background:rgba(251,191,36,.12);}
+  .bdg.blue{color:var(--blue);background:rgba(96,165,250,.12);}
+  .foot{display:flex;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--txt-3);}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  .seg{display:flex;gap:6px;}
+  .seg .tab{padding:6px 14px;font-size:13px;border-radius:999px;color:var(--txt-2);border:1px solid var(--line);background:transparent;}
+  .seg .tab.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;font-weight:600;}
+  .stale{color:var(--warn);background:rgba(251,191,36,.12);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;}
+  .stale-zone{opacity:.6;filter:saturate(.5);}
+  .empty{border:1px dashed #2C3E5F;border-radius:var(--r);padding:34px 22px;text-align:center;background:var(--panel);}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{padding:5px 13px;border-radius:999px;font-size:12px;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line);}
+  .chip.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;}
+  table.res{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;}
+  table.res th{text-align:left;color:var(--txt-3);font-weight:500;font-size:12px;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.res td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;}
+  table.res th.num,table.res td.num{text-align:right;}
+  /* ===== Two-column page skeleton ===== */
+  .pg{display:grid;grid-template-columns:400px 1fr;gap:var(--gap);padding:20px 24px;align-items:start;}
+  /* ===== Config form ===== */
+  .frm{display:flex;flex-direction:column;gap:12px;}
+  .grp{display:flex;flex-direction:column;gap:11px;padding:14px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;}
+  .grp-hd{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--txt-2);}
+  .grp-hd .no{width:19px;height:19px;border-radius:6px;background:#1E2A44;color:#DBEAFE;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;}
+  .grp-hd .opt{margin-left:auto;font-weight:400;color:var(--txt-3);font-size:11px;}
+  .fld{display:flex;flex-direction:column;gap:5px;}
+  .fld .k{font-size:11.5px;color:var(--txt-3);}
+  .fld .k b{color:var(--txt-2);font-weight:600;}
+  .ctl{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#0B0D12;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--txt);}
+  .ctl .car{color:var(--txt-3);font-size:10px;}
+  .ctl.mono{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;}
+  .fld-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .repro-tag{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:var(--blue);background:rgba(96,165,250,.1);border:1px solid #1E3A5F;border-radius:6px;padding:2px 7px;}
+  .switch{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--txt-2);}
+  .switch .knob{width:30px;height:16px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);position:relative;}
+  .switch .knob::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--txt-3);}
+  .switch.on .knob{background:rgba(52,211,153,.5);border-color:transparent;}
+  .switch.on .knob::after{left:auto;right:2px;background:#fff;}
+  /* ===== Run / progress ===== */
+  .progbar{height:6px;border-radius:999px;background:var(--panel-2);overflow:hidden;margin:10px 0 6px;}
+  .progbar .fill{height:100%;background:linear-gradient(90deg,#2563EB,var(--blue));border-radius:999px;}
+  .stages{display:flex;flex-direction:column;gap:9px;margin-top:12px;}
+  .stage{display:flex;gap:10px;align-items:flex-start;font-size:12px;line-height:1.5;}
+  .stage .sdot{width:15px;height:15px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:9px;margin-top:1px;}
+  .stage.done .sdot{background:rgba(52,211,153,.18);color:var(--up);}
+  .stage.run .sdot{background:rgba(96,165,250,.2);color:var(--blue);}
+  .stage.wait .sdot{background:var(--panel-2);color:var(--txt-3);}
+  .stage .tx{color:var(--txt-2);} .stage .tx b{color:var(--txt);}
+  .stage .tx .mono{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--txt-3);}
+  /* ===== metrics ===== */
+  .metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--gap);}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;}
+  .metric .c{font-size:11px;color:var(--txt-3);}
+  .metric .p{font-size:19px;font-weight:700;margin:3px 0 0;font-variant-numeric:tabular-nums;}
+  .repro-badge{display:inline-flex;align-items:center;gap:7px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:4px 11px;}
+  .repro-badge .rdot{width:7px;height:7px;border-radius:50%;background:var(--up);}
+  .disclaim{display:flex;align-items:center;gap:9px;padding:9px 13px;border-radius:8px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.2);font-size:12px;color:#FCD34D;}
+  /* ===== Error cards ===== */
+  .err-card{border:1px solid rgba(248,113,113,.35);background:linear-gradient(180deg,rgba(248,113,113,.05),var(--panel));border-radius:var(--r);padding:14px 16px;}
+  .ok-card{border:1px solid rgba(52,211,153,.3);background:linear-gradient(180deg,rgba(52,211,153,.04),var(--panel));border-radius:var(--r);padding:14px 16px;}
+</style>
+</head>
+<body>
+
+<div class="import-note">📐 <b>Figma 导入说明:</b>使用 html.to.design 插件 → 选择 <b>Full page</b> 一次性捕获,将得到 3 个独立 Frame(配置态 / 运行与报告态 / 状态机与可信规范)。导入后可删除本说明条。(标的与数据均为示意;本文件为纯静态内联样式,无外部依赖)</div>
+
+<!-- ================= FRAME 1 · 配置态 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 1 / 3 · 配置态(默认落地)— 左列四组配置(任务与快照 / 策略 / 资金与成本 / 高级与复现)+ 右列空态引导</div>
+  <div class="hd">
+    <div><span class="brand">高频回测引擎<span class="en">BACKTEST ENGINE</span></span></div>
+    <div class="hd-right">
+      <span class="pill">快照口径 · latest_published</span>
+      <span class="btn-mini">恢复上次参数</span>
+      <span class="btn-mini">在策略研发工作台打开 ↗</span>
+    </div>
+  </div>
+  <div class="mode-banner">
+    <span class="mdot"></span>
+    <b style="color:var(--warn);">SANDBOX</b>
+    <span class="lbl">单次推演,无持久账本 · 模拟环境(全局 TradingModeBanner,保留)</span>
+    <div class="grow"></div>
+    <span class="btn-mini">切换模式 → PAPER / LIVE(LIVE 需二次确认)</span>
+  </div>
+
+  <div class="pg">
+    <!-- 左列 · 配置 -->
+    <div class="frm">
+      <div class="grp">
+        <div class="grp-hd"><span class="no">1</span>任务与快照</div>
+        <div class="fld"><span class="k">测试标的</span><div class="ctl mono">US.NVDA<span class="car">自动大写</span></div></div>
+        <div class="fld-2">
+          <div class="fld"><span class="k">回测区间</span><div class="ctl">2 年<span class="car">▾</span></div></div>
+          <div class="fld"><span class="k">数据粒度</span><div class="ctl">1 日(1d)<span class="car">▾</span></div></div>
+        </div>
+        <div class="fld">
+          <span class="k">数据快照 <span style="color:var(--warn);">· 口径锚点</span></span>
+          <div class="ctl mono" style="border-color:rgba(251,191,36,.35);">latest_published → snap_20260812<span class="car">▾</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+            <span class="stale">STALE ≥3d</span>
+            <span class="lbl">为 3 天前数据,结果以快照口径为准 · 点击可切换其它 published 快照</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-hd"><span class="no">2</span>策略<span class="opt">内置 / 我的草稿 / Pine 自定义</span></div>
+        <div class="fld">
+          <div class="ctl"><span><span class="bdg blue">内置引擎</span>&nbsp; 底背离共振(vectorbt)</span><span class="car">▾</span></div>
+          <span class="lbl">下拉分组:「内置引擎」底背离共振 · 「我的草稿」来自 /strategy/list(带真实状态徽章)· 「自定义」Pine 表达式(选中后出现输入框 + 本地校验)</span>
+        </div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-hd"><span class="no">3</span>资金与成本<span class="opt">从 payload 硬编码提升为可见字段</span></div>
+        <div class="fld"><span class="k">初始资金</span><div class="ctl mono">100,000</div></div>
+        <div class="fld-2">
+          <div class="fld"><span class="k">佣金(默认 0.05%)</span><div class="ctl mono">0.0005</div></div>
+          <div class="fld"><span class="k">滑点(默认 0.1%)</span><div class="ctl mono">0.0010</div></div>
+        </div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-hd"><span class="no">4</span>高级与复现<span class="opt">▾ 已展开</span></div>
+        <div class="fld-2">
+          <div class="fld"><span class="k">ATR 倍数</span><div class="ctl mono">2.0</div></div>
+          <div class="fld"><span class="k">random_seed</span><div class="ctl mono" style="border-color:#1E3A5F;">42&nbsp;<span class="repro-tag">复现</span></div></div>
+        </div>
+        <span class="lbl">种子固定 → 结果可复现,可复现徽章将记录此值</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="lbl">调试模式 · 记录逐K线日志</span>
+          <span class="switch"><span class="knob"></span></span>
+        </div>
+      </div>
+
+      <span class="btn-primary">▶ 启动回测 · 单次沙箱推演</span>
+      <span class="lbl" style="text-align:center;">已删除 "Serverless" 字样 · 运行中按钮禁用防重复提交</span>
+    </div>
+
+    <!-- 右列 · 空态引导 -->
+    <div style="display:flex;flex-direction:column;gap:var(--gap);">
+      <div class="empty" style="flex:1;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px;">请运行回测推演</div>
+        <div class="lbl" style="margin-bottom:18px;">右列由状态机驱动:未运行 / 运行中 / 成功 / 失败 / 已停止</div>
+        <div class="chips" style="justify-content:center;">
+          <span class="chip on">① 选策略(内置 / 草稿 / Pine)</span>
+          <span class="chip on">② 定快照口径(留意 STALE)</span>
+          <span class="chip on">③ 启动并等待报告</span>
+        </div>
+      </div>
+      <div class="disclaim">结果仅为沙箱推演,不构成投资建议 · 报告将附可复现徽章(快照 + seed + 参数摘要)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= FRAME 2 · 运行与报告态 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 2 / 3 · 运行与报告态 — 左列运行中进度卡(真实 NDJSON 阶段,无装饰日志)+ 右列完整报告(徽章 + Tear Sheet + 五 tab)</div>
+  <div class="hd">
+    <div><span class="brand">高频回测引擎<span class="en">BACKTEST ENGINE · 报告</span></span></div>
+    <div class="hd-right">
+      <span class="repro-badge"><span class="rdot"></span>可复现 · snap_20260812 · seed=42 · comm=0.05% · slip=0.1%</span>
+      <span class="btn-mini">在策略研发工作台打开 ↗</span>
+    </div>
+  </div>
+  <div class="mode-banner">
+    <span class="mdot"></span><b style="color:var(--warn);">SANDBOX</b>
+    <span class="lbl">单次推演,无持久账本 · 模拟环境</span>
+    <div class="grow"></div>
+    <span class="lbl">数据源 /backtest/run/stream · NDJSON 流(docstring 误称 SSE,工程侧修正)</span>
+  </div>
+
+  <div class="bd">
+    <div class="pg" style="padding:0;align-items:stretch;">
+      <!-- 左列 · 运行中 -->
+      <div class="frm">
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-weight:600;font-size:13px;">US.NVDA · 2y · 1d</span>
+            <span class="bdg blue">运行中 · 62%</span>
+            <div class="grow"></div>
+            <span class="btn-mini" style="color:var(--down);border-color:rgba(248,113,113,.35);">■ 停止</span>
+          </div>
+          <div class="progbar"><div class="fill" style="width:62%;"></div></div>
+          <span class="lbl">进度与阶段全部来自 NDJSON progress/stage/detail · 无装饰日志</span>
+          <div class="stages">
+            <div class="stage done"><span class="sdot">✓</span><span class="tx"><b>数据加载</b> 完成 · <span class="mono">snap_20260812 · 504 bars</span></span></div>
+            <div class="stage done"><span class="sdot">✓</span><span class="tx"><b>策略编译</b> 完成 · <span class="mono">DivergenceResonance(vectorbt)</span></span></div>
+            <div class="stage run"><span class="sdot">●</span><span class="tx"><b>撮合回测</b> 进行中 · <span class="mono">detail=迭代 312/504</span></span></div>
+            <div class="stage wait"><span class="sdot">○</span><span class="tx"><b>生成报告</b> 待执行 · <span class="mono">Tear Sheet / 权益曲线</span></span></div>
+          </div>
+          <div class="lbl" style="margin-top:12px;">停止 = 客户端断流 + 后端任务异步取消(无 cancel 端点,文案注明)</div>
+        </div>
+        <div class="grp" style="opacity:.7;">
+          <div class="grp-hd"><span class="no">✓</span>本次参数快照<span class="opt">运行中只读</span></div>
+          <span class="lbl" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.8;">底背离共振 · US.NVDA · 2y · 1d<br/>资金 100,000 · 佣金 0.0005 · 滑点 0.001<br/>ATR 2.0 · seed 42 · 调试关</span>
+        </div>
+      </div>
+
+      <!-- 右列 · 报告 -->
+      <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="metrics">
+          <div class="metric"><div class="c">年化收益</div><div class="p up-t">+41.2%</div></div>
+          <div class="metric"><div class="c">夏普比率</div><div class="p">1.87</div></div>
+          <div class="metric"><div class="c">最大回撤</div><div class="p down-t">-18.3%</div></div>
+          <div class="metric"><div class="c">胜率</div><div class="p">56.8%</div></div>
+          <div class="metric"><div class="c">盈亏比</div><div class="p">2.14</div></div>
+          <div class="metric"><div class="c">Calmar</div><div class="p">2.25</div></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);">
+            <div class="seg">
+              <div class="tab on">净值曲线</div><div class="tab">回撤分析</div><div class="tab">收益分布</div><div class="tab">交易流水</div><div class="tab">限价挂单</div><div class="tab">调试日志</div>
+            </div>
+            <div class="grow"></div>
+            <span class="lbl">调试日志 tab 仅调试模式可见</span>
+          </div>
+          <div style="padding:16px;">
+            <svg width="100%" viewBox="0 0 1120 210" style="display:block;">
+              <line x1="40" y1="50" x2="1100" y2="50" stroke="rgba(255,255,255,.05)"/>
+              <line x1="40" y1="110" x2="1100" y2="110" stroke="rgba(255,255,255,.05)"/>
+              <line x1="40" y1="170" x2="1100" y2="170" stroke="rgba(255,255,255,.09)"/>
+              <text x="8" y="54" fill="#6B7280" font-size="10">1.45</text>
+              <text x="8" y="114" fill="#6B7280" font-size="10">1.20</text>
+              <text x="8" y="174" fill="#6B7280" font-size="10">1.00</text>
+              <text x="40" y="196" fill="#6B7280" font-size="10">2024-08</text>
+              <text x="540" y="196" fill="#6B7280" font-size="10">2025-08</text>
+              <text x="1030" y="196" fill="#6B7280" font-size="10">2026-08</text>
+              <polyline fill="none" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="4 3"
+                points="40,168 160,160 280,150 400,140 520,144 640,128 760,132 880,116 1000,120 1080,108"/>
+              <polyline fill="none" stroke="#34D399" stroke-width="2"
+                points="40,168 160,150 280,158 400,120 520,132 640,96 760,110 880,70 1000,82 1080,46"/>
+              <text x="920" y="38" fill="#34D399" font-size="11">策略 +41.2%</text>
+              <text x="920" y="100" fill="#6B7280" font-size="11">基准 +14.8%</text>
+            </svg>
+            <svg width="100%" viewBox="0 0 1120 60" style="display:block;margin-top:6px;">
+              <line x1="40" y1="10" x2="1100" y2="10" stroke="rgba(255,255,255,.09)"/>
+              <path d="M40,10 H200 L260,34 L340,20 H520 L600,44 L680,26 H900 L960,20 H1080 V10 Z" fill="rgba(248,113,113,.18)" stroke="#F87171" stroke-width="1.2"/>
+              <text x="560" y="56" fill="#6B7280" font-size="10">水下图(回撤)· 最深 -18.3% · 已移除写死的 -12.3 fallback</text>
+            </svg>
+          </div>
+          <div class="foot">
+            <span>收益分布 tab:仅渲染真实 returns 序列 · 后端未返回该字段前显示 EmptyState,<b style="color:var(--down);">禁止 Box-Muller 假数据兜底</b></span>
+            <span>Tear Sheet 8 项映射收敛为 6 卡 · 其余进 tooltip</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= FRAME 3 · 状态机与可信规范 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 3 / 3 · 状态机与可信规范 — 失败 / 已停止态、数据可信红线(删假数据清单)、与策略工作台分工</div>
+  <div class="hd">
+    <div><span class="brand">高频回测引擎<span class="en">BACKTEST ENGINE · 状态规范</span></span></div>
+    <div class="hd-right"><span class="pill sandbox">SANDBOX · 单次推演</span><span class="pill">规范帧 · 供开发对照</span></div>
+  </div>
+  <div class="bd">
+    <div class="grid-2">
+
+      <!-- 左:状态机 -->
+      <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="err-card">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="bdg down">E-BT-500</span>
+            <span style="font-weight:600;font-size:13px;">状态 · 运行失败</span>
+            <div class="grow"></div>
+            <span class="btn-mini">重试</span>
+          </div>
+          <div class="lbl" style="margin-top:8px;">后端返回 <span style="font-family:ui-monospace,Menlo,monospace;">{type:'error', message}</span> → 出错误卡(码 + message + 重试)。<b style="color:var(--txt);">进度条停在实际值,不置 100;按钮非完成态</b>(修 finally 缺陷)。</div>
+        </div>
+
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="bdg flat">已停止</span>
+            <span style="font-weight:600;font-size:13px;">状态 · 手动停止</span>
+            <div class="grow"></div>
+            <span class="btn-mini">重新运行</span>
+          </div>
+          <div class="lbl" style="margin-top:8px;">停止 = 客户端 AbortController 断流 + 后端 generator finally 异步取消(无 cancel 端点)。保留最后一次成功结果(若有),文案注明取消语义。</div>
+        </div>
+
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <span style="font-weight:600;font-size:13px;">右列状态机总览</span>
+            <div class="grow"></div>
+            <span class="lbl">五态</span>
+          </div>
+          <div class="chips">
+            <span class="chip">未运行 → EmptyState 引导</span>
+            <span class="chip on">运行中 → 真实阶段进度 + 停止</span>
+            <span class="chip" style="color:var(--up);border-color:rgba(52,211,153,.35);">成功 → 完整报告</span>
+            <span class="chip" style="color:var(--down);border-color:rgba(248,113,113,.35);">失败 → 错误卡 + 重试</span>
+            <span class="chip">已停止 → 提示 + 重新运行</span>
+          </div>
+        </div>
+
+        <div class="ok-card">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <span class="bdg up">保留 · 真状态</span>
+            <span style="font-weight:600;font-size:13px;">值得放大的既有好设计</span>
+          </div>
+          <div class="lbl" style="line-height:1.8;">数据快照 STALE ≥3d = 后端实时计算(age = today − as_of),非写死 · TradingModeBanner 走 /oms/mode 三态切换 + LIVE 二次确认 · 免责声明 + 可复现徽章(ReproducibilityBadge)保留。</div>
+        </div>
+      </div>
+
+      <!-- 右:可信红线 + 分工 -->
+      <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="card card-pad" style="border-color:rgba(248,113,113,.3);">
+          <div style="font-weight:600;font-size:13.5px;margin-bottom:10px;">数据可信红线 · 删假清单(P0)</div>
+          <table class="res">
+            <tr><th>位置</th><th>问题</th><th>处置</th></tr>
+            <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11px;">use-backtest.ts:202</td><td>Box-Muller 编造 1000 个假收益填"收益分布"</td><td class="down-t">删除,接真实 returns</td></tr>
+            <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11px;">backtest-config.tsx:151</td><td>四条硬编码装饰日志(PairsTradingBot / Z-Score)</td><td class="down-t">删除,只渲染真实 stage</td></tr>
+            <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11px;">backtest-charts.tsx:119</td><td>水下图写死 -12.3 fallback</td><td class="down-t">删除,改 EmptyState</td></tr>
+            <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11px;">use-backtest.ts:216</td><td>finally 把失败也置 progress=100 / done</td><td class="down-t">修状态机,失败不置满</td></tr>
+            <tr><td style="font-family:ui-monospace,Menlo,monospace;font-size:11px;">按钮文案</td><td>"Serverless" 无代码支撑</td><td class="warn-t">改"单次沙箱推演"</td></tr>
+          </table>
+          <div class="lbl" style="margin-top:10px;">原则:图表可以没有,不能是假的 · 所有数字来自 Tool/接口,无数据即 EmptyState(宪法 §3/§5)</div>
+        </div>
+
+        <div class="card card-pad">
+          <div style="font-weight:600;font-size:13.5px;margin-bottom:10px;">与策略研发工作台的分工(承接上轮)</div>
+          <div class="lbl" style="line-height:1.9;">本页 = <b style="color:var(--txt);">独立大规模回测</b> · /backtest/run/stream · 内置引擎 + 草稿 + Pine + 快照口径。<br/>工作台 = <b style="color:var(--txt);">单策略沙箱推演</b> · /strategy/run-sandbox/* · 参数寻优 / Walk-Forward。<br/>本期不合并;双向互链落地——本页报告头部 → 工作台打开当前草稿,工作台 → 本页(已在上轮设计)。共享 SnapshotPicker / ReproducibilityBadge / DynamicStrategyForm / ReturnsHistogram;两套图表合并列为三期决策。</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // Verification helper only: ?frame=N isolates the Nth frame for screenshots.
+  (function(){
+    var m = /[?&]frame=(\d+)/.exec(location.search);
+    if(!m) return;
+    var n = parseInt(m[1],10);
+    var frames = document.querySelectorAll('.frame');
+    var note = document.querySelector('.import-note');
+    if(note) note.style.display='none';
+    frames.forEach(function(f,i){ if(i+1!==n) f.style.display='none'; });
+  })();
+</script>
+
+</body>
+</html>

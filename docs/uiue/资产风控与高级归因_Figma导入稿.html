@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1600" />
+<title>资产风控与高级归因 · Figma 导入稿</title>
+<style>
+  :root{
+    --bg:#0F0F14; --panel:#16181F; --panel-2:#1C1F28; --line:rgba(255,255,255,.07);
+    --txt:#F9FAFB; --txt-2:#9CA3AF; --txt-3:#6B7280;
+    --up:#34D399; --down:#F87171; --warn:#FBBF24; --ai:#A78BFA; --blue:#60A5FA;
+    --r:12px; --gap:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0A0A0E;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--txt);padding:24px 0;display:flex;flex-direction:column;align-items:center;gap:32px;}
+  .import-note{width:1600px;background:#101827;border:1px solid #1E3A5F;color:#93C5FD;padding:10px 16px;border-radius:8px;font-size:13px;}
+  .import-note b{color:#DBEAFE;}
+  /* ===== Frame ===== */
+  .frame{width:1600px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .frame-label{padding:10px 24px;background:#101018;color:var(--txt-3);font-size:13px;border-bottom:1px solid var(--line);}
+  /* ===== Header ===== */
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--line);}
+  .brand{font-size:19px;font-weight:700;}
+  .brand .en{font-size:12px;font-weight:400;color:var(--txt-3);margin-left:8px;letter-spacing:.5px;}
+  .hd-right{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--txt-2);}
+  .pill{padding:3px 10px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;}
+  .pill.sandbox{color:var(--warn);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);font-weight:600;}
+  .btn-mini{font-size:12px;color:var(--blue);border:1px solid #1E3A5F;background:#101827;border-radius:8px;padding:5px 12px;}
+  /* ===== Mode banner ===== */
+  .mode-banner{display:flex;align-items:center;gap:12px;padding:9px 24px;background:rgba(251,191,36,.08);border-bottom:1px solid rgba(251,191,36,.25);font-size:12.5px;}
+  .mode-banner .mdot{width:8px;height:8px;border-radius:50%;background:var(--warn);flex:none;}
+  /* ===== Body ===== */
+  .bd{padding:20px 24px;display:flex;flex-direction:column;gap:var(--gap);}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);}
+  .card-pad{padding:16px;}
+  .mini-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .sec-sub{font-size:12px;color:var(--txt-3);font-weight:400;}
+  .grow{flex:1;}
+  .lbl{font-size:12px;color:var(--txt-3);}
+  .up-t{color:var(--up);} .down-t{color:var(--down);} .warn-t{color:var(--warn);}
+  .bdg{font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;}
+  .bdg.up{color:var(--up);background:rgba(52,211,153,.12);}
+  .bdg.down{color:var(--down);background:rgba(248,113,113,.12);}
+  .bdg.flat{color:var(--txt-3);background:rgba(107,114,128,.15);}
+  .bdg.warn{color:var(--warn);background:rgba(251,191,36,.12);}
+  .bdg.blue{color:var(--blue);background:rgba(96,165,250,.12);}
+  .bdg.ai{color:var(--ai);background:rgba(167,139,250,.14);}
+  .foot{display:flex;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--txt-3);}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  .seg{display:flex;gap:6px;}
+  .seg .tab{padding:6px 14px;font-size:13px;border-radius:999px;color:var(--txt-2);border:1px solid var(--line);background:transparent;}
+  .seg .tab.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;font-weight:600;}
+  .stale{color:var(--warn);background:rgba(251,191,36,.12);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;}
+  .stale-zone{opacity:.6;filter:saturate(.5);}
+  table.res{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;}
+  table.res th{text-align:left;color:var(--txt-3);font-weight:500;font-size:12px;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.res td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;}
+  table.res th.num,table.res td.num{text-align:right;}
+  table.res tr.tot td{border-top:1px solid var(--line);border-bottom:none;font-weight:600;color:var(--txt-2);}
+  /* ===== Account switcher ===== */
+  .acct{display:flex;gap:10px;align-items:stretch;}
+  .acct-tab{display:flex;flex-direction:column;gap:4px;padding:10px 18px;border-radius:10px;border:1px solid var(--line);background:var(--panel);min-width:250px;}
+  .acct-tab.on{border-color:#2C3E5F;background:#1E2A44;}
+  .acct-tab .nm{font-size:13.5px;font-weight:600;display:flex;gap:8px;align-items:center;}
+  .acct-tab .sub{font-size:12px;color:var(--txt-3);display:flex;gap:10px;align-items:center;font-variant-numeric:tabular-nums;}
+  .acct-tab.on .sub{color:var(--txt-2);}
+  /* ===== KPI strip ===== */
+  .kpis{display:grid;grid-template-columns:1.5fr 1fr 1fr 1.4fr 1fr;gap:var(--gap);}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .kpi .c{font-size:11.5px;color:var(--txt-3);display:flex;align-items:center;gap:6px;}
+  .kpi .p{font-size:21px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums;}
+  .kpi .s{font-size:11.5px;color:var(--txt-3);}
+  /* ===== Radar / gauge ===== */
+  .risk-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:var(--gap);}
+  .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .exp-row{display:flex;align-items:center;gap:10px;font-size:12.5px;margin-top:9px;}
+  .exp-row .nm{width:44px;color:var(--txt-2);}
+  .exp-row .bar{flex:1;height:12px;border-radius:4px;background:#0B0D12;overflow:hidden;}
+  .exp-row .bar i{display:block;height:100%;border-radius:4px;}
+  .exp-row .pv{width:120px;text-align:right;font-variant-numeric:tabular-nums;color:var(--txt-2);font-size:12px;}
+  /* ===== Factors / attribution ===== */
+  .fct-row{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+  .fct-row:last-child{border:none;}
+  .fct-top{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+  .thr{height:6px;border-radius:999px;background:#0B0D12;position:relative;overflow:hidden;}
+  .thr .f{position:absolute;left:0;top:0;bottom:0;border-radius:999px;}
+  .thr .lim{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--txt-3);}
+  .attr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap);}
+  .attr{background:#0B0D12;border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:center;}
+  .attr .c{font-size:11px;color:var(--txt-3);}
+  .attr .p{font-size:22px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums;}
+  .decomp{display:flex;height:30px;border-radius:7px;overflow:hidden;font-size:10.5px;margin-top:10px;}
+  .decomp span{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;white-space:nowrap;}
+  .sector-row{display:flex;align-items:center;gap:10px;font-size:12px;margin-top:9px;}
+  .sector-row .nm{width:52px;color:var(--txt-2);}
+  .sector-row .bar{flex:1;height:12px;border-radius:4px;background:#0B0D12;overflow:hidden;}
+  .sector-row .bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#2563EB,#60A5FA);}
+  .sector-row .pv{width:86px;text-align:right;font-variant-numeric:tabular-nums;color:var(--txt);}
+  .hm-grid{display:grid;grid-template-columns:52px repeat(4,1fr);gap:4px;font-size:10.5px;}
+  .hm-grid .hc{color:var(--txt-3);display:flex;align-items:center;justify-content:center;}
+  .hm-cell{height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.88);}
+  /* ===== Stress ===== */
+  .scn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap);}
+  .scn{display:flex;flex-direction:column;gap:4px;padding:11px 13px;border-radius:9px;background:var(--panel-2);border:1px solid var(--line);}
+  .scn .nm{font-size:12.5px;font-weight:600;}
+  .scn .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .scn .ds{font-size:10.5px;color:var(--txt-3);}
+  .cvar-row{display:flex;align-items:center;gap:10px;font-size:12px;margin-top:9px;}
+  .cvar-row .nm{width:86px;color:var(--txt-2);}
+  .cvar-row .bar{flex:1;height:12px;border-radius:4px;background:#0B0D12;overflow:hidden;}
+  .cvar-row .bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#B91C1C,#F87171);}
+  .cvar-row .pv{width:60px;text-align:right;font-variant-numeric:tabular-nums;color:var(--txt);}
+</style>
+</head>
+<body>
+
+<div class="import-note">📐 <b>Figma 导入说明:</b>使用 html.to.design 插件 → 选择 <b>Full page</b> 一次性捕获,将得到 3 个独立 Frame(账户概览 / 因子归因 / 压测与状态规范)。导入后可删除本说明条。(账户与数据均为示意;本文件为纯静态内联样式,无外部依赖)</div>
+
+<!-- ================= FRAME 1 · 账户概览 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 1 / 3 · 账户概览(默认落地)— 账户切换条 + 核心指标(VaR 双口径)+ 净值曲线 + 风险画像(六维雷达)+ 持仓明细</div>
+  <div class="hd">
+    <div><span class="brand">资产风控与高级归因<span class="en">RISK &amp; ATTRIBUTION</span></span></div>
+    <div class="hd-right">
+      <span class="pill">数据时点 14:35 · 新鲜</span>
+      <span class="pill">GET /risk/dashboard · 一次全量</span>
+      <span class="btn-mini">刷新</span>
+    </div>
+  </div>
+  <div class="mode-banner">
+    <span class="mdot"></span>
+    <b style="color:var(--warn);">SANDBOX</b>
+    <span class="lbl">单次推演,无持久账本 · 模拟环境 · 数据源 = Futu 模拟盘(FUTU_TRD_ENV=SIMULATE)</span>
+    <div class="grow"></div>
+    <span class="lbl">断连时本页数据区加 STALE 遮罩(见 Frame 3),不再横幅与数据脱节</span>
+  </div>
+
+  <div class="bd">
+    <!-- A 账户切换条 -->
+    <div class="acct">
+      <div class="acct-tab on">
+        <span class="nm">港股模拟账户 <span class="bdg flat">Futu SIMULATE</span></span>
+        <span class="sub"><b style="color:var(--txt);font-size:13px;">$879,577.78</b><span class="down-t">-$70,767 · -8.05%</span><span>3 只持仓</span></span>
+      </div>
+      <div class="acct-tab">
+        <span class="nm">美股模拟账户</span>
+        <span class="sub"><b style="color:var(--txt-2);font-size:13px;">$980,363.53</b><span class="down-t">-2.36%</span><span>16 只持仓</span></span>
+      </div>
+      <div class="grow"></div>
+      <span class="lbl" style="align-self:center;">账户为顶部 tabs,不再上下堆叠两套面板 · 切换仅重渲染下方(数据本就一次全量返回)</span>
+    </div>
+
+    <!-- B 核心指标行 -->
+    <div class="kpis">
+      <div class="kpi">
+        <div class="c">总净值</div>
+        <div class="p">$879,577.78</div>
+        <div class="s down-t">▼ -$70,767.00 · -8.05%</div>
+      </div>
+      <div class="kpi">
+        <div class="c">现金</div>
+        <div class="p">$1,524.78</div>
+        <div class="s">占净值 0.2%</div>
+      </div>
+      <div class="kpi">
+        <div class="c">市值</div>
+        <div class="p">$878.1K</div>
+        <div class="s">杠杆占用 99.8%</div>
+      </div>
+      <div class="kpi" style="border-color:rgba(96,165,250,.35);">
+        <div class="c">VaR 95% <span class="bdg blue">双口径</span></div>
+        <div class="p">$28,323 <span style="font-size:13px;color:var(--txt-2);font-weight:600;">· 3.22%</span></div>
+        <div class="s">日收益 5 分位 × 当前净值 · 悬停看公式 · 弃用固定 $10k 量纲</div>
+      </div>
+      <div class="kpi">
+        <div class="c">Sharpe</div>
+        <div class="p down-t">-0.27</div>
+        <div class="s">阈值 ≥ 0.5 · 未达标</div>
+      </div>
+    </div>
+
+    <!-- 净值曲线 + 风险画像 -->
+    <div class="risk-grid">
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:6px;">净值曲线 <span class="sec-sub">288 快照 · 每 5 分钟采样(NAV 守护进程)· 数据时点 14:35</span>
+          <div class="grow"></div><span class="seg"><span class="tab on">24h</span><span class="tab">7d</span><span class="tab">30d</span></span>
+        </div>
+        <svg width="100%" viewBox="0 0 860 170" style="display:block;">
+          <line x1="30" y1="30" x2="845" y2="30" stroke="rgba(255,255,255,.05)"/>
+          <line x1="30" y1="80" x2="845" y2="80" stroke="rgba(255,255,255,.05)"/>
+          <line x1="30" y1="130" x2="845" y2="130" stroke="rgba(255,255,255,.09)"/>
+          <text x="2" y="34" fill="#6B7280" font-size="10">960k</text>
+          <text x="2" y="84" fill="#6B7280" font-size="10">920k</text>
+          <text x="2" y="134" fill="#6B7280" font-size="10">880k</text>
+          <text x="30" y="152" fill="#6B7280" font-size="10">昨日 14:35</text>
+          <text x="420" y="152" fill="#6B7280" font-size="10">今日 02:35</text>
+          <text x="790" y="152" fill="#6B7280" font-size="10">14:35</text>
+          <path d="M30,52 L120,48 L210,55 L300,50 L390,58 L480,54 L560,62 L640,58 L700,86 L760,104 L810,118 L845,122 L845,140 L30,140 Z" fill="rgba(52,211,153,.08)"/>
+          <polyline fill="none" stroke="#34D399" stroke-width="1.8" points="30,52 120,48 210,55 300,50 390,58 480,54 560,62 640,58 700,86 760,104 810,118 845,122"/>
+          <polyline fill="none" stroke="#F87171" stroke-width="1.8" points="640,58 700,86 760,104 810,118 845,122"/>
+          <text x="700" y="72" fill="#F87171" font-size="10.5">早盘急跌 -8.05%</text>
+        </svg>
+      </div>
+
+      <!-- C 风险画像:总分环 + 六维雷达 + 敞口 -->
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:8px;">风险画像 <span class="sec-sub">六维(代码事实,无 "Cave")· 每维悬停看算法口径</span></div>
+        <div style="display:flex;gap:16px;align-items:center;">
+          <div class="gauge-wrap">
+            <svg width="118" height="118" viewBox="0 0 118 118">
+              <circle cx="59" cy="59" r="48" fill="none" stroke="#0B0D12" stroke-width="10"/>
+              <circle cx="59" cy="59" r="48" fill="none" stroke="#FBBF24" stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="108.6 301.6" transform="rotate(-90 59 59)"/>
+              <text x="59" y="56" text-anchor="middle" fill="#F9FAFB" font-size="20" font-weight="700">36</text>
+              <text x="59" y="72" text-anchor="middle" fill="#6B7280" font-size="9.5">/100 中等风险</text>
+            </svg>
+            <span class="bdg warn">中等风险</span>
+          </div>
+          <svg width="238" height="212" viewBox="0 0 238 226" style="flex:none;">
+            <polygon points="119,30 192.6,72.5 192.6,157.5 119,200 45.4,157.5 45.4,72.5" fill="none" stroke="rgba(255,255,255,.09)"/>
+            <polygon points="119,72.5 155.8,93.8 155.8,136.3 119,157.5 82.2,136.3 82.2,93.8" fill="none" stroke="rgba(255,255,255,.06)"/>
+            <polygon points="119,30 170.5,85.3 163.1,140.5 119,183 63.8,146.9 60.1,81" fill="none" stroke="rgba(251,191,36,.5)" stroke-dasharray="4 3"/>
+            <polygon points="119,79.3 169,86.1 144.8,129.9 119,164.3 80.7,137.1 96.9,102.3" fill="rgba(167,139,250,.22)" stroke="#A78BFA" stroke-width="1.6"/>
+            <text x="119" y="20" text-anchor="middle" fill="#9CA3AF" font-size="10">Beta</text>
+            <text x="204" y="70" fill="#9CA3AF" font-size="10">Vol</text>
+            <text x="204" y="166" fill="#9CA3AF" font-size="10">Liq</text>
+            <text x="119" y="218" text-anchor="middle" fill="#9CA3AF" font-size="10">Corr</text>
+            <text x="18" y="166" fill="#9CA3AF" font-size="10">Mom</text>
+            <text x="24" y="70" fill="#9CA3AF" font-size="10">DD</text>
+          </svg>
+        </div>
+        <div style="margin-top:6px;">
+          <div class="exp-row"><span class="nm">多头</span><span class="bar"><i style="width:99.8%;background:var(--up);"></i></span><span class="pv">99.8% · $878.1K</span></div>
+          <div class="exp-row"><span class="nm">空头</span><span class="bar"><i style="width:0%;background:var(--down);"></i></span><span class="pv">0% · $0</span></div>
+          <div class="exp-row"><span class="nm">现金</span><span class="bar"><i style="width:0.2%;background:var(--warn);"></i></span><span class="pv">0.2% · $1.5K</span></div>
+          <div class="lbl" style="margin-top:8px;">Top1 集中度 36.1%(HK.03690)· 三分量分母统一为 nav · 限额线为虚线琥珀</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 持仓明细表 -->
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);">
+        <div class="seg"><div class="tab on">概览 · 持仓明细</div><div class="tab">因子归因</div><div class="tab">压测</div></div>
+        <div class="grow"></div>
+        <span class="lbl">点击表头排序 · 行点击下钻 /market/:ticker(复用现成深链)</span>
+      </div>
+      <div style="padding:8px 16px 12px;">
+        <table class="res">
+          <tr><th>代码</th><th>名称</th><th>方向</th><th class="num">数量</th><th class="num">市值</th><th class="num">盈亏</th><th class="num">盈亏%</th><th class="num">占比 ↓</th></tr>
+          <tr>
+            <td>HK.03690</td><td>美团-W</td><td><span class="bdg up">多</span></td><td class="num">3,700</td><td class="num">$317.6K</td><td class="num up-t">+$1,665</td><td class="num up-t">+0.53%</td><td class="num">36.1%</td>
+          </tr>
+          <tr>
+            <td>HK.09992</td><td>泡泡玛特</td><td><span class="bdg up">多</span></td><td class="num">2,000</td><td class="num">$307.4K</td><td class="num down-t">-$58,400</td><td class="num down-t">-15.97%</td><td class="num">34.9%</td>
+          </tr>
+          <tr>
+            <td>HK.00772</td><td>阅文集团 <span class="bdg warn">数据源原文"闽文" · 以交易所为准</span></td><td><span class="bdg up">多</span></td><td class="num">12,600</td><td class="num">$253.0K</td><td class="num down-t">-$14,032</td><td class="num down-t">-5.25%</td><td class="num">28.8%</td>
+          </tr>
+          <tr class="tot">
+            <td colspan="4">合计 · 占比校验</td><td class="num">$878.0K</td><td class="num down-t">-$70,767</td><td class="num down-t">-8.05%</td><td class="num">99.8% ✓</td>
+          </tr>
+        </table>
+      </div>
+      <div class="foot">
+        <span>持仓透传 Futu position 字段 · 名称不做前端臆测纠错,脏名加标注</span>
+        <span>占比 = 市值 / nav · 合计行校验 ≈100%(现状逐行独立计算无校验)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= FRAME 2 · 因子归因 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 2 / 3 · 因子归因 tab — 兑现导航"高级归因"承诺:因子阈值列表 + Jensen α/β/R²(接入孤儿端点 /risk/attribution)+ 板块与相关性</div>
+  <div class="hd">
+    <div><span class="brand">资产风控与高级归因<span class="en">RISK &amp; ATTRIBUTION · 因子归因</span></span></div>
+    <div class="hd-right">
+      <span class="pill">港股模拟账户</span>
+      <span class="pill">数据时点 14:35 · 新鲜</span>
+    </div>
+  </div>
+  <div class="bd">
+    <div class="seg" style="margin-bottom:2px;"><div class="tab">概览 · 持仓明细</div><div class="tab on">因子归因</div><div class="tab">压测</div></div>
+
+    <div class="grid-2">
+      <!-- 因子阈值列表 -->
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:6px;">风险因子阈值 <span class="sec-sub">safe / good / warn / crit · 阈值分档改百分比口径</span></div>
+        <div class="fct-row">
+          <div class="fct-top"><b>Market Beta</b><span class="lbl">1.12</span><div class="grow"></div><span class="lbl">限额 ≤ 1.50</span><span class="bdg warn">warn</span></div>
+          <div class="thr"><span class="f" style="width:75%;background:var(--warn);"></span><span class="lim" style="left:100%;"></span></div>
+        </div>
+        <div class="fct-row">
+          <div class="fct-top"><b>VaR 95%</b><span class="lbl">3.22%(占净值)</span><div class="grow"></div><span class="lbl">限额 ≤ 5%</span><span class="bdg up">good</span></div>
+          <div class="thr"><span class="f" style="width:64%;background:var(--up);"></span></div>
+        </div>
+        <div class="fct-row">
+          <div class="fct-top"><b>Sharpe</b><span class="lbl">-0.27</span><div class="grow"></div><span class="lbl">目标 ≥ 0.5</span><span class="bdg down">crit</span></div>
+          <div class="thr"><span class="f" style="width:12%;background:var(--down);"></span></div>
+        </div>
+        <div class="fct-row">
+          <div class="fct-top"><b>Max Drawdown</b><span class="lbl">-18.4%</span><div class="grow"></div><span class="lbl">限额 ≤ 15%</span><span class="bdg down">crit</span></div>
+          <div class="thr"><span class="f" style="width:100%;background:var(--down);"></span></div>
+        </div>
+      </div>
+
+      <!-- Jensen 归因 -->
+      <div class="card card-pad" style="border-color:rgba(167,139,250,.35);background:linear-gradient(180deg,rgba(167,139,250,.06),var(--panel));">
+        <div class="mini-title" style="margin-bottom:10px;">Jensen Alpha 归因 <span class="bdg ai">/risk/attribution · 原孤儿端点,本帧接线</span></div>
+        <div class="attr-grid">
+          <div class="attr"><div class="c">Alpha α(年化)</div><div class="p up-t">+2.1%</div></div>
+          <div class="attr"><div class="c">Beta β</div><div class="p">1.12</div></div>
+          <div class="attr"><div class="c">拟合度 R²</div><div class="p">0.87</div></div>
+        </div>
+        <div class="lbl" style="margin-top:12px;">区间收益分解(近 30 日 · 相对基准)</div>
+        <div class="decomp">
+          <span style="width:52%;background:#2563EB;">β 贡献 +9.6%</span>
+          <span style="width:26%;background:#059669;">α +2.1%</span>
+          <span style="width:22%;background:#4B5563;">残差 -3.3%</span>
+        </div>
+        <div class="lbl" style="margin-top:10px;">总收益 +8.4% = β 贡献 +9.6% + α +2.1% + 残差 -3.3% · 单因子(Market)口径,非 Brinson</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- 板块暴露 -->
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:4px;">板块暴露 <span class="sec-sub">GET /risk/sector-exposure · 首次点开懒加载</span></div>
+        <div class="sector-row"><span class="nm">科技</span><span class="bar"><i style="width:68%;"></i></span><span class="pv">34.2% · $300K</span></div>
+        <div class="sector-row"><span class="nm">消费</span><span class="bar"><i style="width:44%;"></i></span><span class="pv">22.0% · $193K</span></div>
+        <div class="sector-row"><span class="nm">金融</span><span class="bar"><i style="width:36%;"></i></span><span class="pv">18.1% · $159K</span></div>
+        <div class="sector-row"><span class="nm">医药</span><span class="bar"><i style="width:28%;"></i></span><span class="pv">13.9% · $122K</span></div>
+        <div class="sector-row"><span class="nm">其它</span><span class="bar"><i style="width:24%;"></i></span><span class="pv">11.8% · $104K</span></div>
+      </div>
+      <!-- 相关性热力图 -->
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:10px;">持仓相关性矩阵 <span class="sec-sub">GET /risk/correlation · 非对角均值入雷达 Corr 轴</span></div>
+        <div class="hm-grid">
+          <span class="hc"></span><span class="hc">00772</span><span class="hc">09992</span><span class="hc">03690</span><span class="hc">HSI</span>
+          <span class="hc">00772</span><span class="hm-cell" style="background:rgba(96,165,250,.55);">1.00</span><span class="hm-cell" style="background:rgba(96,165,250,.2);">0.31</span><span class="hm-cell" style="background:rgba(96,165,250,.28);">0.44</span><span class="hm-cell" style="background:rgba(96,165,250,.3);">0.48</span>
+          <span class="hc">09992</span><span class="hm-cell" style="background:rgba(96,165,250,.2);">0.31</span><span class="hm-cell" style="background:rgba(96,165,250,.55);">1.00</span><span class="hm-cell" style="background:rgba(96,165,250,.16);">0.22</span><span class="hm-cell" style="background:rgba(96,165,250,.14);">0.18</span>
+          <span class="hc">03690</span><span class="hm-cell" style="background:rgba(96,165,250,.28);">0.44</span><span class="hm-cell" style="background:rgba(96,165,250,.16);">0.22</span><span class="hm-cell" style="background:rgba(96,165,250,.55);">1.00</span><span class="hm-cell" style="background:rgba(96,165,250,.34);">0.52</span>
+          <span class="hc">HSI</span><span class="hm-cell" style="background:rgba(96,165,250,.3);">0.48</span><span class="hm-cell" style="background:rgba(96,165,250,.14);">0.18</span><span class="hm-cell" style="background:rgba(96,165,250,.34);">0.52</span><span class="hm-cell" style="background:rgba(96,165,250,.55);">1.00</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="lbl">进阶图表全部 ECharts(经 use-echart)· sector / corr 懒加载保持现状 · 分级文案抽单一 SSOT(constants 冲突注释删除)</div>
+  </div>
+</div>
+
+<!-- ================= FRAME 3 · 压测与状态规范 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 3 / 3 · 压测 tab 与状态规范 — CVaR 瀑布 + 情景压测(口径明示)+ 断连 STALE 遮罩 + 脏名/VaR 占位规范</div>
+  <div class="hd">
+    <div><span class="brand">资产风控与高级归因<span class="en">RISK &amp; ATTRIBUTION · 压测与规范</span></span></div>
+    <div class="hd-right"><span class="pill sandbox">SANDBOX · 模拟盘账户</span><span class="pill">规范帧 · 供开发对照</span></div>
+  </div>
+  <div class="bd">
+    <div class="seg" style="margin-bottom:2px;"><div class="tab">概览 · 持仓明细</div><div class="tab">因子归因</div><div class="tab on">压测</div></div>
+
+    <div class="grid-2">
+      <!-- CVaR -->
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:4px;">CVaR 95%(尾部期望损失)<span class="sec-sub">GET /risk/cvar · 历史模拟法分解</span></div>
+        <div style="display:flex;gap:20px;align-items:baseline;margin:8px 0 4px;">
+          <span style="font-size:26px;font-weight:700;color:var(--down);">-4.81%</span>
+          <span class="lbl">对比 VaR 95% -3.22% · 尾部加深 1.59pct</span>
+        </div>
+        <div class="lbl">板块对尾部损失的贡献</div>
+        <div class="cvar-row"><span class="nm">科技</span><span class="bar"><i style="width:80%;"></i></span><span class="pv">-1.9%</span></div>
+        <div class="cvar-row"><span class="nm">消费</span><span class="bar"><i style="width:52%;"></i></span><span class="pv">-1.2%</span></div>
+        <div class="cvar-row"><span class="nm">金融</span><span class="bar"><i style="width:38%;"></i></span><span class="pv">-0.9%</span></div>
+        <div class="cvar-row"><span class="nm">医药</span><span class="bar"><i style="width:22%;"></i></span><span class="pv">-0.5%</span></div>
+        <div class="cvar-row"><span class="nm">其它</span><span class="bar"><i style="width:14%;"></i></span><span class="pv">-0.3%</span></div>
+      </div>
+
+      <!-- 情景压测 -->
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:10px;">情景压测 <span class="sec-sub">POST /risk/stress-test · 六情景</span></div>
+        <div class="scn-grid">
+          <div class="scn"><span class="nm">历史 · 2008 金融危机</span><span class="v down-t">-32.4%</span><span class="ds">预设 shock 系数</span></div>
+          <div class="scn"><span class="nm">历史 · 2020 疫情</span><span class="v down-t">-24.1%</span><span class="ds">预设 shock 系数</span></div>
+          <div class="scn"><span class="nm">历史 · 2022 加息</span><span class="v down-t">-17.6%</span><span class="ds">预设 shock 系数</span></div>
+          <div class="scn"><span class="nm">假设 · 利率 +100bp</span><span class="v down-t">-6.2%</span><span class="ds">板块冲击系数</span></div>
+          <div class="scn"><span class="nm">假设 · 波动率 +50%</span><span class="v down-t">-9.8%</span><span class="ds">板块冲击系数</span></div>
+          <div class="scn"><span class="nm">假设 · 汇率 -5%</span><span class="v down-t">-2.1%</span><span class="ds">板块冲击系数</span></div>
+        </div>
+        <div class="lbl" style="margin-top:10px;">口径明示:<b style="color:var(--txt-2);">历史情景 = 预设 shock / 板块冲击系数,并非真实历史 K 线回放</b>,文案不得暗示回放</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- STALE 遮罩规范 -->
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="font-weight:600;font-size:13px;">状态 · 断连 / 数据滞后</span>
+          <span class="stale">STALE</span>
+          <div class="grow"></div><span class="lbl">对齐 OMS 页降级模式</span>
+        </div>
+        <div class="stale-zone" style="background:var(--panel-2);border-radius:8px;padding:10px 12px;font-size:12.5px;display:flex;gap:18px;font-variant-numeric:tabular-nums;">
+          <span>总净值 $879,577</span><span>现金 $1,524</span><span>VaR $28,323</span><span class="down-t">-8.05%</span>
+        </div>
+        <div class="lbl" style="margin-top:8px;">offline(连续 3 次网络失败)→ 数据区 opacity-60 saturate-50 + 琥珀标签 + "数据为最后一次成功快照(14:35),可能滞后";/health 探测恢复即摘除。<b style="color:var(--txt-2);">现状横幅与数据脱节,必须联动</b></div>
+      </div>
+
+      <!-- 其它规范 -->
+      <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span class="bdg warn">口径规范</span>
+            <span style="font-weight:600;font-size:13px;">VaR 旧量纲修复前</span>
+          </div>
+          <div class="lbl">后端仍用固定 $10k 量纲(risk_engine.py:452)时,UI 显示占位 "—" + "口径修正中"标签,<b style="color:var(--txt-2);">禁止展示误导性 $322 类数字</b>;修复后切双口径(金额 + %)。</div>
+        </div>
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span class="bdg down">E-RISK-502</span>
+            <span style="font-weight:600;font-size:13px;">fetch 失败 / 空持仓</span>
+          </div>
+          <div class="lbl">失败出错误卡(码 + 原因 + 重试),不白屏;空持仓 EmptyState;初始化 InitOverlay;账户写死 HK/US 的扩展性列为三期(后端循环同为硬编码)。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Verification helper only: ?frame=N isolates the Nth frame for screenshots.
+  (function(){
+    var m = /[?&]frame=(\d+)/.exec(location.search);
+    if(!m) return;
+    var n = parseInt(m[1],10);
+    var frames = document.querySelectorAll('.frame');
+    var note = document.querySelector('.import-note');
+    if(note) note.style.display='none';
+    frames.forEach(function(f,i){ if(i+1!==n) f.style.display='none'; });
+  })();
+</script>
+
+</body>
+</html>
