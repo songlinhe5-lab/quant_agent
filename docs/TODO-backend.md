@@ -446,3 +446,18 @@
   - 新增 `backend/domain/entities.py` 统一 re-export `Strategy` / `OrderIntent` / `OrderUpdate` / `AlertRule` / `AlertRuleType`；`backend/domain/__init__` 同步暴露
   - 在 `docs/03` §2.1 标注 Domain 层实体状态（遵循「避免过早复制 DTO」：定义仍留原模块，仅做稳定聚合门面）
 - [x] **[ARCH-11]** 启动阶段 print() 全面替换为 structlog（lifecycle.py lifespan 38 处 print + 8 处标准 logger，main.py 2 处 import 期 print）
+
+---
+
+## 社区与协作（COMM）
+
+> COMM-01~02 立项于 `archive/2026-08-15-plan-1.md`，已于 2026-08-14 前后随 DIST-SEC-06 批次完整实现（此前未进活跃 TODO，本次补追踪闭环）。
+
+- [x] **[COMM-01]** 数据源健康度统一看板（P2）：✅ 已落地：`backend/routers/datasource.py` 的 `GET /datasource/health-overview`（卡片矩阵，字段：名称/类别/状态/延迟/今日调用量/成功率/限流次数 + 类别调用细分）+ `GET /datasource/{name}/health`（单源详情）+ `WS /datasource/ws/health`（实时推送 + STALE>5min 报警）；`_build_health_card` 聚合 `rate_limit_registry` 调用/成功/限流统计。`DataSourceHealthModule`（`frontend/src/features/data-center/datasource-health.tsx`）渲染卡片矩阵 + 实时 WS + STALE 报警条 + 测试连接 + YFinance 多节点，路由 `/datasource-health`。覆盖测试：`test_datasource_router.py`、`test_datasource_health_monitor.py` 等。
+  - 卡片矩阵（每个数据源：名称/状态/延迟/今日调用量/成功率/限流次数）
+  - 数据来自 `/datasource/{name}/health` + `rate_limit_registry`
+  - STALE>5min 变红 + WS 推送
+- [x] **[COMM-02]** 数据源贡献投票与需求看板（P3）：✅ 已落地：`backend/routers/datasource_vote.py` 的 `GET /datasource-vote/board`（三类：已接入/开发中/社区投票中 + 票数 + 今日已投）+ `POST /datasource-vote/vote`（每用户每源每日一票，Redis 防刷）；`main.py` 已挂载。前端 `DataSourceHealthModule.renderSection` 渲染三类 + `vote()` 调 `/datasource-vote/vote`，1 票/天。覆盖测试：`test_datasource_vote.py`、`test_datasource_macro_adapters.py`（16 passed）。
+  - 展示「已接入/开发中/投票中」三类
+  - 用户投票（1 票/天）
+  - 后端投票记录 + 计数器防刷
