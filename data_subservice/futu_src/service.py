@@ -572,6 +572,111 @@ class FutuService:
             max_count=max_count,
         )
 
+    # ── P2.2: 机构持仓 / ARK 交易（美股聪明钱）───────────────────────────
+    async def get_institution_list(
+        self, market: str = "US", count: int = 20, page: int = 1, name_part: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """P2.2 机构列表（13F 机构，返回 institution_id）。"""
+        return await self._route(
+            "fetch_institution_list",
+            {"market": market, "count": count, "page": page, "name_part": name_part},
+            self.quote_handler.get_institution_list,
+            market=market,
+            count=count,
+            page=page,
+            name_part=name_part,
+        )
+
+    async def get_institution_holding_list(
+        self, institution_id: Any, market: str = "US", change_type: Optional[str] = None, count: int = 20, page: int = 1
+    ) -> Dict[str, Any]:
+        """P2.2 机构持仓明细（13F 聪明钱核心信号）。"""
+        return await self._route(
+            "fetch_institution_holding_list",
+            {
+                "institution_id": institution_id,
+                "market": market,
+                "change_type": change_type,
+                "count": count,
+                "page": page,
+            },
+            self.quote_handler.get_institution_holding_list,
+            institution_id=institution_id,
+            market=market,
+            change_type=change_type,
+            count=count,
+            page=page,
+        )
+
+    async def get_institution_holding_change(
+        self, institution_id: Any, market: str = "US", change_type: Optional[str] = None, count: int = 20, page: int = 1
+    ) -> Dict[str, Any]:
+        """P2.2 机构增减持明细。"""
+        return await self._route(
+            "fetch_institution_holding_change",
+            {
+                "institution_id": institution_id,
+                "market": market,
+                "change_type": change_type,
+                "count": count,
+                "page": page,
+            },
+            self.quote_handler.get_institution_holding_change,
+            institution_id=institution_id,
+            market=market,
+            change_type=change_type,
+            count=count,
+            page=page,
+        )
+
+    async def get_institution_distribution(self, institution_id: Any, market: str = "US") -> Dict[str, Any]:
+        """P2.2 机构行业分布。"""
+        return await self._route(
+            "fetch_institution_distribution",
+            {"institution_id": institution_id, "market": market},
+            self.quote_handler.get_institution_distribution,
+            institution_id=institution_id,
+            market=market,
+        )
+
+    async def get_institution_profile(self, institution_id: Any, market: str = "US") -> Dict[str, Any]:
+        """P2.2 机构画像（持仓行为总览）。"""
+        return await self._route(
+            "fetch_institution_profile",
+            {"institution_id": institution_id, "market": market},
+            self.quote_handler.get_institution_profile,
+            institution_id=institution_id,
+            market=market,
+        )
+
+    async def get_ark_fund_holding(
+        self, holding_type: str = "POSITION", cycle_type: str = "ONE_DAY", count: int = 20, page: int = 1
+    ) -> Dict[str, Any]:
+        """P2.2 ARK 基金持仓。"""
+        return await self._route(
+            "fetch_ark_fund_holding",
+            {"holding_type": holding_type, "cycle_type": cycle_type, "count": count, "page": page},
+            self.quote_handler.get_ark_fund_holding,
+            holding_type=holding_type,
+            cycle_type=cycle_type,
+            count=count,
+            page=page,
+        )
+
+    async def get_ark_active_transaction(
+        self, holding_type: str = "INCREASE", cycle_type: str = "ONE_DAY", count: int = 20, page: int = 1
+    ) -> Dict[str, Any]:
+        """P2.2 ARK 活跃交易（每日买卖明细）。"""
+        return await self._route(
+            "fetch_ark_active_transaction",
+            {"holding_type": holding_type, "cycle_type": cycle_type, "count": count, "page": page},
+            self.quote_handler.get_ark_active_transaction,
+            holding_type=holding_type,
+            cycle_type=cycle_type,
+            count=count,
+            page=page,
+        )
+
     async def get_heat_map(self, market: str = "HK") -> Dict[str, Any]:
         """F4-3 板块热力图（需 market 参数，支撑 G6）。"""
         return await self._route(

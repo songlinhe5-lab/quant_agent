@@ -134,6 +134,13 @@ _FUTU_ACTION_MAP = {
     "fed_watch": "FED_WATCH",
     "fed_watch_dot_plot": "FED_WATCH_DOT_PLOT",
     "search_quote": "SEARCH_QUOTE",
+    "institution_list": "INSTITUTION_LIST",
+    "institution_holding_list": "INSTITUTION_HOLDING_LIST",
+    "institution_holding_change": "INSTITUTION_HOLDING_CHANGE",
+    "institution_distribution": "INSTITUTION_DISTRIBUTION",
+    "institution_profile": "INSTITUTION_PROFILE",
+    "ark_fund_holding": "ARK_FUND_HOLDING",
+    "ark_active_transaction": "ARK_ACTIVE_TRANSACTION",
     "heat_map": "HEAT_MAP",
     # P1.2~P1.6: 基本面接口族（按需填坑）
     "rating_summary": "RATING_SUMMARY",

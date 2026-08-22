@@ -757,3 +757,137 @@ class TestQuoteHandlerNewsFedHeat:
         result = await handler.get_hk_sector_flow()
         assert result["status"] == "degraded"
         assert result["data"]["sectors"] == []
+
+
+# ── P2.2 机构持仓 / ARK 交易（美股聪明钱）──────────────────────────────
+class TestInstitutionArk:
+    """P2.2 机构/ARK 接口族"""
+
+    async def test_institution_list_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_list.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "institution_id": 1951572549,
+                        "institution_name": "Vanguard",
+                        "position_value": 5640083126208.48,
+                        "position_count": 4358,
+                    }
+                ]
+            ),
+            "4",
+            16806,
+        )
+        result = await handler.get_institution_list("US", 1, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["institution_id"] == 1951572549
+
+    async def test_institution_holding_list_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_holding_list.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "security": "US.AAPL",
+                        "name": "苹果",
+                        "holding_pct": 7.1438,
+                        "change_shares": 4539754,
+                        "holding_date": "2026-06-29",
+                    }
+                ]
+            ),
+            "4",
+            4346,
+        )
+        result = await handler.get_institution_holding_list(1951572549, "US", None, 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["holding_pct"] == 7.1438
+
+    async def test_institution_holding_change_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_holding_change.return_value = (
+            RET_OK,
+            pd.DataFrame([{"security": "US.VGNT", "name": "VERSIGENT", "change_pct": 5.2047}]),
+            "4",
+            2870,
+        )
+        result = await handler.get_institution_holding_change(1951572549, "US", None, 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["change_pct"] == 5.2047
+
+    async def test_institution_distribution_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_distribution.return_value = (
+            RET_OK,
+            pd.DataFrame([{"industry_name": "电子", "position_value": 984326797686.31, "portfolio_pct": 18.13}]),
+        )
+        result = await handler.get_institution_distribution(1951572549, "US")
+        assert result["status"] == "success"
+        assert result["data"][0]["portfolio_pct"] == 18.13
+
+    async def test_institution_profile_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_profile.return_value = (
+            RET_OK,
+            {
+                "institution_name": "Vanguard",
+                "new_count": 115,
+                "sold_out_count": 24,
+                "increase_count": 2878,
+                "top10_pct": 20.5,
+                "disclosure_date": "2026-08-13",
+            },
+        )
+        result = await handler.get_institution_profile(1951572549, "US")
+        assert result["status"] == "success"
+        assert result["data"]["new_count"] == 115
+
+    async def test_ark_fund_holding_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_ark_fund_holding.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "security": "US.ACHR",
+                        "name": "Archer",
+                        "shares": 27642593,
+                        "market_value": 168343391.37,
+                        "weight": 1.22,
+                    }
+                ]
+            ),
+            "4",
+            3,
+        )
+        result = await handler.get_ark_fund_holding("POSITION", "ONE_DAY", 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["weight"] == 1.22
+
+    async def test_ark_active_transaction_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_ark_active_transaction.return_value = (
+            RET_OK,
+            pd.DataFrame([{"security": "US.BWXT", "name": "BWX", "change_amount": 11629809.0, "change_shares": 69979}]),
+            "4",
+            3,
+        )
+        result = await handler.get_ark_active_transaction("INCREASE", "ONE_DAY", 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["change_amount"] == 11629809.0
+
+    async def test_p22_disconnected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None  # ctx 空 → handler 返回"未连接"
+        result = await handler.get_institution_list("US", 1, 1)
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    async def test_institution_failure(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_list.return_value = (-1, "no permission")
+        result = await handler.get_institution_list("US", 1, 1)
+        assert result["status"] == "error"

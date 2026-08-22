@@ -89,6 +89,14 @@ class FutuDataSource:
             "FED_WATCH",  # F4-2: FedWatch FOMC隐含概率(支撑G5)
             "FED_WATCH_DOT_PLOT",  # P1.8: FedWatch点阵图(FOMC委员利率预测)
             "SEARCH_QUOTE",  # P1.2: 行情搜索(关键词→标的,补名称→代码)
+            # ── P2.2 机构持仓 / ARK 交易（美股聪明钱）──────────────────
+            "INSTITUTION_LIST",  # P2.2: 机构列表(13F,返回institution_id)
+            "INSTITUTION_HOLDING_LIST",  # P2.2: 机构持仓明细(13F聪明钱核心)
+            "INSTITUTION_HOLDING_CHANGE",  # P2.2: 机构增减持明细
+            "INSTITUTION_DISTRIBUTION",  # P2.2: 机构行业分布
+            "INSTITUTION_PROFILE",  # P2.2: 机构画像
+            "ARK_FUND_HOLDING",  # P2.2: ARK基金持仓(Finnhub无此数据)
+            "ARK_ACTIVE_TRANSACTION",  # P2.2: ARK活跃交易(每日买卖)
             "HEAT_MAP",  # F4-3: 板块热力图(支撑G6)
             "HK_SECTOR_FLOW",  # F4-5: 港股行业板块资金流聚合(支撑板块资金流向面板)
             # ── P1.2~P1.7: 基本面接口族（按需填坑）────────────────────

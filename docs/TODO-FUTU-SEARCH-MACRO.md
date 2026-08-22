@@ -62,7 +62,7 @@
 ### 阶段 P2：可选（按需再启）
 
 - [ ] **P2.1** 资讯搜索 `get_search_news`：若需「新闻+公告+评级」聚合检索再接，否则用现有新闻链。
-- [ ] **P2.2** 机构追踪 `get_institution_*` / ARK 持仓：美股「聪明钱」信号，若 Finnhub insider 数据不够用再补。
+- [x] **P2.2** 机构追踪 `get_institution_*` / ARK 持仓：✅ 2026-08-22 实现并实测（美股聪明钱）。**权限验证**：6 接口 OpenD 实跑全部可用（`get_institution_list`/`holding_list`/`holding_change`/`distribution`/`profile` + `get_ark_fund_holding`/`get_ark_active_transaction`），真实 13F 数据（`institution_holding_list` source=13F数据汇总，实测 Vanguard ID=1951572549、AAPL holding_pct=7.14%）。**增量**：ARK 持仓/每日交易是 Finnhub 无的数据，与 insider(内部人)互补。已接入 `quote_handler.py` 7 方法 + service + worker（`INSTITUTION_*`/`ARK_*` 7 action）+ adapter + router。**SDK 枚举**：`ArkHoldingType`=POSITION/INCREASE/DECREASE/NEW/SOLD_OUT、`ArkCycleType`=ONE_DAY/FIVE_DAY/TEN_DAY/THIRTY_DAY/SIXTY_DAY。单测 `TestInstitutionArk` 9 例全过。
 - [ ] **P2.3** 榜单（盘前/盘后/领涨领跌/卖空）：ApeWisdom 已覆盖热议榜，Futu 榜单美股盘前盘后数据增量有限。
 
 ### 阶段 P3：跳过（记录结论）

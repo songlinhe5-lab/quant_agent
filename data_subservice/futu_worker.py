@@ -177,6 +177,60 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 params.get("keyword") or params.get("symbol") or params.get("query") or "",
                 max_count=int(params.get("max_count", 10)),
             )
+        elif action == "INSTITUTION_LIST":
+            # P2.2 机构列表（13F 机构，返回 institution_id）
+            return await futu_service.get_institution_list(
+                market=params.get("market", "US"),
+                count=int(params.get("count", 20)),
+                page=int(params.get("page", 1)),
+                name_part=params.get("name_part"),
+            )
+        elif action == "INSTITUTION_HOLDING_LIST":
+            # P2.2 机构持仓明细（13F 聪明钱核心信号）
+            return await futu_service.get_institution_holding_list(
+                institution_id=params.get("institution_id"),
+                market=params.get("market", "US"),
+                change_type=params.get("change_type"),
+                count=int(params.get("count", 20)),
+                page=int(params.get("page", 1)),
+            )
+        elif action == "INSTITUTION_HOLDING_CHANGE":
+            # P2.2 机构增减持明细
+            return await futu_service.get_institution_holding_change(
+                institution_id=params.get("institution_id"),
+                market=params.get("market", "US"),
+                change_type=params.get("change_type"),
+                count=int(params.get("count", 20)),
+                page=int(params.get("page", 1)),
+            )
+        elif action == "INSTITUTION_DISTRIBUTION":
+            # P2.2 机构行业分布
+            return await futu_service.get_institution_distribution(
+                institution_id=params.get("institution_id"),
+                market=params.get("market", "US"),
+            )
+        elif action == "INSTITUTION_PROFILE":
+            # P2.2 机构画像
+            return await futu_service.get_institution_profile(
+                institution_id=params.get("institution_id"),
+                market=params.get("market", "US"),
+            )
+        elif action == "ARK_FUND_HOLDING":
+            # P2.2 ARK 基金持仓
+            return await futu_service.get_ark_fund_holding(
+                holding_type=params.get("holding_type", "POSITION"),
+                cycle_type=params.get("cycle_type", "ONE_DAY"),
+                count=int(params.get("count", 20)),
+                page=int(params.get("page", 1)),
+            )
+        elif action == "ARK_ACTIVE_TRANSACTION":
+            # P2.2 ARK 活跃交易（每日买卖明细）
+            return await futu_service.get_ark_active_transaction(
+                holding_type=params.get("holding_type", "INCREASE"),
+                cycle_type=params.get("cycle_type", "ONE_DAY"),
+                count=int(params.get("count", 20)),
+                page=int(params.get("page", 1)),
+            )
         elif action == "HEAT_MAP":
             # F4-3 板块热力图（需 market 参数）
             return await futu_service.get_heat_map(market=params.get("market", "HK"))
