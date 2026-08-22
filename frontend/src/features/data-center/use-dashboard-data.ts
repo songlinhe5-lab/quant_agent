@@ -28,6 +28,8 @@ export function useDashboardData() {
   const [news, setNews] = useState<any[]>([])
   const [capitalFlows, setCapitalFlows] = useState<CapitalFlowItem[]>([])
   const [sentimentInd, setSentimentInd] = useState<any>(null)
+  // SENT-01: 情绪因子历史序列（VIX / P/C / 信用利差），来自 /macro/sentiment-history，用于真实折线图
+  const [sentimentHistory, setSentimentHistory] = useState<any[]>([])
   const [earnings, setEarnings] = useState<any[]>([])
   const [earningsStatus, setEarningsStatus] = useState<string>('unknown')
   const [earningsMessage, setEarningsMessage] = useState<string>('')
@@ -76,13 +78,14 @@ export function useDashboardData() {
     if (document.hidden) return
     try {
       setFetching(true)
-      const [dashRes, flowRes, newsRes, flowDashRes, lhbRes, brokerRes] = await Promise.allSettled([
+      const [dashRes, flowRes, newsRes, flowDashRes, lhbRes, brokerRes, sentHistRes] = await Promise.allSettled([
         apiClient.get('/macro/dashboard'),
         apiClient.get('/macro/capital-flow'),
         apiClient.get('/macro/news?limit=50'),
         apiClient.get('/macro/capital-flow-dashboard'),
         apiClient.get('/macro/a-share-lhb'),
         apiClient.get('/macro/hk-broker-queue?symbol=HK.00700'),
+        apiClient.get('/macro/sentiment-history?limit=120'),
       ])
       if (dashRes.status === 'fulfilled' && dashRes.value.data?.status === 'success') {
         const d = dashRes.value.data.data
@@ -131,6 +134,11 @@ export function useDashboardData() {
       }
       if (newsRes.status === 'fulfilled' && newsRes.value.data?.status === 'success') {
         setNews(newsRes.value.data.data || [])
+      }
+      // SENT-01: 情绪因子历史序列（VIX / P/C / 信用利差）真实数据，供折线图使用
+      if (sentHistRes.status === 'fulfilled' && sentHistRes.value.data?.status === 'success') {
+        const hist = sentHistRes.value.data.data || []
+        setSentimentHistory(Array.isArray(hist) ? hist : [])
       }
     } catch (err) {
       console.warn('仪表盘数据获取失败:', err)
@@ -285,7 +293,7 @@ export function useDashboardData() {
   return {
     // state
     fetching, last, radarInfo, setRadarInfo, calendarInfo, setCalendarInfo,
-    assets, radar, events, news, capitalFlows, sentimentInd, earnings,
+    assets, radar, events, news, capitalFlows, sentimentInd, earnings, sentimentHistory,
     earningsStatus, earningsMessage, marginData, marginStatus, sectorFlowData,
     sectorFlowStatus, ecoMsg, ecoDed, ecoSources, earnDed,
     capitalFlowDashboard, capitalFlowDashboardStatus,

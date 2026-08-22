@@ -124,7 +124,7 @@ export function OverviewTab({ data, onNavigate }: Props) {
       {/* B 区 · 三卡 */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-1">
-          <MarketSentimentPanel vixData={vixAsset} sentimentInd={data.sentimentInd} />
+          <MarketSentimentPanel vixData={vixAsset} sentimentInd={data.sentimentInd} sentimentHistory={data.sentimentHistory} />
         </div>
         <div className="lg:col-span-1">
           <MacroRiskRadar

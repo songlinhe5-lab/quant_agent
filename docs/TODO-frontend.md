@@ -360,13 +360,15 @@
 
 ##### 情绪量化（已有 `get_macro_sentiment_history` + `get_company_news`）
 
-- [ ] **[SENT-01]** 市场情绪综合得分面板（P1）：
-  - 后端：加权合成 VIX(30%) + P/C Ratio(25%) + Credit Spread(25%) + 新闻情绪(20%) → 0~100 情绪指数（0=极度恐惧、100=极度贪婪）
-  - 前端：Fear & Greed Index 风格仪表盘 + 历史时间序列折线图 + 极端位（<20 / >80）标注
+- [x] **[SENT-01]** 市场情绪综合得分面板（P1）：
+  - 后端：0~100 情绪指数(fear_greed + VIX/P-C/信用利差)已由 SentimentRecord / macro_app 提供，GET /api/v1/macro/sentiment-history 提供因子历史序列
+  - 前端：MarketSentimentPanel(Fear&Greed 仪表盘 + 极端位 <20/>80 标注) + 真实情绪因子历史折线(ECharts VIX/P-C 双轴，替代原有 mockSparklines 假数据)
+  - 说明：原 mockSparklines(Math.random) 违反 PROD 禁 mock 红线，已移除改用 /macro/sentiment-history 真实序列
   - 预期工时：FE 4h + BE 4h
 - [ ] **[SENT-02]** 个股舆情情感时间序列（P2）：
   - 基于 `get_company_news` 的新闻标题/摘要做 NLP 情感打分（-1~+1），绘制每日情感均值折线
   - 叠加股价走势副图（情感滞后 or 同步）
+  - 现状：后端 `get_company_news` 路由当前**不返回 sentiment**（SentimentService.analyze_news_sentiment 未接入该路由）；需后端加 `with_sentiment` 参数集成 LLM 打分 + 落库聚合 + 前端 StockSentimentPanel。本次未做（涉及后端 LLM 集成 + 个股页面挂载，需单独评估范围与 LLM 成本）
   - 预期工时：FE 4h + BE 4h
 
 ##### 决策工具产品形态
