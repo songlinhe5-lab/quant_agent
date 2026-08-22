@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { KeepAliveOutlet } from './keep-alive-outlet'
-import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell, Database, ArrowRightLeft, Users, Microscope } from 'lucide-react'
+import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell, Database, Users, Microscope } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -16,11 +16,12 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
+import { registerNavigate } from '@/lib/navigate'
 import { Navbar } from './navbar'
 import { StatusBar } from './status-bar'
 import { TradingModeBanner } from './trading-mode-banner'
 import { useLayoutStore } from '@/stores/useLayoutStore'
-import { GlobalCopilotDrawer, CopilotEdgeHandle } from '@/features/copilot/global-copilot-drawer'
+import { useChat } from '@/features/copilot/useChat'
 import { GlobalSettingsDrawer } from '@/features/settings/settings-drawer'
 import { BackendStatusBanner } from './backend-status-banner'
 import { GlobalAlertGateway } from '@/features/alert/global-alert-gateway'
@@ -68,18 +69,39 @@ const modules: NavItem[] = [
 ]
 
 function useCopilotHotkey() {
-  const toggleCopilot = useLayoutStore((s) => s.toggleCopilot)
+  const navigate = useNavigate()
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return
       if (e.key.toLowerCase() !== 'a') return
       e.preventDefault()
-      toggleCopilot()
+      // UI 拆分：AI Copilot 已迁至左侧「投研」分栏，快捷键直接前往 /research
+      navigate('/research')
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [toggleCopilot])
+  }, [navigate])
+}
+
+/**
+ * 导航桥：把 useNavigate 注入全局，供 store/context 在任意位置调用 navigate()。
+ * 挂在主布局内，保证每次路由可用。
+ */
+function NavigationBridge() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    registerNavigate(navigate)
+  }, [navigate])
+  return null
+}
+
+/** 常驻聊天运行时：初始化 SSE 编排 + 注入 handleSend + 监听跨模块 invoke。
+ *  UI 拆分后抽屉被隐藏，但 AI 对话已迁移至左侧「投研」分栏，
+ *  此运行时在布局层常驻，确保投研页/全屏 AI 的会话逻辑可用（逻辑复用）。 */
+function ChatRuntime() {
+  useChat()
+  return null
 }
 
 // UIRF-23: OMS 徽章动态计数（活跃订单数 + 运行 bots 数），替换硬编码 badge:'3'
@@ -111,29 +133,26 @@ function useHydrateTradingMode() {
   }, [])
 }
 
-/** PROD-04: 研究模式自动展开 AI 副驾 */
+/** PROD-04: 研究模式自动前往左侧「投研」分栏（AI 副驾已内嵌）；AI 分析模式由布局渲染全屏 */
 function useSceneAiBehavior() {
   const sceneMode = useSceneModeStore((s) => s.mode)
-  const openCopilot = useLayoutStore((s) => s.openCopilot)
-  const closeCopilot = useLayoutStore((s) => s.closeCopilot)
+  const navigate = useNavigate()
 
   useEffect(() => {
     const meta = SCENE_META[sceneMode]
     if (meta.aiRole === 'drawer') {
-      openCopilot()
-    } else if (meta.aiRole === 'fullscreen') {
-      // AI 分析模式关闭抽屉（用全屏替代）
-      closeCopilot()
+      // UI 拆分：抽屉已隐藏，研究场景直接前往左侧投研分栏
+      navigate('/research')
     }
-  }, [sceneMode, openCopilot, closeCopilot])
+    // fullscreen：由布局 isAiFullscreen 分支渲染，无需额外跳转
+  }, [sceneMode, navigate])
 }
 
 export default function DashboardLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const pathname = location.pathname
-  const copilotOpen = useLayoutStore((s) => s.copilotOpen)
   const settingsOpen = useLayoutStore((s) => s.settingsOpen)
-  const openCopilot = useLayoutStore((s) => s.openCopilot)
   const openSettings = useLayoutStore((s) => s.openSettings)
   const sceneMode = useSceneModeStore((s) => s.mode)
   const sceneMeta = SCENE_META[sceneMode]
@@ -182,8 +201,7 @@ export default function DashboardLayout() {
                           ? (pathname === '/research' || pathname.startsWith('/research/'))
                           : pathname.startsWith(item.url)
                       const drawerActive =
-                        (item.action === 'copilot' && copilotOpen) ||
-                        (item.action === 'settings' && settingsOpen)
+                        item.action === 'settings' && settingsOpen
                       const isActive = item.action ? drawerActive || routeActive : routeActive
 
                       return (
@@ -194,7 +212,7 @@ export default function DashboardLayout() {
                               tooltip={item.name}
                               className="h-[42px] transition-all duration-300 hover:bg-primary/10 data-[active=true]:bg-primary/15 data-[active=true]:text-primary data-[active=true]:font-bold relative"
                               onClick={() => {
-                                if (item.action === 'copilot') openCopilot()
+                                if (item.action === 'copilot') navigate('/research')
                                 else openSettings()
                               }}
                             >
@@ -258,7 +276,6 @@ export default function DashboardLayout() {
               >
                 <KeepAliveOutlet />
               </main>
-              <GlobalCopilotDrawer />
             </>
           )}
         </div>
@@ -266,10 +283,14 @@ export default function DashboardLayout() {
           <StatusBar />
         </div>
         <MobileTabBar />
-        {!isAiFullscreen && <CopilotEdgeHandle />}
         <GlobalSettingsDrawer />
         <GlobalAlertGateway />
       </SidebarInset>
+
+      {/* 全局导航桥；常驻聊天运行时（UI 拆分后抽屉隐藏，聊天逻辑复用）。
+          AI 分析全屏模式由 FullscreenCopilot 自身挂载 useChat，此处跳过避免双重初始化。 */}
+      <NavigationBridge />
+      {!isAiFullscreen && <ChatRuntime />}
     </SidebarProvider>
     </div>
   )
