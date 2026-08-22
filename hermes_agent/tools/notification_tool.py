@@ -8,7 +8,7 @@ from hermes_agent.tool_registry import register_tool
 from .base import BaseTool
 
 
-@register_tool
+@register_tool(scopes=["system"])  # 消息通知推送
 class NotificationTool(BaseTool):
     """
     负责向用户的 Telegram、飞书或微信发送重要通知。

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getZhLabel } from './shared'
 import { useScreenerContext } from './screener-context'
+import { useScreenerWsStatus } from './use-screener-ws'
 import { apiClient } from '@/lib/api-client'
 
 // 设计稿「选股树」单级标签筛选：市场 / 自选 / 策略模板
@@ -35,8 +36,10 @@ export function ScreenerQueryPanel() {
   const {
     nlpQuery, setNlpQuery, dslQuery, setDslQuery, showHistory, setShowHistory,
     history, setHistory, placeholderText, displayPrompts, refreshPrompts,
-    isLoading, progress, scanStatus, handleTranslate, showRawDsl, setShowRawDsl, handleSubscribe
+    isLoading, progress, scanStatus, handleTranslate, showRawDsl, setShowRawDsl, handleSubscribe,
+    fetchPageData, setCurrentPage, sortKey, sortDir, pageSize, columnFilters
   } = useScreenerContext()
+  const wsStatus = useScreenerWsStatus()
   const [activeTag, setActiveTag] = useState<{ group: string; key: string } | null>(null)
 
   const _parseVal = (v: any) => {
@@ -60,6 +63,41 @@ export function ScreenerQueryPanel() {
     handleTranslate(item.q)
   }
 
+  // UIRF-11: RAG 召回来源类型启发式分类（后端 rag_rules 为纯字符串，按文本特征推断来源 + 相关度）
+  const [ragExpanded, setRagExpanded] = useState(false)
+  // UIRF-09: 过滤规则 chips 编辑（内联编辑数值 / 删除 / 添加后重查）
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [editVal, setEditVal] = useState('')
+
+  const rerunWithDsl = (newDsl: string) => {
+    setDslQuery(newDsl)
+    setShowRawDsl(true)
+    setCurrentPage(1)
+    fetchPageData(newDsl, 1, pageSize, sortKey, sortDir, {})
+  }
+
+  const updateFilter = (data: any, field: string, updater: (f: any) => void) => {
+    const next = JSON.parse(JSON.stringify(data))
+    const tf = next.filters?.find((f: any) => f.field === field)
+    if (tf) updater(tf)
+    rerunWithDsl(JSON.stringify(next))
+  }
+
+  const removeFilter = (data: any, field: string) => {
+    const next = JSON.parse(JSON.stringify(data))
+    next.filters = (next.filters || []).filter((f: any) => f.field !== field)
+    rerunWithDsl(JSON.stringify(next))
+  }
+  const classifyRag = (rule: string): { source: string; cls: string } => {
+    if (/财报|年报|营收|利润|净利润|现金流|负债|毛利/.test(rule)) return { source: '财报', cls: 'bg-sky-500/10 text-sky-400 border-sky-500/30' }
+    if (/新闻|公告|快讯|资讯/.test(rule)) return { source: '新闻', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
+    if (/市盈|市净|估值|PE|PB|ROE/.test(rule)) return { source: '估值', cls: 'bg-violet-500/10 text-violet-400 border-violet-500/30' }
+    if (/均线|技术|趋势|动量|突破|支撑|压力/.test(rule)) return { source: '技术', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' }
+    return { source: '通用', cls: 'bg-slate-500/10 text-slate-400 border-slate-500/30' }
+  }
+  // 相关度：按位置递减（越靠前越相关），估算 95~70
+  const ragScore = (i: number, total: number) => Math.max(70, Math.round(95 - (i / Math.max(total, 1)) * 25))
+
   return (
     <div className="glass-card rounded-[var(--radius-card)] overflow-hidden transition-colors duration-300 border border-border/40 shadow-sm relative">
       <div className="p-4 space-y-3">
@@ -69,30 +107,15 @@ export function ScreenerQueryPanel() {
             <span className="text-sm font-semibold tracking-wide">AI 语义筛选</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground font-mono bg-secondary/50 px-2 py-0.5 rounded border border-border/30 hidden sm:inline-block">全市场 5,832 只 · 毫秒级扫描</span>
-            <div className="relative">
-              <button onClick={() => setShowHistory(!showHistory)} onBlur={() => setTimeout(() => setShowHistory(false), 200)} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors bg-secondary/30 hover:bg-secondary/60 px-2 py-0.5 rounded border border-border/50">
-                <History className="h-3 w-3" /> 历史记录
-              </button>
-              {showHistory && (
-                <div className="absolute right-0 top-full mt-1 w-64 bg-card border border-border/50 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                  <div className="px-3 py-1.5 border-b border-border/30 bg-secondary/20 flex justify-between items-center">
-                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">最近查询记录</span>
-                     {history.length > 0 && <button onMouseDown={(e) => { e.preventDefault(); setHistory([]); localStorage.removeItem('quant_screener_history'); apiClient.post('/screener/history', { history: [] }).catch(()=>{}); }} className="text-[9px] text-red-500 hover:underline">清空</button>}
-                  </div>
-                  <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
-                    {history.length === 0 ? (
-                      <div className="text-center text-[10px] text-muted-foreground py-4">暂无历史记录</div>
-                    ) : history.map((h, i) => (
-                      <button key={i} onMouseDown={(e) => { e.preventDefault(); setNlpQuery(h.nlp); setDslQuery(h.dsl); setShowHistory(false); handleTranslate(h.nlp); }} className="w-full text-left px-2 py-1.5 hover:bg-secondary/50 rounded transition-colors flex flex-col gap-0.5 group">
-                        <span className="text-[11px] text-foreground truncate font-medium group-hover:text-primary">{h.nlp}</span>
-                        <span className="text-[9px] text-muted-foreground font-mono truncate">{new Date(h.time).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            {wsStatus.connected ? (
+              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-mono flex items-center gap-1 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE 实时推送
+              </span>
+            ) : (
+              <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full font-mono flex items-center gap-1 border border-amber-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> 实时行情待连接
+              </span>
+            )}
           </div>
         </div>
 
@@ -120,6 +143,35 @@ export function ScreenerQueryPanel() {
           </div>
           <textarea id="nlp-query" placeholder={placeholderText} className="w-full pl-9 pr-12 py-3 rounded-xl bg-background border border-border/60 hover:border-primary/50 focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all duration-300 text-sm font-mono resize-none leading-relaxed shadow-sm dark:bg-black/20" rows={3} value={nlpQuery} onChange={(e) => { setNlpQuery(e.target.value); setDslQuery(''); setActiveTag(null) }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleTranslate() } }} aria-label="输入自然语言选股条件" />
           <div className="absolute right-2 bottom-2 flex items-center gap-2">
+            {/* UIRF-22: 历史记录图标按钮（输入框右上角） + 一键重放 */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowHistory(!showHistory)}
+                className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-colors border border-border/40"
+                title="历史记录（点击重放）"
+              >
+                <History className="h-3.5 w-3.5" />
+              </button>
+              {showHistory && (
+                <div className="absolute right-0 bottom-full mb-1 w-64 bg-card border border-border/50 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+                  <div className="px-3 py-1.5 border-b border-border/30 bg-secondary/20 flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">最近查询记录</span>
+                    {history.length > 0 && <button onMouseDown={(e) => { e.preventDefault(); setHistory([]); localStorage.removeItem('quant_screener_history'); apiClient.post('/screener/history', { history: [] }).catch(()=>{}); }} className="text-[9px] text-red-500 hover:underline">清空</button>}
+                  </div>
+                  <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
+                    {history.length === 0 ? (
+                      <div className="text-center text-[10px] text-muted-foreground py-4">暂无历史记录</div>
+                    ) : history.map((h, i) => (
+                      <button key={i} onMouseDown={(e) => { e.preventDefault(); setNlpQuery(h.nlp); setDslQuery(h.dsl); setShowHistory(false); handleTranslate(h.nlp); }} className="w-full text-left px-2 py-1.5 hover:bg-secondary/50 rounded transition-colors flex flex-col gap-0.5 group">
+                        <span className="text-[11px] text-foreground truncate font-medium group-hover:text-primary">{h.nlp}</span>
+                        <span className="text-[9px] text-muted-foreground font-mono truncate">{new Date(h.time).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {isLoading && progress > 0 && (
               <div className="flex items-center gap-1.5 mr-1 bg-background/80 backdrop-blur px-2 py-1 rounded-md">
                 <span className="text-[10px] text-primary font-mono animate-pulse">{scanStatus}</span>
@@ -155,14 +207,35 @@ export function ScreenerQueryPanel() {
                     {data.rag_rules && data.rag_rules.length > 0 && (
                       <details className="group bg-background/50 rounded-lg border border-border/50 shadow-sm overflow-hidden">
                         <summary className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider flex items-center gap-1.5 p-2.5 cursor-pointer select-none hover:bg-secondary/20 transition-colors list-none [&::-webkit-details-marker]:hidden">
-                          <Database className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />RAG 知识库召回依据：<ChevronRight className="h-3 w-3 ml-auto transition-transform duration-200 group-open:rotate-90" />
+                          <Database className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />RAG 知识库召回依据（{data.rag_rules.length} 条）：<ChevronRight className="h-3 w-3 ml-auto transition-transform duration-200 group-open:rotate-90" />
                         </summary>
                         <div className="px-2.5 pb-2.5 pt-0 border-t border-border/30 mt-1">
+                          {/* UIRF-11: 最多显示 3 条 + 查看全部折叠；来源类型徽章 + 相关度分数 */}
                           <ul className="space-y-1.5 mt-2">
-                            {data.rag_rules.map((rule: string, i: number) => (
-                              <li key={i} className="text-[10px] text-muted-foreground/80 font-mono leading-relaxed flex items-start gap-1.5"><span className="text-indigo-500 dark:text-indigo-400 mt-0.5 shrink-0">✦</span><span>{rule.replace(/^- /, '')}</span></li>
-                            ))}
+                            {(ragExpanded ? data.rag_rules : data.rag_rules.slice(0, 3)).map((rule: string, i: number) => {
+                              const src = classifyRag(rule)
+                              const score = ragScore(i, data.rag_rules.length)
+                              return (
+                                <li key={i} className="flex flex-col gap-1 rounded-md border border-border/30 bg-secondary/10 p-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={cn('shrink-0 rounded border px-1 py-px text-[8px] font-semibold', src.cls)}>{src.source}</span>
+                                    <span className="ml-auto shrink-0 rounded border border-border/40 px-1 py-px text-[8px] font-mono text-muted-foreground" title="相关度（启发式估算）">相关度 {score}%</span>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground/80 font-mono leading-relaxed">{rule.replace(/^- /, '')}</span>
+                                </li>
+                              )
+                            })}
                           </ul>
+                          {data.rag_rules.length > 3 && (
+                            <button
+                              type="button"
+                              onClick={() => setRagExpanded((v) => !v)}
+                              className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-md border border-border/30 py-1 text-[9px] text-muted-foreground hover:bg-secondary/30 hover:text-foreground transition-colors"
+                            >
+                              {ragExpanded ? '收起' : `查看全部 ${data.rag_rules.length} 条`}
+                              <ChevronRight className={cn('h-3 w-3 transition-transform', ragExpanded && 'rotate-90')} />
+                            </button>
+                          )}
                         </div>
                       </details>
                     )}
@@ -184,8 +257,78 @@ export function ScreenerQueryPanel() {
                           if (minV !== undefined && maxV !== undefined) valStr = `${formatVal(minV)} ~ ${formatVal(maxV)}`; else if (minV !== undefined) valStr = `≥ ${formatVal(minV)}`; else if (maxV !== undefined) valStr = `≤ ${formatVal(maxV)}`; else if (f.value !== undefined) valStr = `= ${Array.isArray(f.value) ? f.value.join(', ') : f.value}`;
                           const termStr = (f.type === 'financial' && f.term && f.term !== 'ANNUAL') ? ` (${f.term})` : '';
                           if (f.type === 'exclude_plate') return (<span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 shadow-sm">剔除板块: {valStr.replace('= ', '')}</span>);
-                          return (<span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/20 shadow-sm">{fieldName}{termStr}: {valStr}</span>);
+                          // UIRF-09: 条件 chip 可编辑（数值内联编辑 / × 删除）→ 修改即重查
+                          if (editingField === f.field) {
+                            return (
+                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/30 shadow-sm">
+                                {fieldName}{termStr}:
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={editVal}
+                                  onChange={(e) => setEditVal(e.target.value)}
+                                  onBlur={() => {
+                                    const parsed = parseFloat(editVal)
+                                    if (!isNaN(parsed)) {
+                                      updateFilter(data, f.field, (tf) => {
+                                        // 单值编辑：同时放宽上下限到该值（近似，区间则设均值）
+                                        if (tf.min_value !== undefined && tf.max_value !== undefined) { const half = parsed / 2; tf.min_value = half; tf.max_value = half * 3 }
+                                        else if (tf.min_value !== undefined) tf.min_value = parsed
+                                        else if (tf.max_value !== undefined) tf.max_value = parsed
+                                        else tf.value = parsed
+                                      })
+                                    }
+                                    setEditingField(null)
+                                  }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingField(null) }}
+                                  className="w-16 bg-background/60 rounded px-1 py-px text-[10px] font-mono outline-none border border-violet-400/40"
+                                />
+                                <button onClick={() => setEditingField(null)} className="text-violet-400 hover:text-violet-600">✓</button>
+                              </span>
+                            )
+                          }
+                          return (
+                            <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/20 shadow-sm group/chip">
+                              <button
+                                type="button"
+                                onClick={() => { setEditingField(f.field); const v = minV !== undefined ? minV : (maxV !== undefined ? maxV : f.value); setEditVal(String(v ?? '')) }}
+                                className="hover:text-violet-500 transition-colors"
+                                title="点击编辑数值"
+                              >
+                                {fieldName}{termStr}: {valStr}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeFilter(data, f.field)}
+                                className="text-violet-400/60 hover:text-red-400 transition-colors opacity-0 group-hover/chip:opacity-100"
+                                title="删除此条件"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
                         })}
+                        {/* UIRF-09: + 添加条件（输入字段名+值 → 追加过滤重查） */}
+                        <span className="inline-flex items-center gap-1">
+                          <input
+                            type="text"
+                            placeholder="+ 添加条件 如 PE_TTM:30"
+                            onKeyDown={(e) => {
+                              if (e.key !== 'Enter') return
+                              const raw = (e.target as HTMLInputElement).value.trim()
+                              const m = raw.match(/^([A-Za-z0-9_]+)\s*[:=]\s*(\d+(?:\.\d+)?)$/)
+                              if (!m) return
+                              const [, field, valStr] = m
+                              const val = parseFloat(valStr)
+                              const next = JSON.parse(JSON.stringify(data))
+                              next.filters = next.filters || []
+                              next.filters.push({ field, type: 'simple', term: 'ANNUAL', min_value: val })
+                              rerunWithDsl(JSON.stringify(next))
+                              ;(e.target as HTMLInputElement).value = ''
+                            }}
+                            className="w-36 rounded border border-dashed border-violet-400/40 bg-transparent px-1.5 py-0.5 text-[10px] font-mono text-violet-300 placeholder:text-violet-400/40 outline-none focus:border-violet-400"
+                          />
+                        </span>
                       </div>
                       {showRawDsl && (<div className="mt-2.5 p-2 bg-black/40 rounded-md border border-border/40 overflow-x-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 shadow-inner"><pre className="text-[10px] text-violet-300/80 font-mono leading-relaxed">{JSON.stringify(data, null, 2)}</pre></div>)}
                     </div>

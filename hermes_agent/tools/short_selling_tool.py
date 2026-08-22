@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["fundamental", "quote"])  # 卖空拥挤度监控
 class ShortSellingTool(BaseTool):
     """
     G2/F1：港股卖空拥挤度监控（Futu 真卖空源 + HKEX/SFC 监管交叉验证）。

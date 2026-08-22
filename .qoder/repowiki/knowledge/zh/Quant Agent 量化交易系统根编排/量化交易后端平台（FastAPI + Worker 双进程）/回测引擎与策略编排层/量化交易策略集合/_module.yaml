@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/backtest_engine/strategies
+title: 量化交易策略集合
+scope:
+    - backend/strategies/
+source_files: []
+depends_on: []
+related_to: []

@@ -41,8 +41,15 @@ class MemoryOperationsMixin:
         return int(len(raw) / 1.6)
 
     # ── 记忆压缩 ────────────────────────────────────────────────────
-    def _compress_memory(self, max_messages: int = 30, max_tool_len: int = 800, hard_cap_tokens: int = 60000):
-        """上下文记忆智能压缩机制：防止历史记录过长导致 Token 溢出与性能下降"""
+    async def _compress_memory(self, max_messages: int = 30, max_tool_len: int = 800, hard_cap_tokens: int = 60000):
+        """上下文记忆智能压缩机制：防止历史记录过长导致 Token 溢出与性能下降
+
+        AGENT-16: 摘要压缩取代破坏性截断
+        流程：
+          1. 有损压缩：截断非最新轮次的巨型 Tool 返回值
+          2. 摘要压缩：尝试用 Pro 模型将被裁部分生成摘要（写回 messages 头部）
+          3. 滑动窗口：摘要失败或未触发时，才执行破坏性截断（兜底）
+        """
         if len(self.messages) <= 2:
             return
 
@@ -50,8 +57,8 @@ class MemoryOperationsMixin:
         eff_tool_len = 2000 if aggressive else max_tool_len
         eff_max_messages = 20 if aggressive else max_messages
 
-        # 1. 有损压缩：截断非最新轮次的巨型 Tool 返回值
-        from backend.utils.text_utils import safe_truncate
+        # 1. 有损压缩：截断非最新轮次的巨型 Tool 返回值（保留至最后几条，避免误删关键上下文）
+        from backend.core.utils import safe_truncate
 
         for i in range(1, len(self.messages) - 4):
             msg = self.messages[i]
@@ -63,19 +70,59 @@ class MemoryOperationsMixin:
                         suffix="\n... [老旧数据被折叠，省略 {omitted} 字符以释放内存] ...",
                     )
 
-        # 2. 滑动窗口
-        if len(self.messages) > eff_max_messages:
+        # 2. AGENT-16: 摘要压缩优先尝试（取代破坏性截断）
+        summary_succeeded = False
+        try:
+            summary_succeeded = await self._try_compress_with_llm(eff_max_messages, eff_tool_len)
+        except Exception as e:
+            print(f"ℹ️ [Agent-16] 摘要压缩跳过：{e}")
+
+        # 3. 滑动窗口（仅在摘要未成功时执行，作为兆底）
+        if not summary_succeeded and len(self.messages) > eff_max_messages:
             self.console.print(
                 f"[dim yellow]🗜️ [Memory] 上下文达 {len(self.messages)} 条，触发滑动窗口自动瘦身...[/dim yellow]"
             )
             system_msg = [self.messages[0]]
             cut_idx = len(self.messages) - eff_max_messages
-            while cut_idx < len(self.messages) and self.messages[cut_idx].get("role") in ["tool", "assistant"]:
-                cut_idx += 1
+            # AGENT-16: 向后寻找 user 消息作为干净断点（避免截断在 tool/assistant 中间）
+            while cut_idx > 1 and self.messages[cut_idx].get("role") != "user":
+                cut_idx -= 1
+            if cut_idx <= 1:
+                cut_idx = max(1, len(self.messages) - eff_max_messages)
             self.messages = system_msg + self.messages[cut_idx:]
+            # AGENT-01: 压缩只影响运行时窗口，事件日志不被删改，仅记录事件
+            _evlog = getattr(self, "event_log", None)
+            if _evlog is not None:
+                _evlog.record_memory_op("compress", f"window_cut={cut_idx} aggressive={aggressive}")
+
+    async def _try_compress_with_llm(self, max_messages: int, max_tool_len: int) -> bool:
+        """AGENT-16: 尝试摘要压缩（失败则返回 False，由调用方决定 fallback）
+
+        Returns:
+            True: 摘要压缩成功，旧消息已被摘要取代
+            False: 未触发或失败，调用方应执行滑动窗口兆底
+        """
+        from hermes_agent.compact import CompactConfig, ContextCompressor
+
+        config = CompactConfig.from_env()
+
+        compressor = ContextCompressor(
+            llm_client=self.client,
+            event_log=getattr(self, "event_log", None),
+            model=self.model,
+            pro_model=os.getenv("HERMES_COMPACT_PRO_MODEL", "deepseek-pro"),
+            config=config,
+        )
+
+        return await compressor.maybe_compress(
+            messages=self.messages,
+            estimate_tokens_func=self._estimate_tokens,
+            max_messages=max_messages,
+            max_tool_len=max_tool_len,
+        )
 
     # ── 记忆自愈 ────────────────────────────────────────────────────
-    def _heal_memory(self):
+    async def _heal_memory(self):
         """修复因为异常中断导致的孤立 tool_calls 破坏上下文记录的问题"""
         healed = []
         for m in self.messages:
@@ -124,9 +171,14 @@ class MemoryOperationsMixin:
             self.console.print(
                 "\n[dim yellow]🩹 [Memory] 检测到破损的工具调用上下文，已自动完成记忆修复！[/dim yellow]"
             )
+            _heal_delta = len(final_healed) - len(self.messages)
             self.messages = final_healed
+            # AGENT-01: 自愈事件入日志（修复行为本身可审计）
+            _evlog = getattr(self, "event_log", None)
+            if _evlog is not None:
+                _evlog.record_memory_op("heal", f"delta={_heal_delta}")
 
-        self._compress_memory()
+        await self._compress_memory()
 
     # ── 会话持久化 (Redis 热 + PG 冷) ──────────────────────────────
     async def _save_session(self):
@@ -138,7 +190,11 @@ class MemoryOperationsMixin:
             print(f"⚠️ [Memory] 记忆保存失败: {e}")
 
     async def _load_session(self):
-        """从 Redis 加载历史记录。若未命中，尝试从 PostgreSQL 唤醒冷数据"""
+        """
+        三轨冷启动恢复：Redis (热) → PostgreSQL (冷) → Rollout JSONL (持久化事件日志)
+        AGENT-15: 新增 Rollout 第三轨恢复
+        """
+        # ── Track 1: Redis 热数据 ────────────────────────────────
         try:
             raw_data = await self.redis_client.get(self.memory_key)
             if raw_data:
@@ -146,10 +202,13 @@ class MemoryOperationsMixin:
                 self._apply_system_prompt(saved_messages)
                 self.messages = saved_messages
                 print(f"📦 [Memory] 成功从 Redis 加载历史对话，共恢复 {len(self.messages) - 1} 条记录。")
+                # AGENT-15: 同步恢复事件日志（从 Rollout 重放）
+                self._restore_event_log_from_rollout()
                 return
         except Exception as e:
             print(f"⚠️ [Memory] 从 Redis 读取历史失败: {e}")
 
+        # ── Track 2: PostgreSQL 冷数据 ────────────────────────────
         try:
 
             def fetch_db():
@@ -168,11 +227,56 @@ class MemoryOperationsMixin:
                 self.messages = db_messages
                 print(f"🗄️ [Memory] 成功从 PostgreSQL 唤醒冷数据对话，共恢复 {len(self.messages) - 1} 条记录。")
                 await self._save_session()
+                # AGENT-15: 同步恢复事件日志
+                self._restore_event_log_from_rollout()
                 return
         except Exception as e:
             print(f"⚠️ [Memory] 从 PostgreSQL 唤醒冷数据失败: {e}")
 
+        # ── Track 3: AGENT-15 Rollout JSONL 事件日志重放 ───────────
+        if self.session_id and self.session_id != "default":
+            try:
+                from hermes_agent.event_log import SessionEventLog, derive_messages
+
+                rollout_log = SessionEventLog.load_from_rollout(self.session_id)
+                if len(rollout_log) > 0:
+                    # 从事件日志投影出模型可见消息
+                    projected = derive_messages(rollout_log)
+                    if projected:
+                        self._apply_system_prompt(projected)
+                        self.messages = projected
+                        # 恢复事件日志实例（指向同一 rollout）
+                        self.event_log = rollout_log
+                        print(
+                            f"📜 [Memory] AGENT-15: 从 Rollout 重放恢复 {len(rollout_log)} 条事件，"
+                            f"投影出 {len(projected)} 条消息 (session={self.session_id})"
+                        )
+                        await self._save_session()  # 回填 Redis 热缓存
+                        return
+            except Exception as e:
+                print(f"⚠️ [Memory] 从 Rollout 重放恢复失败: {e}")
+
         self.messages = [{"role": "system", "content": self.system_prompt}]
+
+    def _restore_event_log_from_rollout(self):
+        """
+        AGENT-15: 从 Rollout 恢复事件日志实例（当 messages 已从 Redis/PG 恢复时）。
+        确保 event_log 与 messages 同步。
+        """
+        if not self.session_id or self.session_id == "default":
+            return
+        try:
+            from hermes_agent.event_log import SessionEventLog
+
+            if hasattr(self, "event_log") and self.event_log and len(self.event_log) > 0:
+                return  # 事件日志已有数据，无需恢复
+
+            rollout_log = SessionEventLog.load_from_rollout(self.session_id)
+            if len(rollout_log) > 0:
+                self.event_log = rollout_log
+                print(f"📜 [Memory] AGENT-15: 事件日志从 Rollout 恢复 {len(rollout_log)} 条事件")
+        except Exception as e:
+            print(f"⚠️ [Memory] 事件日志恢复失败: {e}")
 
     async def _async_db_upsert(self, session_id: str, messages: list):
         """后台守护任务：将历史记忆异步 Upsert 到 PostgreSQL"""
@@ -280,7 +384,7 @@ class MemoryOperationsMixin:
             self.console.print(
                 f"[red]🚨 [TokenGuard] 单次上下文估算 {est} token 超预算 {max_input_tokens}，强制激进压缩...[/red]"
             )
-            self._compress_memory(hard_cap_tokens=1)
+            await self._compress_memory(hard_cap_tokens=1)
             est = self._estimate_tokens()
             if est > max_input_tokens:
                 raise RuntimeError(

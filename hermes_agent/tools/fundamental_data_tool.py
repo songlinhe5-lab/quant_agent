@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["fundamental"])  # PE/PB/ROE、筹码分布
 class FundamentalDataTool(BaseTool):
     """
     获取标的的核心基本面与筹码数据，用于宏观风控与估值泡沫预警。

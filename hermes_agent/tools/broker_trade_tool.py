@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["trade"])  # OMS 交易执行
 class BrokerTradeTool(BaseTool):
     """
     大模型统一的 OMS (Order Management System) 交互探针。

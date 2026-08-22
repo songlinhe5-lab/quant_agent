@@ -78,6 +78,12 @@ datasource-all = [
 local-embedding = [
     "sentence-transformers>=2.5.0",
 ]
+# Prompt 热更新监听（可选）。hermes_agent.prompt_versioning.PromptHotReloader
+# 依赖 watchdog；未安装时核心版本管理/治理功能不受影响，仅热更新不可用。
+# CI 默认 `uv sync --dev` 不装此 extra，避免引入重型文件系统监听依赖。
+prompt-hotreload = [
+    "watchdog>=3.0.0",
+]
 # ⚠️ 已废弃: 开发依赖统一收口到 [dependency-groups].dev（`uv sync --dev` 安装）。
 # 此 extra 仅为兼容历史命令 `uv sync --extra dev`（如 .github/workflows/eval.yml）而保留，
 # 内容与 dependency-group 保持一致；新增开发工具请只改 [dependency-groups].dev。

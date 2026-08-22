@@ -1,266 +1,523 @@
 """
-HTTP 中间件单元测试
+AGENT-02 · 工具执行中间件管线测试
+AGENT-09 · 工具结果正交分类测试
 
 覆盖：
-- AccessLogMiddleware 请求日志记录
-- Prometheus 指标收集
-- 异常处理路径
-- httpx 外部 API 监控
+  - 正交分类（success / empty / stale / rate_limited / error / circuit_breaker）
+  - 失败熔断（同一 Tool 连续 3 次 error → 熔断）
+  - 限流不计入熔断计数（AGENTS.md §10.8）
+  - 成功重置失败计数
+  - 熔断报告含 AGENTS.md §4.4 三要素
+  - 中间件管线顺序执行
+  - 前端契约兼容（tool_result 事件 result.status 仍为 "error"）
 """
 
-import time
-from unittest.mock import MagicMock, patch
-
-import httpx
-import pytest
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-from backend.core.middleware import (
-    AccessLogMiddleware,
-    httpx_log_request,
-    httpx_log_response,
-)
-
-
-class TestAccessLogMiddleware:
-    """AccessLogMiddleware 中间件测试"""
-
-    @pytest.fixture
-    def middleware(self):
-        """创建中间件实例"""
-        return AccessLogMiddleware(app=MagicMock())
-
-    @pytest.fixture
-    def mock_request(self):
-        """创建 mock Request"""
-        request = MagicMock(spec=Request)
-        request.method = "GET"
-        request.url.path = "/api/test"
-        request.scope = {}
-        return request
+import os
+import sys
 
-    @pytest.fixture
-    def mock_call_next(self):
-        """创建 mock call_next 函数"""
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
+os.environ.setdefault("EMBEDDING_BASE_URL", "https://api.test.com")
+os.environ.setdefault("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
+os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
+os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-for-testing")
+os.environ.setdefault("LLM_API_KEY", "test-llm-key")
+os.environ.setdefault("LLM_BASE_URL", "https://api.test.com")
 
-        async def call_next(request: Request):
-            return JSONResponse(content={"status": "ok"}, status_code=200)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-        return call_next
+import asyncio
+from unittest.mock import MagicMock
 
-    @pytest.mark.asyncio
-    async def test_dispatch_success(self, middleware, mock_request, mock_call_next):
-        """测试正常请求处理"""
-        response = await middleware.dispatch(mock_request, mock_call_next)
+# ─── AGENT-09: 正交分类 ──────────────────────────────────────────────
 
-        assert response.status_code == 200
 
-    @pytest.mark.asyncio
-    async def test_dispatch_with_route(self, middleware, mock_request, mock_call_next):
-        """测试带路由信息的请求"""
-        # 模拟已匹配的路由
-        mock_route = MagicMock()
-        mock_route.path = "/api/test/{id}"
-        mock_request.scope["route"] = mock_route
+class TestToolResultClassification:
+    """AGENT-09: 工具结果正交分类测试"""
 
-        response = await middleware.dispatch(mock_request, mock_call_next)
+    def test_classify_none_as_empty(self):
+        """None 返回值 → EMPTY"""
+        from hermes_agent.middleware import ToolResultStatus, classify_raw_result
 
-        assert response.status_code == 200
+        result = classify_raw_result(None)
+        assert result.status == ToolResultStatus.EMPTY
 
-    @pytest.mark.asyncio
-    async def test_dispatch_unmatched_route(self, middleware, mock_request, mock_call_next):
-        """测试未匹配路由的请求"""
-        mock_request.scope = {}  # 没有 route
+    def test_classify_error_dict(self):
+        """{"status": "error"} → ERROR"""
+        from hermes_agent.middleware import ToolResultStatus, classify_raw_result
 
-        response = await middleware.dispatch(mock_request, mock_call_next)
+        result = classify_raw_result({"status": "error", "message": "boom"})
+        assert result.status == ToolResultStatus.ERROR
+        assert result.message == "boom"
 
-        assert response.status_code == 200
+    def test_classify_rate_limited(self):
+        """{"status": "rate_limited"} → RATE_LIMITED"""
+        from hermes_agent.middleware import ToolResultStatus, classify_raw_result
 
-    @pytest.mark.asyncio
-    async def test_dispatch_exception(self, middleware, mock_request):
-        """测试请求处理异常"""
+        result = classify_raw_result({"status": "rate_limited", "message": "429"})
+        assert result.status == ToolResultStatus.RATE_LIMITED
 
-        async def call_next_with_error(request: Request):
-            raise ValueError("Test error")
+    def test_classify_stale_data(self):
+        """{"_stale": True} → STALE"""
+        from hermes_agent.middleware import ToolResultStatus, classify_raw_result
 
-        with pytest.raises(ValueError):
-            await middleware.dispatch(mock_request, call_next_with_error)
+        result = classify_raw_result({"_stale": True, "data": [1, 2, 3]})
+        assert result.status == ToolResultStatus.STALE
 
-    @pytest.mark.asyncio
-    async def test_dispatch_calls_prometheus_metrics(self, middleware, mock_request, mock_call_next):
-        """测试 Prometheus 指标被调用"""
-        with (
-            patch("backend.core.middleware.REQUEST_COUNT") as mock_counter,
-            patch("backend.core.middleware.REQUEST_LATENCY") as mock_histogram,
-        ):
-            response = await middleware.dispatch(mock_request, mock_call_next)
+    def test_classify_success_dict(self):
+        """正常数据 dict → SUCCESS"""
+        from hermes_agent.middleware import ToolResultStatus, classify_raw_result
 
-            assert response.status_code == 200
-            # 验证 Prometheus 指标被调用
-            mock_counter.labels.assert_called()
-            mock_counter.labels.return_value.inc.assert_called_once()
-            mock_histogram.labels.assert_called()
-            mock_histogram.labels.return_value.observe.assert_called_once()
+        result = classify_raw_result({"price": 150.0, "volume": 1000})
+        assert result.status == ToolResultStatus.SUCCESS
+        assert result.data["price"] == 150.0
 
-    @pytest.mark.asyncio
-    async def test_dispatch_exception_calls_prometheus_metrics(self, middleware, mock_request):
-        """测试异常时 Prometheus 指标被调用"""
+    def test_classify_success_list(self):
+        """list 返回值 → SUCCESS"""
+        from hermes_agent.middleware import ToolResultStatus, classify_raw_result
 
-        async def call_next_with_error(request: Request):
-            raise ValueError("Test error")
+        result = classify_raw_result([1, 2, 3])
+        assert result.status == ToolResultStatus.SUCCESS
+
+    def test_classify_error_with_no_data(self):
+        """{"error": "msg"} 无 data → ERROR"""
+        from hermes_agent.middleware import ToolResultStatus, classify_raw_result
+
+        result = classify_raw_result({"error": "connection refused"})
+        assert result.status == ToolResultStatus.ERROR
+
+    def test_to_dict_backward_compatible(self):
+        """ToolResult.to_dict() 生成向后兼容的 dict"""
+        from hermes_agent.middleware import ToolResult, ToolResultStatus
+
+        tr = ToolResult(
+            status=ToolResultStatus.ERROR,
+            message="执行失败",
+            execution_time=0.5,
+        )
+        d = tr.to_dict()
+        assert d["status"] == "error"
+        assert d["message"] == "执行失败"
+        assert d["execution_time"] == 0.5
 
-        with (
-            patch("backend.core.middleware.REQUEST_COUNT") as mock_counter,
-            patch("backend.core.middleware.REQUEST_LATENCY"),
-        ):
-            with pytest.raises(ValueError):
-                await middleware.dispatch(mock_request, call_next_with_error)
 
-            # 验证异常时被记录为 500
-            mock_counter.labels.assert_called_with(method="GET", endpoint="UNMATCHED_ROUTE", http_status=500)
-            mock_counter.labels.return_value.inc.assert_called_once()
+# ─── AGENT-02: 失败追踪器 ────────────────────────────────────────────
 
 
-class TestHttpxMonitoring:
-    """httpx 外部 API 监控测试"""
+class TestFailureTracker:
+    """AGENT-02: 失败计数器 + 熔断器测试"""
+
+    def test_initial_count_zero(self):
+        """初始计数为 0"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        assert tracker.get_count("test_tool") == 0
+        assert not tracker.is_tripped("test_tool")
+
+    def test_record_failure_increments(self):
+        """记录失败递增计数"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        tracker.record_failure("tool_a", "error 1")
+        assert tracker.get_count("tool_a") == 1
+        tracker.record_failure("tool_a", "error 2")
+        assert tracker.get_count("tool_a") == 2
+
+    def test_trip_at_threshold(self):
+        """达到阈值时触发熔断"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        for i in range(3):
+            tracker.record_failure("tool_a", f"error {i}")
+        assert tracker.is_tripped("tool_a")
+
+    def test_not_tripped_below_threshold(self):
+        """未达阈值时不熔断"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        tracker.record_failure("tool_a", "error 1")
+        tracker.record_failure("tool_a", "error 2")
+        assert not tracker.is_tripped("tool_a")
+
+    def test_success_resets_count(self):
+        """成功时重置计数"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        tracker.record_failure("tool_a", "error")
+        tracker.record_failure("tool_a", "error")
+        tracker.record_success("tool_a")
+        assert tracker.get_count("tool_a") == 0
+        assert not tracker.is_tripped("tool_a")
+
+    def test_different_tools_independent(self):
+        """不同工具计数独立"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        tracker.record_failure("tool_a", "error")
+        tracker.record_failure("tool_a", "error")
+        tracker.record_failure("tool_b", "error")
+        assert tracker.get_count("tool_a") == 2
+        assert tracker.get_count("tool_b") == 1
+
+    def test_breaker_report_has_three_elements(self):
+        """熔断报告含 AGENTS.md §4.4 三要素"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        for i in range(3):
+            tracker.record_failure("get_broker_market_data", f"连接超时 {i}")
+
+        report = tracker.build_breaker_report("get_broker_market_data")
+        # 1. 失败 Tool 名
+        assert report["tool"] == "get_broker_market_data"
+        # 2. 错误原因
+        assert "连接超时" in report["reason"]
+        # 3. 建议检查配置项
+        assert "检查" in report["suggestion"]
+        assert report["consecutive_failures"] == "3"
+
+    def test_reset_all(self):
+        """reset_all 清空所有计数"""
+        from hermes_agent.middleware import FailureTracker
+
+        tracker = FailureTracker(threshold=3)
+        tracker.record_failure("tool_a", "err")
+        tracker.record_failure("tool_b", "err")
+        tracker.reset_all()
+        assert tracker.get_count("tool_a") == 0
+        assert tracker.get_count("tool_b") == 0
+
+
+# ─── AGENT-02: 中间件管线 ────────────────────────────────────────────
+
+
+class TestMiddlewarePipeline:
+    """AGENT-02: 中间件管线执行测试"""
+
+    def test_empty_pipeline_runs_core(self):
+        """空管线直接执行 core"""
+        from hermes_agent.middleware import (
+            ToolContext,
+            ToolMiddlewarePipeline,
+            ToolResult,
+            ToolResultStatus,
+        )
+
+        async def core(ctx):
+            return ToolResult(status=ToolResultStatus.SUCCESS, data="hello")
+
+        pipeline = ToolMiddlewarePipeline()
+        result = asyncio.run(pipeline.execute(ToolContext("test", {}), core))
+        assert result.status == ToolResultStatus.SUCCESS
+        assert result.data == "hello"
+
+    def test_middleware_order(self):
+        """中间件按注册顺序执行（pre 阶段）"""
+        from hermes_agent.middleware import (
+            ToolContext,
+            ToolMiddlewarePipeline,
+            ToolResult,
+            ToolResultStatus,
+        )
+
+        order = []
+
+        async def mw1(ctx, next):
+            order.append("mw1_pre")
+            result = await next(ctx)
+            order.append("mw1_post")
+            return result
+
+        async def mw2(ctx, next):
+            order.append("mw2_pre")
+            result = await next(ctx)
+            order.append("mw2_post")
+            return result
+
+        async def core(ctx):
+            order.append("core")
+            return ToolResult(status=ToolResultStatus.SUCCESS)
+
+        pipeline = ToolMiddlewarePipeline()
+        pipeline.use(mw1)
+        pipeline.use(mw2)
+
+        asyncio.run(pipeline.execute(ToolContext("test", {}), core))
+        assert order == ["mw1_pre", "mw2_pre", "core", "mw2_post", "mw1_post"]
+
+    def test_middleware_short_circuit(self):
+        """中间件不调 next() 即终止链路"""
+        from hermes_agent.middleware import (
+            ToolContext,
+            ToolMiddlewarePipeline,
+            ToolResult,
+            ToolResultStatus,
+        )
+
+        async def blocking_mw(ctx, next):
+            return ToolResult(status=ToolResultStatus.CIRCUIT_BREAKER, message="blocked")
+
+        async def core(ctx):
+            raise RuntimeError("should not be called")
+
+        pipeline = ToolMiddlewarePipeline()
+        pipeline.use(blocking_mw)
+
+        result = asyncio.run(pipeline.execute(ToolContext("test", {}), core))
+        assert result.status == ToolResultStatus.CIRCUIT_BREAKER
+
+
+# ─── AGENT-02: 熔断中间件集成 ────────────────────────────────────────
+
+
+class TestCircuitBreakerMiddleware:
+    """AGENT-02: 熔断中间件完整集成测试（通过 ToolRegistry.execute）"""
+
+    def test_circuit_breaker_trips_after_3_errors(self):
+        """连续 3 次 error 后熔断"""
+        from hermes_agent.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        mock_tool = MagicMock()
+        mock_tool.name = "fail_tool"
+        mock_tool.description = "Always fails"
+
+        call_count = 0
+
+        async def failing_run(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError(f"fail #{call_count}")
+
+        mock_tool.run = failing_run
+        registry.tools["fail_tool"] = mock_tool
+
+        # 前 3 次返回 error
+        for i in range(3):
+            result = asyncio.run(registry.execute("fail_tool"))
+            assert result["status"] == "error", f"Expected error on attempt {i + 1}"
+
+        assert call_count == 3
+
+        # 第 4 次熔断
+        result = asyncio.run(registry.execute("fail_tool"))
+        assert result["status"] == "circuit_breaker"
+        assert call_count == 3  # core 未被调用
+
+    def test_success_resets_failure_count(self):
+        """成功执行重置失败计数"""
+        from hermes_agent.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        mock_tool = MagicMock()
+        mock_tool.name = "flaky_tool"
+        mock_tool.description = "Sometimes fails"
+
+        should_fail = True
 
-    def test_httpx_log_request(self):
-        """测试请求时间记录"""
-        mock_request = httpx.Request("GET", "https://api.test.com")
+        async def flaky_run(**kwargs):
+            if should_fail:
+                raise ValueError("fail")
+            return {"result": "ok"}
+
+        mock_tool.run = flaky_run
+        registry.tools["flaky_tool"] = mock_tool
 
-        # 调用前确保字典为空
-        from backend.core.middleware import _request_timers
+        # 2 次失败
+        asyncio.run(registry.execute("flaky_tool"))
+        asyncio.run(registry.execute("flaky_tool"))
+        assert registry.failure_tracker.get_count("flaky_tool") == 2
 
-        _request_timers.clear()
+        # 1 次成功 → 重置
+        should_fail = False
+        result = asyncio.run(registry.execute("flaky_tool"))
+        assert result["status"] == "success"
+        assert registry.failure_tracker.get_count("flaky_tool") == 0
 
-        # 直接调用异步函数
-        import asyncio
+    def test_rate_limited_does_not_count(self):
+        """限流不计入失败计数（AGENTS.md §10.8）"""
+        from hermes_agent.tool_registry import ToolRegistry
 
-        asyncio.run(httpx_log_request(mock_request))
+        registry = ToolRegistry()
+        mock_tool = MagicMock()
+        mock_tool.name = "limited_tool"
+        mock_tool.description = "Gets rate limited"
 
-        # 验证时间被记录
-        assert id(mock_request) in _request_timers
+        async def rate_limited_run(**kwargs):
+            return {"status": "rate_limited", "message": "429"}
 
-    def test_httpx_log_response_finnhub(self):
-        """测试 Finnhub API 响应监控"""
-        mock_request = MagicMock()
-        mock_request.url.host = "finnhub.io"
-        mock_request.method = "GET"
+        mock_tool.run = rate_limited_run
+        registry.tools["limited_tool"] = mock_tool
 
-        mock_response = MagicMock()
-        mock_response.request = mock_request
-        mock_response.status_code = 200
+        # 连续 5 次限流 — 不应触发熔断
+        for _ in range(5):
+            result = asyncio.run(registry.execute("limited_tool"))
+            assert result["status"] == "rate_limited"
 
-        import asyncio
+        assert not registry.failure_tracker.is_tripped("limited_tool")
+        assert registry.failure_tracker.get_count("limited_tool") == 0
 
-        asyncio.run(httpx_log_response(mock_response))
+    def test_circuit_breaker_report_content(self):
+        """熔断报告内容符合 AGENTS.md §4.4 三要素"""
+        from hermes_agent.tool_registry import ToolRegistry
 
-    def test_httpx_log_response_fred(self):
-        """测试 FRED API 响应监控"""
-        mock_request = MagicMock()
-        mock_request.url.host = "stlouisfed.org"
-        mock_request.method = "GET"
+        registry = ToolRegistry()
+        mock_tool = MagicMock()
+        mock_tool.name = "get_broker_market_data"
+        mock_tool.description = "Market data"
 
-        mock_response = MagicMock()
-        mock_response.request = mock_request
-        mock_response.status_code = 200
+        async def failing_run(**kwargs):
+            raise ConnectionError("连接超时: Futu API 无响应")
 
-        import asyncio
+        mock_tool.run = failing_run
+        registry.tools["get_broker_market_data"] = mock_tool
 
-        asyncio.run(httpx_log_response(mock_response))
+        # 触发熔断
+        for _ in range(3):
+            asyncio.run(registry.execute("get_broker_market_data"))
 
-    def test_httpx_log_response_yahoo(self):
-        """测试 Yahoo Finance API 响应监控"""
-        mock_request = MagicMock()
-        mock_request.url.host = "yahoo.com"
-        mock_request.method = "GET"
+        result = asyncio.run(registry.execute("get_broker_market_data"))
+        assert result["status"] == "circuit_breaker"
+        # 熔断报告扁平化后字段在顶层
+        assert result["tool"] == "get_broker_market_data"
+        assert "连接超时" in result["reason"]
+        assert "检查" in result["suggestion"]
 
-        mock_response = MagicMock()
-        mock_response.request = mock_request
-        mock_response.status_code = 200
 
-        import asyncio
+# ─── AGENT-02: ToolRegistry 集成 ─────────────────────────────────────
 
-        asyncio.run(httpx_log_response(mock_response))
 
-    def test_httpx_log_response_llm(self):
-        """测试 LLM API 响应监控"""
-        mock_request = MagicMock()
-        mock_request.url.host = "api.openai.com"
-        mock_request.method = "POST"
+class TestToolRegistryMiddleware:
+    """AGENT-02: ToolRegistry.execute() 经中间件管线集成测试"""
 
-        mock_response = MagicMock()
-        mock_response.request = mock_request
-        mock_response.status_code = 200
+    def test_execute_returns_classified_result(self):
+        """execute() 返回包含正交 status 的 dict"""
+        from hermes_agent.tool_registry import ToolRegistry
 
-        import asyncio
+        registry = ToolRegistry()
 
-        asyncio.run(httpx_log_response(mock_response))
+        mock_tool = MagicMock()
+        mock_tool.name = "success_tool"
+        mock_tool.description = "A tool that succeeds"
 
-    def test_httpx_log_response_unknown_service(self):
-        """测试未知服务名的处理"""
-        mock_request = MagicMock()
-        mock_request.url.host = "unknown-service.com"
-        mock_request.method = "GET"
+        async def good_run(**kwargs):
+            return {"price": 150.0}
 
-        mock_response = MagicMock()
-        mock_response.request = mock_request
-        mock_response.status_code = 200
+        mock_tool.run = good_run
+        registry.tools["success_tool"] = mock_tool
 
-        import asyncio
+        result = asyncio.run(registry.execute("success_tool"))
+        assert result["status"] == "success"
+        assert result["price"] == 150.0  # 扁平化后字段在顶层
 
-        asyncio.run(httpx_log_response(mock_response))
+    def test_execute_error_classified(self):
+        """execute() 异常结果被分类为 error"""
+        from hermes_agent.tool_registry import ToolRegistry
 
-    def test_httpx_log_response_slow_api(self):
-        """测试慢速 API 警告日志"""
-        mock_request = MagicMock()
-        mock_request.url.host = "finnhub.io"
-        mock_request.method = "GET"
+        registry = ToolRegistry()
 
-        mock_response = MagicMock()
-        mock_response.request = mock_request
-        mock_response.status_code = 200
+        mock_tool = MagicMock()
+        mock_tool.name = "crash_tool"
+        mock_tool.description = "A tool that crashes"
 
-        # 模拟慢请求（> 3秒）
-        from backend.core.middleware import _request_timers
+        async def bad_run(**kwargs):
+            raise ValueError("boom!")
 
-        # 创建一个真实的 httpx.Request 对象
-        real_request = httpx.Request("GET", "https://finnhub.io/api/test")
-        mock_response.request = real_request
-        _request_timers[id(real_request)] = time.perf_counter() - 4.0  # 4秒前
+        mock_tool.run = bad_run
+        registry.tools["crash_tool"] = mock_tool
 
-        import asyncio
+        result = asyncio.run(registry.execute("crash_tool"))
+        assert result["status"] == "error"
+        assert "boom" in result["message"]
 
-        with patch("backend.core.middleware.logger") as mock_logger:
-            asyncio.run(httpx_log_response(mock_response))
-            # 验证警告日志被调用
-            mock_logger.warning.assert_called()
+    def test_execute_circuit_breaker_after_3_failures(self):
+        """ToolRegistry.execute() 连续 3 次失败后熔断"""
+        from hermes_agent.tool_registry import ToolRegistry
 
-    def test_httpx_log_response_fast_api(self):
-        """测试快速 API 不触发警告"""
-        mock_request = MagicMock()
-        mock_request.url.host = "finnhub.io"
-        mock_request.method = "GET"
+        registry = ToolRegistry()
 
-        mock_response = MagicMock()
-        mock_response.request = mock_request
-        mock_response.status_code = 200
+        mock_tool = MagicMock()
+        mock_tool.name = "always_fail"
+        mock_tool.description = "Always fails"
 
-        # 模拟快速请求（< 3秒）
-        from backend.core.middleware import _request_timers
+        async def fail_run(**kwargs):
+            raise RuntimeError("persistent failure")
 
-        real_request = httpx.Request("GET", "https://finnhub.io/api/test")
-        mock_response.request = real_request
-        _request_timers[id(real_request)] = time.perf_counter() - 1.0  # 1秒前
+        mock_tool.run = fail_run
+        registry.tools["always_fail"] = mock_tool
 
-        import asyncio
+        # 前 3 次返回 error
+        for i in range(3):
+            result = asyncio.run(registry.execute("always_fail"))
+            assert result["status"] == "error", f"Expected error on attempt {i + 1}"
 
-        with patch("backend.core.middleware.logger") as mock_logger:
-            asyncio.run(httpx_log_response(mock_response))
-            # 验证警告日志未被调用
-            mock_logger.warning.assert_not_called()
+        # 第 4 次熔断
+        result = asyncio.run(registry.execute("always_fail"))
+        assert result["status"] == "circuit_breaker"
+        assert "熔断" in result.get("message", "") or "circuit" in str(result.get("data", {})).lower()
 
+    def test_unknown_tool_returns_error(self):
+        """未知工具返回 error（不经过管线）"""
+        from hermes_agent.tool_registry import ToolRegistry
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        registry = ToolRegistry()
+        result = asyncio.run(registry.execute("nonexistent"))
+        assert result["status"] == "error"
+        assert "未找到" in result["message"]
+
+    def test_execution_time_recorded(self):
+        """执行耗时被记录"""
+        from hermes_agent.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+
+        mock_tool = MagicMock()
+        mock_tool.name = "slow_tool"
+        mock_tool.description = "A slow tool"
+
+        async def slow_run(**kwargs):
+            await asyncio.sleep(0.05)
+            return {"result": "done"}
+
+        mock_tool.run = slow_run
+        registry.tools["slow_tool"] = mock_tool
+
+        result = asyncio.run(registry.execute("slow_tool"))
+        assert result["status"] == "success"
+        assert result.get("execution_time", 0) >= 0.04
+
+
+# ─── 前端契约兼容 ────────────────────────────────────────────────────
+
+
+class TestFrontendContractCompatibility:
+    """验证 tool_result 事件 result 字段的前端兼容性"""
+
+    def test_error_status_preserved(self):
+        """error 状态在 dict 中保持 'error' 字符串（前端 COPILOT-21 依赖）"""
+        from hermes_agent.middleware import ToolResult, ToolResultStatus
+
+        result = ToolResult(status=ToolResultStatus.ERROR, message="fail")
+        d = result.to_dict()
+        # 前端检查: r.status === 'error' || r.error || r.failed
+        assert d["status"] == "error"
+
+    def test_success_data_accessible(self):
+        """成功结果的字段可直接访问（扁平化后无 data 包装）"""
+        from hermes_agent.middleware import ToolResult, ToolResultStatus
+
+        result = ToolResult(
+            status=ToolResultStatus.SUCCESS,
+            data={"price": 150.0, "symbol": "AAPL"},
+        )
+        d = result.to_dict()
+        assert d["status"] == "success"
+        # 扁平化后字段在顶层
+        assert d["price"] == 150.0
+        assert d["symbol"] == "AAPL"

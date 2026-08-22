@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/datasource_market_data/datasource_facade_core
+title: 数据源门面与限流熔断核心框架
+scope:
+    - backend/services/datasource/
+source_files: []
+depends_on: []
+related_to: []

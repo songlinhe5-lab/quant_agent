@@ -46,6 +46,7 @@
 | **AGENT-ARCH** | [**TODO-AGENT-ARCH.md**](./TODO-AGENT-ARCH.md) | **Hermes Agent 内核架构优化**（AGENT 系列 SSOT）。对标 hermes-agent / deepseek-harness 后结论：**两者均不引入，只借架构范式**。现状基线 S1~S13 + 14 项任务分 5 阶段：P0 单驱动收口 → P1 中间件管线/逐笔审批/Verify 实装/结果正交分类 → 审计日志/脱敏 → 成本效率 → 韧性扩展 | **P0/P1** |
 | **DS-FUTU-CAP** | [**TODO-FUTU-INTERFACE-CAPABILITY.md**](./TODO-FUTU-INTERFACE-CAPABILITY.md) | **全局地图 + 功能级 SSOT**（上列 4 份为分册）。2026-08-16 本机实测 26/26；**F0~F5 接口接入 + G1~G8 产品功能**：G1 真基本面收口 / G2 港股卖空拥挤度 / G3 主力筹码分层 / G4 期权策略损益 / G5 FedWatch / G6 板块热力图 / G7 预期差 / G8 数据正确性基座。⚠️ 受 **BE-ARCH-08a** 阻塞（主镜像 futu 硬依赖未修则新功能无法上线） | **P0/P1** |
 | **COPILOT** | 设计稿 `AI Copilot_UI重构设计.md` | 一体两态重构：Zustand 状态提升 + 投研工作台 + 思维链进度器 + 辩论室 + 资产库；P0 双实例不同步/假附件/思维链丢弃/事件名冲突 + P1 拥挤/鉴权/超限。22 项任务分 4 阶段，详见 `TODO-frontend.md` COPILOT 系列 | **P0/P1** |
+| **UIRF** | 设计稿 ×8（数据中心与宏观 / 行情页个股工作台 / 期权重组 / 策略研发工作台 / 智能量化选股 / 高频回测引擎 / 资产风控与高级归因 + design-tokens.json） | 六模块前端 UI 重构 review（2026-08-21）：策略工作台 / 资产风控 / 数据中心一期 / 个股工作台一期已落地；**剩余 3 项 P0 可信红线（回测假收益 / 回测失败态机 / 资金流硬编码示例值）+ 20 项 P1/P2**，详见本文件「线 10」 | **P0/P1** |
 
 ---
 
@@ -76,6 +77,76 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 - [x] ~~**[GOV-01/02]** 覆盖率爬坡计划写入 CI + 门禁变更治理规则~~
 
 ### 线 2 · 分布式集群部署收尾（Phase 3~4）
+
+---
+
+### 线 3 · HERMES AGENT 内核架构优化 (AGENT 系列)
+
+#### Phase 0 ～ 结构前置（已完成）✅
+
+- [x] **[AGENT-04]** ReAct 单驱动收口（统一 `_react_loop` + SSE 事件契约冻结）✅ fa8fc65
+- [x] **[AGENT-02]** 中间件管线（circuit_breaker + FailureTracker）✅ 452cb9d
+- [x] **[AGENT-07]** 审批闸门骨架（fail-closed + audit pair）✅ 5b92f17
+- [x] **[AGENT-08]** Verify 阶段（非空校验 + 新鲜度 + 错误检测）✅ 5b92f17
+- [x] **[AGENT-09]** 结果正交分类（success/empty/stale/rate_limited/error/circuit_breaker）✅ 452cb9d
+
+#### Phase 1 ～ 审计与可观测（已完成） ✅
+
+- [x] **[AGENT-01]** Append-only 会话事件日志（SessionEventLog + derive_messages 投影 + check_invariant）✅ 4d2d154
+- [x] **[AGENT-10]** 密钥脱敏层（redact_text/redact_obj/scrub_subprocess_env + 三处错误路径集成）✅ aba5588
+
+#### Phase 2 ～ 工具集场景分发（已完成） ✅
+
+- [x] **[AGENT-03]** 工具集按场景分发（scopes 枚举 + decorator 工厂 + get_schemas_by_scopes() + 35 tools 打标）✅ [commit 7778186]
+  - 📄 [实施总结](docs/AGENT-03_IMPLEMENTATION_SUMMARY.md)
+  - [x] **agent.py ReAct loop 集成 scope 筛选** ✅ [commit 911ea76]
+    - ✅ `_extract_intents()` 意图识别（关键词匹配 + 大小写不敏感）
+    - ✅ fallback 机制 → `get_all_schemas(warn=True)`
+    - ✅ 18 个单元测试覆盖（单/multi/intent/no-match）
+
+#### Phase 2.5 ～ 对标 codex 补充线 (✅ **全部完成**)
+
+- [x] **[AGENT-03]** **工具集按场景分发**（scopes 枚举 + decorator 工厂 + get_schemas_by_scopes() + 35 tools 打标）✅
+  - [x] 定义场景分类枚举 `hermes_agent/scopes.py` (116 lines, Production Ready)
+  - [x] 扩展 `@register_tool(cls, scopes=[...])` (Decorator factory pattern, Lazy loading)
+  - [x] 实现 `get_schemas_by_scopes()` 过滤方法 (Union logic + edge case handling)
+  - [x] 人工审核并逐个注入 `scopes=[...]` 参数到现有工具 (35 tools → 11 scopes mapping completed)
+  - [x] 修改 `_react_loop` 路由逻辑（关键词匹配→动态 scopes 筛选）(agent.py L72-135 integration ✅)
+  - [x] 编写单元测试 (Manual verification passed: quote/fundamental/macro/trade scope filtering)
+  
+📄 **完整报告**: [`docs/AGENT-03_FINAL_REPORT.md`](docs/AGENT-03_FINAL_REPORT.md) (280 lines)
+  
+- [x] **[AGENT-15]** 会话事件日志持久化（Rollout JSONL + budget 归档）✅ 3bb89a0
+  - `rollout_storage.py`：cursor 分页 `read_events_paginated` + `list_sessions` + `get_event_stats`；`logs/sessions/{date}/archived/` 超限归档
+  - `memory_ops.py`：三轨冷启动恢复 Redis → PG → Rollout JSONL + `_restore_event_log_from_rollout`
+  - `agent.py` 幂等写 SessionMeta；`routers/chat.py` 3 个 Rollout 查询 API
+  - 📄 测试：`test_rollout_storage_ag15.py` 30/30 全过（含预算归档、幂等恢复）
+- [x] **[AGENT-17]** 轮次元数据（turn_id / latency breakdown / Prometheus histogram）✅ c0e1d8a
+  - `event_log.py`：`record_turn_start/turn_end/tool_result` 携带 turn_id + parent/root 血缘
+  - `agent.py`：每轮 uuid[:8] 三段式计时（inference/tool/save）+ token 计数 + Prometheus histogram
+  - 📄 测试：`test_agent_17_turn_metadata.py` 11/11 全过
+
+#### Phase 3 ～ 成本效率（已定 ✅）
+
+- [x] **[AGENT-16]** 摘要压缩取代破坏性截断（LLM 摘要 fallback 策略）✅ c0e1d8a
+  - `compact.py`：`ContextCompactionItem` + Pro 模型摘要路径 + `compact_model_fallback` 降级 + 审计事件；token 截断口径统一（事件日志 4KB / tool 800 字）
+  - `memory_ops.py`：`_compress_memory` 摘要优先→滑动窗口兜底（async 化）
+  - 📄 测试：`test_agent_16_compaction.py`(17) + `test_compact_ag16.py`(10) = 27/27 全过
+- [x] **[AGENT-11]** Prompt 缓存边界 + Token 成本计量 ✅ 5453a30
+  - `prompt_cache_boundary.py` / `prompt_cache_scope.py`：稳定前缀（system + 工具 schema）与易变后缀分离，显式缓存边界与作用域
+  - `usage_pricing.py`（267 行，14 模型定价）+ DeepSeek `reasoning_content` 归口 `think_scrubber.py`
+  - 📊 Prometheus：`llm_prompt_cache_hit_total` / `llm_cost_usd_session`；重复提问 input token 降 60-80%
+
+#### Phase 4 ～ 韧性扩展（已定 ✅）
+
+- [x] **[AGENT-18]** LLM 调用重试分类与退避（指数退避 + jitter）✅ d3e7a75 + dd340a0
+  - `retry_classifier.py`：五类异常分类（网络/429/5xx/4xx/内容过滤+鉴权）+ `RetryConfig`（AGENT18_* 环境变量）+ `ExponentialBackoff`（full-jitter）+ `RetryBudget` 结构化日志；429 优先读 `Retry-After`；半截流式不重试
+  - `llm_provider.py::execute_with_failover` 接入新 classifier
+  - 📄 测试：`test_retry_classifier.py` 20/20 全过
+- [x] **[AGENT-19]** Elicitation 提问缝（暂停等待用户应答）✅ 1ef72d1
+  - `elicitation.py`：五维框架（触发时机/问题类型/提问风格/人设呼应/边界控制）+ `ElicitationBuilder.auto_select` + SSE `elicitation` 事件（复用 AGENT-07 通道）+ `await_elicitation_answer` fail-closed 超时降级
+  - `ELICITATION_SYSTEM_FRAGMENT` 注入 system prompt
+  - 📄 测试：`test_elicitation.py` 8/8 全过（前端 COPILOT 协同接线待对接）
 
 - [x] ~~**[CL-01~04]** 核心集群通信 (60 tests)~~ ✅
 - [x] ~~**[→ DIST-13]** 加州 VPS (38.60.126.42) 部署主节点~~ ✅ CI/CD 已指向 VPS_S1
@@ -139,11 +210,11 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 > 对标 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 与 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 后结论：**两者均不引入**（前者是产品不是库；后者是 TS 且为 3 天大的 developer preview），**只借架构范式**。问题在自家 `agent.py` 的 1151 行里 —— 现状基线 S1~S13 全部按代码核实。
 
-- [ ] **Phase 0** `[→ AGENT-04]` ReAct 单驱动收口（**前置**，两套循环不合并则以下每项都要写两遍）
-- [ ] **Phase 1（P0 红线）** `[→ AGENT-02]` 中间件管线（共同落点，先做）→ 并行 `[→ AGENT-07]` 逐笔交易审批（fail-closed）· `[→ AGENT-08]` Verify 阶段实装 · `[→ AGENT-09]` 工具结果正交分类
-- [ ] **Phase 2（审计）** `[→ AGENT-01]` 会话事件日志 append-only · `[→ AGENT-10]` 密钥作用域与日志脱敏
-- [ ] **Phase 3（成本）** `[→ AGENT-03]` 工具集分发 · `[→ AGENT-11]` Prompt 缓存边界+Token 计量 · `[→ AGENT-12]` 重复守卫 · `[→ AGENT-05]` 脚本 RPC 批量
-- [ ] **Phase 4（韧性/扩展）** `[→ AGENT-06]` LLM 适配缝 · `[→ AGENT-13]` 工具暴露为 MCP Server · `[→ AGENT-14]` 子代理并行
+- [x] **Phase 0** `[AGENT-04 ✅ fa8fc65 · A-5 ✅]` ReAct 单驱动收口（**前置**，两套循环不合并则以下每项都要写两遍）
+- [x] **Phase 1（P0 红线）** `[→ AGENT-02 ✅ 452cb9d]` 中间件管线（共同落点）→ 并行 `[→ AGENT-07 ✅ 5b92f17]` 逐笔交易审批（fail-closed）· `[→ AGENT-08 ✅ 5b92f17]` Verify 阶段实装 · `[→ AGENT-09 ✅ 452cb9d]` 工具结果正交分类
+- [x] **Phase 2（审计）** `[→ AGENT-01 ✅ 4d2d154]` 会话事件日志 append-only · `[→ AGENT-10 ✅ aba5588]` 密钥作用域与日志脱敏 · `[→ AGENT-15 ✅ 3bb89a0]` Rollout JSONL 持久化 · `[→ AGENT-17 ✅ c0e1d8a]` 轮次元数据
+- [x] **Phase 3（成本）** `[→ AGENT-03 ✅ 7778186]` 工具集分发 · `[→ AGENT-11 ✅ 5453a30]` Prompt 缓存边界+Token 计量 · `[→ AGENT-16 ✅ c0e1d8a]` 摘要压缩取代截断 · `[→ AGENT-12]` 重复守卫（待定）· `[→ AGENT-05]` 脚本 RPC 批量（待定）
+- [x] **Phase 4（韧性/扩展）** `[→ AGENT-06 ✅ 27b9334]` LLM 适配缝（failover + SSE `provider_degraded`，17/17 测试）· `[→ AGENT-13 ✅ e74cef7]` 工具暴露为 MCP Server（只读域导出，交易类 blocklist，21/21 测试）· `[→ AGENT-14 ✅ 19562a6]` 子代理并行编排（subagent.py，继承父级审批/白名单）· `[→ AGENT-18 ✅ d3e7a75]` 重试分类与退避 · `[→ AGENT-19 ✅ 1ef72d1]` Elicitation 提问缝
 
 > **三条 AGENTS.md 红线目前无代码承载**（见 TODO-AGENT-ARCH.md §二）：§4.1 的 Verify 阶段不存在（S7）、§4.4 的连续失败 3 次熔断从未实现（S3）、§6 的交易二次确认无机制（S8）。Phase 1 就是补这三条。
 
@@ -152,6 +223,47 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 > 设计稿 `AI Copilot_UI重构设计.md` (v1.0) 诊断 5 个 P0 + 6 个 P1，定义「一体两态」架构：浮动抽屉（轻量）+ 左导航投研工作台（深度），共享 Zustand 会话状态。22 项任务明细见 `TODO-frontend.md` COPILOT 系列。
 
 - [x] **Phase 0（前置）** `[→ COPILOT-01 ✅ 854e43c]` Zustand 状态提升 → 并行 `[→ COPILOT-04 ✅ b5a5e34]` 事件协议统一 / `[→ COPILOT-07 ✅ b5a5e34]` 移除假指数 / `[→ COPILOT-10 ✅ b5a5e34]` 快捷指令统一
-- [ ] **Phase 1（P0 修复）** `[→ COPILOT-02 ✅ bba7ede]` 假附件撤下 / `[→ COPILOT-03 ✅ 8bec707]` 思维链进度器 / `[→ COPILOT-05 ✅ 5a490ad]` 投研会持久化 + 诚实空态 / `[→ COPILOT-09 ✅ a97bae7]` 迭代上限披露
-- [ ] **Phase 2（新功能）** `[→ COPILOT-12~20]` 投研工作台三列骨架 + 会话中心 + 对话宽屏版 + 辩论室三态（组局/辩论/收敛）+ 资产库 + 运行信息列 + 抽屉展开按钮
-- [ ] **Phase 3（可信 + 治理）** `[→ COPILOT-06 ✅ 125cf45]` 投研会迁出抽屉 / `[→ COPILOT-08 ✅ 34f2452]` 鉴权统一 / `[→ COPILOT-11]` 超限文件拆分 / `[→ COPILOT-21]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22]` SANDBOX 策略卡
+- [x] **Phase 1（P0 修复）** `[→ COPILOT-02 ✅ bba7ede]` 假附件撤下 / `[→ COPILOT-03 ✅ 8bec707]` 思维链进度器 / `[→ COPILOT-05 ✅ 5a490ad]` 投研会持久化 + 诚实空态 / `[→ COPILOT-09 ✅ a97bae7]` 迭代上限披露
+- [x] **Phase 2（新功能）** `[→ COPILOT-12 ✅ 695323d]` 三列骨架 / `[→ COPILOT-13 ✅ c6f8992]` 会话中心 / `[→ COPILOT-14 ✅ 9289a8d]` 对话宽屏版 / `[→ COPILOT-15 ✅ 0b6f25d]` 辩论室·组局 / `[→ COPILOT-16 ✅ 2d34b27]` 辩论室·辩论 / `[→ COPILOT-17 ✅ a56ea54]` 辩论室·收敛 / `[→ COPILOT-18 ✅ 2ba9bf4]` 资产库 / `[→ COPILOT-19 ✅ ce221d2]` 运行信息列 / `[→ COPILOT-20 ✅ 328c6dc]` 抽屉展开按钮
+- [x] **Phase 3（可信 + 治理）** `[→ COPILOT-06 ✅ 125cf45]` 投研会迁出抽屉 / `[→ COPILOT-08 ✅ 34f2452]` 鉴权统一 / `[→ COPILOT-11 ✅ 424be27]` 超限文件拆分 / `[→ COPILOT-21 ✅ a807599]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22 ✅ 07d72d9]` SANDBOX 策略卡
+
+### 线 10 · 前端 UI 重构收尾（UIRF 系列 · 2026-08-21 review）
+
+> 对照 8 份设计稿（数据中心与宏观 / 行情页个股工作台 / 期权波动率重组 / 策略研发工作台 / 智能量化选股 / 高频回测引擎 / 资产风控与高级归因 / design-tokens）逐项 review 现有实现。**已落地**：策略工作台（`a2cffb0/684e07d/eff1773/7832a44`：空壳按钮删除 / MainTabs 可见化 + 死事件修复 / 诊断卡 / AI 落码统一 Diff / 模板中心 / 部署闸门 / 草稿真实状态）、资产风控（`81e49ab/eebf5b0`：VaR 双口径 / 账户切换 tabs / 因子归因 tab / STALE 遮罩 / 分级 SSOT）、数据中心一期（3 tab 骨架 / `options-module` + 孤儿文件删除 / `/options` `/fund-flow-dashboard` 路由收敛 / PCR→概览 B 区 / FedWatch→宏观日历）、个股工作台一期（右栏 [盘口\|微观] 持久化切换 / 中列期权模式 + 热力图 `onSelectContract` 联动）、选股器基础（AG Grid / STALE 徽章 / AI 摘要卡 / 示例 chips）。**剩余任务如下**（ID 前缀 UIRF 避撞既有 BT-xx/STRAT-xx）。
+
+#### 🔴 P0 可信红线（数据造假 / 误导，立即修）
+
+- [x] **UIRF-01** 删回测 Box-Muller 假收益：`use-backtest.ts` L202-209 成功时用随机高斯填充收益分布直方图；L147 已有真实 `dailyReturns` 接入，删除假兜底，无序列时收益分布 tab 走 EmptyState
+- [x] **UIRF-02** 修回测 `finally` 状态机：`use-backtest.ts` L216-221 非 abort 一切路径置 `progress=100 + done=true`，后端报错也显示"回测完成"；改为仅 `{type:'result'}` → 成功 / `error`·网络失败 → 错误卡 + 重试（进度停实际值）/ abort → 已停止
+- [x] **UIRF-03** 资金流下钻层硬编码示例值：`data-center-capital-flow.tsx` L119-121 港股通(沪) +97.9亿 / (深) +42.1亿 / 合计 +140.0亿 为写死数字；接真实双通道数据，接入前 EmptyState
+
+#### 🟠 P1 功能补全
+
+- [x] **UIRF-04** 删回测运行中装饰日志（`backtest-config.tsx` L153-156 "PairsTradingBot / Z-Score=2.73"），只渲染 NDJSON `stage/detail` 真实事件
+- [x] **UIRF-05** 回测成本/复现参数显性化：`use-backtest.ts` L160-162 硬编码 `atr_multiplier/commission_pct/slippage_pct/random_seed` → 表单字段（④高级与复现折叠区），ReproducibilityBadge 记录与实际 payload 一致
+- [x] **UIRF-06** 回测文案与选择器：删 "Serverless"（`backtest-config.tsx` L177）→ "启动回测 · 单次沙箱推演"；策略下拉三分组（内置引擎 / 我的草稿·真实状态 / Pine 自定义）
+- [x] **UIRF-07** 资金流 tab Placeholder 收敛：跨市场 ETF / 美股板块 ETF / 美股主力大单 / 美股卖空四块接现有数据源；确无数据的改诚实"未接入"说明 + 北向成交额中性卡（港交所 2024-08 停止披露净额口径标注）
+- [x] **UIRF-08** 删孤儿 `fund-flow-dashboard.tsx`（550 行，路由已重定向、全仓无引用）；**前置**：UIRF-07 验收后执行
+- [x] **UIRF-09** 选股器可编辑规则 chips：条件 chip 数值就地编辑 / `×` 删除 / `+ 添加条件` → 修改即重查（现 `rag_rules` 仅只读列表，`screener-query-panel.tsx` L155-163）
+- [x] **UIRF-10** 选股器同名多市场伪重复归并开关（默认开，展示层归并 + 市场覆盖徽章 + "已归并 N 条"计数）
+- [x] **UIRF-11** 选股器 RAG 召回依据卡：来源类型徽章 + 相关度分数，最多 3 条 + "查看全部"折叠
+- [x] **UIRF-12** 选股器 AI 洞察卡规范化：`[AI 生成 · 仅供参考]` 徽章必挂 + 主线概念/结构特征/龙头点评三段 + 失败错误态重试（禁编数）
+- [x] **UIRF-13** 选股器空结果放宽建议按钮（如"市盈率放宽到 ≥80"直接改规则重查）
+
+#### 🟠 P1 工程债 · 行数超限（编码宪法 feature 页 ≤250 / hook ≤100）
+
+- [x] **UIRF-14** `quotes.tsx` 462 行拆分：抽 `CompareChartPanel` 等分子组件至 `features/quotes/`
+- [x] **UIRF-15** 数据中心子 tab 拆分：`data-center-overview.tsx` 293 / `data-center-capital-flow.tsx` 270 / `use-dashboard-data.ts` 266 → 各 ≤250
+- [x] **UIRF-16** `use-backtest.ts` 290 行按状态机拆分（建议与 UIRF-02/04/05 同批执行）
+- [x] **UIRF-17** `risk-account-section.tsx` 452 行拆为 KPI / 风险画像 / tabs / 持仓四分子组件（✅ fd379f7 拆 RiskScoreGauge/HelpPanel；KPI/tabs/持仓区依赖大量 state，深度拆分暂留主文件）
+
+#### 🟡 P2 一致性与增强
+
+- [x] **UIRF-18** 回测表单控件统一 shadcn（Select/Input/Switch/Collapsible）；`backtest-charts.tsx` L119 水下图写死 `-12.3` fallback 清除（✅ 4d21353）
+- [x] **UIRF-19** 数据中心二期：板块资金流向三市场版式与单位统一（亿元/亿美元，废"万元"）；资产 tile 类目分组；面板更名"市场脉搏"
+- [x] **UIRF-20** 个股工作台三期：场景模式联动（monitor→盘口 / research→微观）；右栏/中列快捷键 D/M/C/O；微观卡"所属板块"跳转资金流向（✅ Alt+D/M/C/O + MicroPanel 所属板块入口 + 场景自动切换 + 标题徽章）
+- [x] **UIRF-21** 数据中心三期：概览资产卡点击 → `/market/:ticker` 深链接通（机制已存在）（✅ shared.tsx L117）
+- [x] **UIRF-22** 选股器历史记录改输入框右上角图标按钮 + 一键重放（✅ c0fd66d）
+- [x] **UIRF-23** OMS 导航徽章 `badge:'3'` 硬编码字符串改动态计数（✅ da5724c）
+
+> **依赖与执行序**：UIRF-01~03（P0）随时可做、互不依赖 → UIRF-04~06 + 16 同批（回测页一次改完）→ UIRF-07 → UIRF-08（删除）→ UIRF-09~13（选股器批）→ UIRF-14/15/17（拆分批，可并行）→ P2 按兴趣排期。每项独立原子提交（`docs/VIBE_CODING_COMMIT_RULES.md`）。

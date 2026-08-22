@@ -4,7 +4,7 @@ from typing import Any, Dict
 from hermes_agent.tool_registry import register_tool
 
 
-@register_tool
+@register_tool(scopes=["news"])  # 个股公告与新闻舆情
 class GetCompanyNewsTool:
     name = "get_company_news"
     description = "获取指定公司的近期个股新闻与公告，自带 AI 情感打分与中文摘要。适用于分析某只股票的基本面、近期舆情、财报发布及突发事件。"

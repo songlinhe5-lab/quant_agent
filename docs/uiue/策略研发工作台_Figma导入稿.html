@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1600" />
+<title>策略研发工作台 · Figma 导入稿</title>
+<style>
+  :root{
+    --bg:#0F0F14; --panel:#16181F; --panel-2:#1C1F28; --line:rgba(255,255,255,.07);
+    --txt:#F9FAFB; --txt-2:#9CA3AF; --txt-3:#6B7280;
+    --up:#34D399; --down:#F87171; --warn:#FBBF24; --ai:#A78BFA; --blue:#60A5FA;
+    --r:12px; --gap:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0A0A0E;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--txt);padding:24px 0;display:flex;flex-direction:column;align-items:center;gap:32px;}
+  .import-note{width:1600px;background:#101827;border:1px solid #1E3A5F;color:#93C5FD;padding:10px 16px;border-radius:8px;font-size:13px;}
+  .import-note b{color:#DBEAFE;}
+  /* ===== Frame ===== */
+  .frame{width:1600px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .frame-label{padding:10px 24px;background:#101018;color:var(--txt-3);font-size:13px;border-bottom:1px solid var(--line);}
+  /* ===== Header ===== */
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--line);}
+  .brand{font-size:20px;font-weight:700;}
+  .brand .en{font-size:12px;font-weight:400;color:var(--txt-3);margin-left:8px;letter-spacing:.5px;}
+  .hd-right{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--txt-2);}
+  .pill{padding:3px 10px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;}
+  .pill.sandbox{color:var(--warn);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);font-weight:600;}
+  .btn-mini{font-size:12px;color:var(--blue);border:1px solid #1E3A5F;background:#101827;border-radius:8px;padding:5px 12px;}
+  .btn-primary{font-size:13px;font-weight:600;color:#fff;background:#2563EB;border:1px solid #3B82F6;border-radius:8px;padding:9px 20px;}
+  .btn-danger{font-size:13px;font-weight:600;color:#fff;background:#B91C1C;border:1px solid #DC2626;border-radius:8px;padding:9px 20px;}
+  .btn-ai{font-size:12px;font-weight:600;color:var(--ai);background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.4);border-radius:8px;padding:6px 14px;}
+  /* ===== Body ===== */
+  .bd{padding:20px 24px;display:flex;flex-direction:column;gap:var(--gap);}
+  .sec-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .sec-sub{font-size:12px;color:var(--txt-3);font-weight:400;}
+  .mini-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);}
+  .card-pad{padding:16px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{padding:5px 13px;border-radius:999px;font-size:12px;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line);}
+  .chip.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;}
+  .grow{flex:1;}
+  .lbl{font-size:12px;color:var(--txt-3);}
+  .up-t{color:var(--up);} .down-t{color:var(--down);} .warn-t{color:var(--warn);}
+  .bdg{font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;}
+  .bdg.up{color:var(--up);background:rgba(52,211,153,.12);}
+  .bdg.down{color:var(--down);background:rgba(248,113,113,.12);}
+  .bdg.flat{color:var(--txt-3);background:rgba(107,114,128,.15);}
+  .bdg.warn{color:var(--warn);background:rgba(251,191,36,.12);}
+  .bdg.ai{color:var(--ai);background:rgba(167,139,250,.14);}
+  .foot{display:flex;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--txt-3);}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  .seg{display:flex;gap:6px;}
+  .seg .tab{padding:6px 14px;font-size:13px;border-radius:999px;color:var(--txt-2);border:1px solid var(--line);background:transparent;}
+  .seg .tab.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;font-weight:600;}
+  .ai-card{border:1px solid rgba(167,139,250,.35);background:linear-gradient(180deg,rgba(167,139,250,.07),var(--panel));border-radius:var(--r);padding:14px 16px;}
+  .ai-bdg{color:var(--ai);background:rgba(167,139,250,.14);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;}
+  .stale{color:var(--warn);background:rgba(251,191,36,.12);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;}
+  .stale-zone{opacity:.6;filter:saturate(.5);}
+  .empty{border:1px dashed #2C3E5F;border-radius:var(--r);padding:26px 20px;text-align:center;background:var(--panel);}
+  table.res{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;}
+  table.res th{text-align:left;color:var(--txt-3);font-weight:500;font-size:12px;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.res td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;}
+  table.res th.num,table.res td.num{text-align:right;}
+  table.res tr.on td{background:rgba(96,165,250,.06);}
+  /* ===== IDE three-column skeleton ===== */
+  .ide-bd{display:grid;grid-template-columns:246px 1fr 392px;gap:var(--gap);padding:20px 24px;align-items:stretch;}
+  .pane{display:flex;flex-direction:column;gap:var(--gap);min-width:0;}
+  /* drafts & templates */
+  .draft{display:flex;flex-direction:column;gap:5px;padding:9px 10px;border-radius:8px;border:1px solid transparent;}
+  .draft.on{background:#1E2A44;border-color:#2C3E5F;}
+  .draft .nm{font-size:13px;font-weight:600;}
+  .draft .mt{display:flex;align-items:center;justify-content:space-between;}
+  .tpl{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);}
+  .tpl .nm{font-size:12.5px;font-weight:600;}
+  .tpl .ds{font-size:11px;color:var(--txt-3);}
+  /* editor mock */
+  .editor{background:#0B0D12;border:1px solid var(--line);border-radius:8px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.8;padding:10px 0;overflow:hidden;}
+  .editor .row{display:flex;padding:0 12px;white-space:pre;}
+  .editor .row.err{background:rgba(248,113,113,.09);}
+  .editor .no{width:24px;flex:none;text-align:right;margin-right:14px;color:#3A3F4C;}
+  .editor .kw{color:#C792EA;} .editor .fn{color:#60A5FA;} .editor .st{color:#86EFAC;}
+  .editor .nm2{color:#FBBF24;} .editor .cm{color:#6B7280;} .editor .cl{color:#FFD580;}
+  .sq{text-decoration:underline wavy #F87171;text-underline-offset:3px;}
+  /* log drawer */
+  .log-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .logline{display:flex;gap:10px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.9;white-space:nowrap;}
+  .logline .t{color:var(--txt-3);flex:none;}
+  .logline .lv{width:66px;flex:none;font-weight:600;}
+  .logline .lv.i{color:var(--txt-3);} .logline .lv.w{color:var(--warn);} .logline .lv.e{color:var(--down);}
+  .logline .ms{color:var(--txt-2);overflow:hidden;text-overflow:ellipsis;}
+  /* chat */
+  .bub{max-width:94%;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.65;}
+  .bub.ai{background:var(--panel-2);border:1px solid var(--line);color:var(--txt-2);}
+  .bub.us{background:#1E2A44;border:1px solid #2C3E5F;color:#DBEAFE;margin-left:auto;}
+  .query-box{display:flex;align-items:center;gap:10px;background:#0B0D12;border:1px solid #2C3E5F;border-radius:8px;padding:9px 12px;font-size:12.5px;color:var(--txt-3);}
+  /* params */
+  .prm{display:flex;align-items:center;gap:10px;font-size:12px;}
+  .prm .k{width:88px;color:var(--txt-2);font-family:ui-monospace,Menlo,monospace;font-size:11.5px;}
+  .prm .v{width:48px;text-align:right;font-variant-numeric:tabular-nums;}
+  .slider{flex:1;height:6px;border-radius:999px;background:var(--panel-2);position:relative;}
+  .slider .knob2{position:absolute;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:var(--blue);border:2px solid #0F0F14;}
+  /* metrics */
+  .metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--gap);}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;}
+  .metric .c{font-size:11px;color:var(--txt-3);}
+  .metric .p{font-size:19px;font-weight:700;margin:3px 0 0;font-variant-numeric:tabular-nums;}
+  /* diff */
+  .diff{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .diff-col{background:#0B0D12;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .diff-hd{padding:6px 10px;font-size:11px;border-bottom:1px solid var(--line);display:flex;gap:7px;align-items:center;color:var(--txt-2);}
+  .diff-hd .dot{width:7px;height:7px;border-radius:50%;}
+  .diff .code{font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.75;padding:8px 10px;color:#C9D1D9;white-space:pre;}
+  .diff .del{background:rgba(248,113,113,.12);color:#FCA5A5;display:block;}
+  .diff .add{background:rgba(52,211,153,.12);color:#86EFAC;display:block;}
+  /* modal / radio */
+  .modal{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px;box-shadow:0 12px 40px rgba(0,0,0,.5);}
+  .radio{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;border:1px solid var(--line);font-size:12.5px;margin-top:8px;}
+  .radio.on{border-color:#2C3E5F;background:#1E2A44;}
+  .radio .rdot{width:13px;height:13px;border-radius:50%;border:2px solid var(--txt-3);flex:none;}
+  .radio.on .rdot{border-color:var(--blue);background:radial-gradient(circle,var(--blue) 0 45%,transparent 50%);}
+  /* wf bars */
+  .wf{display:flex;align-items:flex-end;gap:8px;height:64px;}
+  .wf .bar{flex:1;border-radius:4px 4px 0 0;background:rgba(52,211,153,.55);}
+  .wf .bar.mid{background:rgba(251,191,36,.55);}
+</style>
+</head>
+<body>
+
+<div class="import-note">📐 <b>Figma 导入说明:</b>使用 html.to.design 插件 → 选择 <b>Full page</b> 一次性捕获,将得到 3 个独立 Frame(代码模式 / 回测报告模式 / AI 协作与状态规范)。导入后可删除本说明条。(代码与数据均为示意;本文件为纯静态内联样式,无外部依赖)</div>
+
+<!-- ================= FRAME 1 · 代码模式 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 1 / 3 · 代码模式(默认落地)— A 草稿与模板 / B 编辑器与诊断 / C 日志抽屉 / D AI 副驾与唯一动作入口</div>
+  <div class="hd">
+    <div><span class="brand">策略研发工作台<span class="en">STRATEGY DEV</span></span></div>
+    <div class="hd-right">
+      <span class="pill sandbox">SANDBOX · 纸面推演,非实盘</span>
+      <span class="pill">rsi_reversal.py · 已同步</span>
+      <span class="btn-mini">历史版本 v7</span>
+      <span class="btn-mini">草稿库</span>
+    </div>
+  </div>
+
+  <div class="ide-bd">
+
+    <!-- A 草稿与模板 -->
+    <div class="pane">
+      <div class="card card-pad" style="padding:12px;">
+        <div class="mini-title" style="margin-bottom:8px;">草稿库 <div class="grow"></div><span class="btn-mini">+ 新建</span></div>
+        <div class="draft on">
+          <span class="nm">rsi_reversal</span>
+          <span class="mt"><span class="lbl">2 分钟前编辑</span><span class="bdg up">已回测</span></span>
+        </div>
+        <div class="draft">
+          <span class="nm">grid_twap</span>
+          <span class="mt"><span class="lbl">昨天</span><span class="bdg flat">草稿</span></span>
+        </div>
+        <div class="draft">
+          <span class="nm">breakout_follow</span>
+          <span class="mt"><span class="lbl">3 天前</span><span class="bdg up">已回测</span></span>
+        </div>
+        <div class="draft">
+          <span class="nm">pairs_coint</span>
+          <span class="mt"><span class="lbl">上周</span><span class="bdg warn">已部署·纸面</span></span>
+        </div>
+        <div class="lbl" style="margin-top:6px;">状态来自最近一次真实动作,删除全局写死的"测试"徽章</div>
+      </div>
+      <div class="card card-pad" style="padding:12px;">
+        <div class="mini-title" style="margin-bottom:8px;">▾ 模板中心 <span class="sec-sub">新建即带 BaseStrategy 骨架</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="tpl"><span class="nm">空白模板</span><span class="ds">最小可运行骨架,直接通过架构检查</span></div>
+          <div class="tpl"><span class="nm">RSI 双均线</span><span class="ds">超卖买入 / 超买卖出,单标的</span></div>
+          <div class="tpl"><span class="nm">网格</span><span class="ds">等距网格挂单,适合震荡市</span></div>
+          <div class="tpl"><span class="nm">突破跟随</span><span class="ds">N 周期新高突破追入 + 跟踪止损</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B 编辑器与诊断 + C 日志抽屉 -->
+    <div class="pane">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);">
+          <div class="seg"><div class="tab on">代码</div><div class="tab">回测报告</div></div>
+          <span class="lbl">⌘1 / ⌘2 切换 · ⌘3 聚焦 AI 对话</span>
+          <div class="grow"></div>
+          <span class="btn-mini">格式化</span>
+          <span class="pill">未保存的改动 0</span>
+        </div>
+        <div style="padding:12px 16px;">
+          <div class="editor">
+            <div class="row"><span class="no">1</span><span class="cm"># rsi_reversal.py</span></div>
+            <div class="row"><span class="no">2</span><span><span class="kw">from</span> <span class="fn">base_strategy</span> <span class="kw">import</span> BaseStrategy, Ctx</span></div>
+            <div class="row"><span class="no">3</span><span> </span></div>
+            <div class="row"><span class="no">4</span><span><span class="kw">class</span> <span class="cl">RsiReversalStrategy</span>(BaseStrategy):</span></div>
+            <div class="row"><span class="no">5</span><span>    <span class="st">"""RSI 反转:超卖区间买入,超买区间卖出"""</span></span></div>
+            <div class="row"><span class="no">6</span><span>    <span class="kw">def</span> <span class="fn">__init__</span>(self, rsi_period=<span class="nm2">14</span>, pos_pct=<span class="nm2">0.05</span>):</span></div>
+            <div class="row"><span class="no">7</span><span>        self.rsi_period = rsi_period</span></div>
+            <div class="row"><span class="no">8</span><span>        self.pos_pct = pos_pct</span></div>
+            <div class="row"><span class="no">9</span><span> </span></div>
+            <div class="row"><span class="no">10</span><span>    <span class="kw">def</span> <span class="fn">on_bar</span>(self, ctx: Ctx):</span></div>
+            <div class="row"><span class="no">11</span><span>        rsi = ctx.indicators.rsi(self.rsi_period)</span></div>
+            <div class="row"><span class="no">12</span><span>        <span class="kw">if</span> rsi &lt; <span class="nm2">30</span> <span class="kw">and not</span> ctx.position:</span></div>
+            <div class="row err"><span class="no" style="color:var(--down);">13</span><span>            <span class="sq">ctx.buy(percent=self.pos_pct</span></span></div>
+            <div class="row"><span class="no">14</span><span>        <span class="kw">elif</span> rsi &gt; <span class="nm2">70</span> <span class="kw">and</span> ctx.position:</span></div>
+            <div class="row"><span class="no">15</span><span>            ctx.sell_all()</span></div>
+          </div>
+        </div>
+        <!-- 诊断区:错误卡(替代状态栏红字) -->
+        <div style="padding:0 16px 14px;">
+          <div class="card card-pad" style="border-color:rgba(248,113,113,.35);background:linear-gradient(180deg,rgba(248,113,113,.05),var(--panel));">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="bdg down">SYN-113</span>
+              <span style="font-weight:600;font-size:13px;">语法错误:缺少右括号 ")"</span>
+              <span class="lbl">第 13 行 → 点击跳转</span>
+              <div class="grow"></div>
+              <span class="btn-ai">✦ AI 修复</span>
+              <span class="btn-mini">重新检查</span>
+            </div>
+            <div class="lbl" style="margin-top:8px;">诊断一律出卡片,状态栏不再出现内联红字 · Monaco markers 与诊断卡同源(错误码 + 说明 + 行号 + 可修复标记)</div>
+          </div>
+        </div>
+        <!-- C 日志抽屉(展开态示意) -->
+        <div style="border-top:1px solid var(--line);">
+          <div class="log-hd">
+            <span style="font-weight:600;">▾ 运行日志</span>
+            <span class="bdg up">运行中</span>
+            <span class="lbl">12 步 · 最新:订单回测撮合完成(14:32:08)</span>
+            <div class="grow"></div>
+            <span class="btn-mini">停止</span>
+          </div>
+          <div style="padding:10px 14px;display:flex;flex-direction:column;gap:2px;">
+            <div class="logline"><span class="t">14:32:01</span><span class="lv i">INFO</span><span class="ms">沙箱会话创建 session=a1b2c3 · 标的 US.AAPL · 252 bars 回放就绪</span></div>
+            <div class="logline"><span class="t">14:32:04</span><span class="lv i">INFO</span><span class="ms">参数快照 rsi_period=14 pos_pct=0.05 · 初始资金 1,000,000</span></div>
+            <div class="logline"><span class="t">14:32:06</span><span class="lv w">WARNING</span><span class="ms">下单数量不足 1 手,已按最小单位取整</span></div>
+            <div class="logline"><span class="t">14:32:08</span><span class="lv i">INFO</span><span class="ms">订单回测撮合完成 fill=192.40 · 滑点模型 0.05%</span></div>
+          </div>
+          <div class="foot" style="border-top:1px solid var(--line);">
+            <span>级别分色:INFO 灰 / WARNING 琥珀 / ERROR 红(对齐宪法日志语义)</span>
+            <span>首行即真实事件 · 已删除硬编码装饰开场白 · 失败时抽屉头部挂错误卡 + 重试</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D AI 副驾 -->
+    <div class="pane">
+      <div class="ai-card" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="ai-bdg">AI 副驾 · Copilot</span>
+          <div class="grow"></div>
+          <span class="lbl">⌘3 聚焦</span>
+        </div>
+        <div class="bub ai">我可以帮你改策略、解释指标、调参数。<b style="color:var(--txt);">生成的代码需经 Diff 审查后应用</b>(不再自动写入)。</div>
+        <div class="bub us">加一条风控:价格低于成本价 2% 时止损离场</div>
+        <div class="bub ai">已生成补丁:在 <span style="color:#86EFAC;">on_bar</span> 末尾追加 2% 止损分支,请审查变更 →</div>
+        <div style="display:flex;gap:8px;">
+          <span class="btn-ai">查看 Diff(Frame 3)</span>
+          <span class="lbl" style="align-self:center;">SSE 流式输出 · 失败出错误卡不编数</span>
+        </div>
+        <div class="query-box"><span class="grow">描述修改意图,例如"把持仓周期改为 5 日"…</span><span class="btn-ai">发送</span></div>
+      </div>
+
+      <div class="card card-pad" style="padding:12px;">
+        <div class="mini-title" style="margin-bottom:10px;">动态参数 <span class="sec-sub">schema 来自 parse-config · 滑块松手触发回测</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="prm"><span class="k">rsi_period</span><span class="slider"><span class="knob2" style="left:38%;"></span></span><span class="v">14</span></div>
+          <div class="prm"><span class="k">pos_pct</span><span class="slider"><span class="knob2" style="left:22%;"></span></span><span class="v">0.05</span></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;"><span class="btn-mini">✦ 智能寻优</span><span class="lbl" style="align-self:center;">寻优结果"应用"统一走 Diff 审查</span></div>
+      </div>
+
+      <div class="card card-pad" style="padding:12px;">
+        <div class="mini-title" style="margin-bottom:10px;">沙箱环境</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="chip">初始资金 <b style="color:var(--txt);">1,000,000</b></span>
+          <span class="chip">佣金 <b style="color:var(--txt);">0.03%</b></span>
+          <span class="chip">滑点 <b style="color:var(--txt);">0.05%</b></span>
+          <span class="chip">回测区间 <b style="color:var(--txt);">2025-01 ~ 2025-12</b></span>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+        <span class="btn-primary" style="text-align:center;">▶ 运行沙箱</span>
+        <span class="btn-mini" style="text-align:center;padding:8px 12px;">部署至 OMS…(打开确认闸门,见 Frame 3)</span>
+        <div class="lbl">唯一动作入口 · Topbar 空壳按钮已移除(原只弹 toast)</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FRAME 2 · 回测报告模式 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 2 / 3 · 回测报告模式 — ⌘2 的隐藏视图升为可见 tab:指标条 + 五 tab 报告 + 寻优 Top3(应用走 Diff)</div>
+  <div class="hd">
+    <div><span class="brand">策略研发工作台<span class="en">STRATEGY DEV · BACKTEST</span></span></div>
+    <div class="hd-right">
+      <span class="pill sandbox">SANDBOX · 沙箱推演口径</span>
+      <span class="pill">rsi_reversal · 参数组 #3</span>
+      <span class="btn-mini">在高频回测引擎中打开 ↗</span>
+    </div>
+  </div>
+  <div class="bd">
+
+    <div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 16px;">
+      <div class="seg"><div class="tab">代码</div><div class="tab on">回测报告</div></div>
+      <span class="lbl">⌘2 直接切到本页(quant_focus_backtest 死事件已修复,tabs 即监听者)</span>
+      <div class="grow"></div>
+      <span class="lbl">数据源 /strategy/run-sandbox/stream · NDJSON 流</span>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="c">年化收益</div><div class="p up-t">+18.42%</div></div>
+      <div class="metric"><div class="c">夏普比率</div><div class="p">1.36</div></div>
+      <div class="metric"><div class="c">最大回撤</div><div class="p down-t">-12.8%</div></div>
+      <div class="metric"><div class="c">胜率</div><div class="p">54.2%</div></div>
+      <div class="metric"><div class="c">盈亏比</div><div class="p">1.82</div></div>
+      <div class="metric"><div class="c">Calmar</div><div class="p">1.44</div></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);">
+        <div class="seg">
+          <div class="tab on">净值曲线</div><div class="tab">回撤分析</div><div class="tab">收益分布</div><div class="tab">交易流水</div><div class="tab">限价挂单</div>
+        </div>
+        <div class="grow"></div>
+        <span class="lbl">Tear Sheet 指标 + 五 tab · 现 backtest-report.tsx 整区上移</span>
+      </div>
+      <div style="padding:16px;">
+        <svg width="100%" viewBox="0 0 1120 230" style="display:block;">
+          <line x1="40" y1="64" x2="1100" y2="64" stroke="rgba(255,255,255,.05)"/>
+          <line x1="40" y1="128" x2="1100" y2="128" stroke="rgba(255,255,255,.05)"/>
+          <line x1="40" y1="190" x2="1100" y2="190" stroke="rgba(255,255,255,.09)"/>
+          <text x="10" y="68" fill="#6B7280" font-size="10">1.20</text>
+          <text x="10" y="132" fill="#6B7280" font-size="10">1.10</text>
+          <text x="10" y="194" fill="#6B7280" font-size="10">1.00</text>
+          <text x="40" y="214" fill="#6B7280" font-size="10">2025-01</text>
+          <text x="540" y="214" fill="#6B7280" font-size="10">2025-06</text>
+          <text x="1040" y="214" fill="#6B7280" font-size="10">2025-12</text>
+          <polyline fill="none" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="4 3"
+            points="40,188 120,182 200,178 280,172 360,176 440,166 520,170 600,158 680,162 760,150 840,154 920,142 1000,146 1080,132"/>
+          <polyline fill="none" stroke="#34D399" stroke-width="2"
+            points="40,188 120,175 200,182 280,160 360,168 440,140 520,150 600,120 680,132 760,104 840,116 920,88 1000,96 1080,64"/>
+          <text x="900" y="52" fill="#34D399" font-size="11">策略 +18.42%</text>
+          <text x="900" y="118" fill="#6B7280" font-size="11">基准 +6.1%</text>
+        </svg>
+        <svg width="100%" viewBox="0 0 1120 70" style="display:block;margin-top:6px;">
+          <line x1="40" y1="12" x2="1100" y2="12" stroke="rgba(255,255,255,.09)"/>
+          <path d="M40,12 H180 L240,40 L320,24 H480 L560,52 L640,32 H820 L880,26 H1080 V12 Z" fill="rgba(248,113,113,.18)" stroke="#F87171" stroke-width="1.2"/>
+          <text x="560" y="66" fill="#6B7280" font-size="10">回撤(副图)· 最深 -12.8% 于 2025-07</text>
+        </svg>
+      </div>
+      <div class="foot">
+        <span>口径标注:工作台回测 = 单策略沙箱推演(/strategy/run-sandbox/*),与顶级高频回测引擎(/backtest/run/stream)相互独立</span>
+        <span>两页互挂"在…打开"跳转 · 是否合并列为三期决策</span>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);">
+          <span style="font-weight:600;font-size:13px;">智能寻优 Top3</span>
+          <span class="lbl">/strategy/optimize-sandbox</span>
+          <div class="grow"></div>
+          <span class="lbl">"应用"一律生成参数 Diff,审查后写入</span>
+        </div>
+        <div style="padding:6px 16px 12px;">
+          <table class="res">
+            <tr><th>#</th><th class="num">rsi_period</th><th class="num">pos_pct</th><th class="num">年化收益</th><th class="num">夏普</th><th class="num">最大回撤</th><th>操作</th></tr>
+            <tr class="on"><td>1</td><td class="num">12</td><td class="num">0.06</td><td class="num up-t">+21.3%</td><td class="num">1.52</td><td class="num down-t">-11.1%</td><td><span class="btn-mini">应用(走 Diff)</span></td></tr>
+            <tr><td>2</td><td class="num">14</td><td class="num">0.05</td><td class="num up-t">+18.4%</td><td class="num">1.36</td><td class="num down-t">-12.8%</td><td><span class="btn-mini">应用(走 Diff)</span></td></tr>
+            <tr><td>3</td><td class="num">16</td><td class="num">0.04</td><td class="num up-t">+15.9%</td><td class="num">1.24</td><td class="num down-t">-13.5%</td><td><span class="btn-mini">应用(走 Diff)</span></td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:10px;">Walk-Forward 稳定性 <span class="sec-sub">8 窗口滚动验证</span></div>
+        <div class="wf">
+          <div class="bar" style="height:70%;"></div>
+          <div class="bar" style="height:88%;"></div>
+          <div class="bar" style="height:52%;"></div>
+          <div class="bar" style="height:96%;"></div>
+          <div class="bar mid" style="height:30%;"></div>
+          <div class="bar" style="height:64%;"></div>
+          <div class="bar" style="height:80%;"></div>
+          <div class="bar" style="height:58%;"></div>
+        </div>
+        <div style="display:flex;gap:14px;margin-top:10px;font-size:12px;color:var(--txt-2);">
+          <span>盈利窗口 <b class="up-t">7 / 8</b></span>
+          <span>稳定性得分 <b>0.87</b></span>
+          <span class="lbl" style="align-self:center;">蒙特卡洛 / 批量回测入口保留在本区菜单</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FRAME 3 · AI 协作与状态规范 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 3 / 3 · AI 协作与状态规范 — Diff 确认卡 / 部署闸门 / 空草稿引导 / STALE 与错误卡</div>
+  <div class="hd">
+    <div><span class="brand">策略研发工作台<span class="en">STRATEGY DEV · 状态规范</span></span></div>
+    <div class="hd-right"><span class="pill sandbox">SANDBOX · 纸面推演,非实盘</span><span class="pill">规范帧 · 供开发对照</span></div>
+  </div>
+  <div class="bd">
+    <div class="grid-2">
+
+      <!-- 左:Diff 确认 + 快捷键修复说明 -->
+      <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="ai-card">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <span class="ai-bdg">Diff 审查</span>
+            <span style="font-weight:600;font-size:13px;">AI 生成变更 · rsi_reversal.py(+2 行)</span>
+            <div class="grow"></div>
+            <span class="lbl">永远走 Diff · 空编辑器直写例外已删除</span>
+          </div>
+          <div class="diff">
+            <div class="diff-col">
+              <div class="diff-hd"><span class="dot" style="background:var(--down);"></span>变更前 · v7</div>
+              <div class="code">    elif rsi &gt; 70 and ctx.position:
+        ctx.sell_all()
+<span class="del">    # (无风控分支)</span></div>
+            </div>
+            <div class="diff-col">
+              <div class="diff-hd"><span class="dot" style="background:var(--up);"></span>变更后 · 待确认</div>
+              <div class="code">    elif rsi &gt; 70 and ctx.position:
+        ctx.sell_all()
+<span class="add">    if ctx.position and ctx.pnl_pct() &lt;= -0.02:</span>
+<span class="add">        ctx.sell_all(reason="stop_loss_-2%")</span></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:12px;">
+            <span class="btn-primary">应用并记入版本历史</span>
+            <span class="btn-mini">拒绝</span>
+            <div class="grow"></div>
+            <span class="lbl">面板文案已改为"生成代码需经 Diff 审查后应用"(原"自动应用"与实现不符)</span>
+          </div>
+        </div>
+
+        <div class="card card-pad">
+          <div class="mini-title" style="margin-bottom:8px;">快捷键与版本</div>
+          <div style="font-size:12.5px;color:var(--txt-2);line-height:1.9;">
+            ⌘1 / ⌘2 与中列 <b>[代码][回测报告]</b> tabs 双向同步;⌘3 聚焦 AI 对话输入框。<br/>
+            修复:<span style="color:var(--down);">quant_focus_backtest</span> 死事件(全仓无监听者)→ tabs 组件即监听者。<br/>
+            Diff 应用 = 一次版本提交,可在顶栏"历史版本"中回滚。
+          </div>
+        </div>
+      </div>
+
+      <!-- 右:部署闸门 + 空草稿 + STALE/错误 -->
+      <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="modal">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-weight:600;font-size:13.5px;">部署至 OMS · 确认闸门</span>
+            <div class="grow"></div>
+            <span class="lbl">替代原无闸门直连按钮</span>
+          </div>
+          <div class="radio on"><span class="rdot"></span><b>SANDBOX</b><span class="lbl">→ 仅纸面/模拟账本,不发真实订单</span><span class="bdg warn" style="margin-left:auto;">当前环境</span></div>
+          <div class="radio"><span class="rdot"></span><b style="color:var(--down);">LIVE</b><span class="lbl">→ 须先通过 REAL_TRADE_EXECUTE 校验</span></div>
+          <div class="card-pad" style="margin-top:10px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.06);border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="bdg down">LIVE · 二次确认</span>
+              <span style="font-size:12.5px;">将向 OMS 发送真实订单,确认环境变量 REAL_TRADE_EXECUTE=true?</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <span class="btn-danger">确认部署(LIVE)</span>
+              <span class="btn-mini">返回</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty">
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px;">空草稿态 · 从模板开始</div>
+          <div class="lbl" style="margin-bottom:12px;">不再是 "# Draft Strategy..." 裸文本 · 模板自带 BaseStrategy 骨架,新建即通过架构检查</div>
+          <div class="chips" style="justify-content:center;">
+            <span class="chip on">空白模板</span><span class="chip">RSI 双均线</span><span class="chip">网格</span><span class="chip">突破跟随</span>
+          </div>
+        </div>
+
+        <div class="grid-2" style="gap:var(--gap);">
+          <div class="card card-pad">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-weight:600;font-size:12.5px;">行情快照过期</span>
+              <span class="stale">STALE</span>
+            </div>
+            <div class="stale-zone" style="background:var(--panel-2);border-radius:8px;padding:8px 10px;font-size:12px;display:flex;gap:12px;">
+              <span>US.AAPL</span><span>192.40</span><span class="up-t">+0.84%</span>
+            </div>
+            <div class="lbl" style="margin-top:6px;">区域 opacity-60 saturate-50 · 禁止无标注展示过期数</div>
+          </div>
+          <div class="card card-pad" style="border-color:rgba(248,113,113,.35);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="bdg down">E-BT-504</span>
+              <span style="font-weight:600;font-size:12.5px;">沙箱运行失败</span>
+              <div class="grow"></div>
+              <span class="btn-mini">重试</span>
+            </div>
+            <div class="lbl" style="margin-top:6px;">错误卡挂于日志抽屉头部 · 语法错/运行错文案分开,禁止内联红字</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // Verification helper only: ?frame=N isolates the Nth frame for screenshots.
+  (function(){
+    var m = /[?&]frame=(\d+)/.exec(location.search);
+    if(!m) return;
+    var n = parseInt(m[1],10);
+    var frames = document.querySelectorAll('.frame');
+    var note = document.querySelector('.import-note');
+    if(note) note.style.display='none';
+    frames.forEach(function(f,i){ if(i+1!==n) f.style.display='none'; });
+  })();
+</script>
+
+</body>
+</html>

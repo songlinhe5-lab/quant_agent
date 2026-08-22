@@ -509,6 +509,7 @@ async def list_strategies():
                 "name": name,
                 "lang": "Python",
                 "version": "Draft",
+                "source_type": "draft",  # UIRF: 显式标记来源, 支撑前端三分组(内置引擎/我的草稿/自定义)
                 "status": status,
                 "status_updated_at": rec.get("updated_at"),
                 "modified": modified_time,

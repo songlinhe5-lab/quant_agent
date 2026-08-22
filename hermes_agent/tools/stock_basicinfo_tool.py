@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["fundamental"])  # 股票基本信息
 class StockBasicInfoTool(BaseTool):
     """全市场股票/ETF/指数基本信息（Futu STOCK_BASICINFO）。
 

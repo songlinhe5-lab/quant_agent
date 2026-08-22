@@ -20,19 +20,15 @@ import { LightweightChartCanvas } from '@/features/quotes/lightweight-chart-canv
 import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-boundary'
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { NarratorBubble } from '@/features/quotes/narrator-bubble'
+import { CompareChartPanel } from '@/features/quotes/compare-chart-panel'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
 import { MicroPanel } from '@/features/quotes/micro-panel'
 import { OptionModePanel } from '@/features/quotes/option-mode-panel'
 import { MarketClocks } from '@/features/data-center/shared'
+import { useSceneModeStore } from '@/stores/useSceneModeStore'
+import { SCENE_META } from '@/features/scene/scene-mode-types'
 
 import { InitOverlay, EmptyState } from '@/components/ui/data-display'
-
-// PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
-const COMPARE_PERIODS = [
-  { id: '1m', label: '分时' }, { id: '5m', label: '5分' }, { id: '15m', label: '15分' },
-  { id: '1h', label: '1时' }, { id: '4h', label: '4时' }, { id: '1d', label: '日K' },
-  { id: '1w', label: '周K' }, { id: '1M', label: '月K' },
-]
 
 // 💡 标的视图偏好持久化：按 symbol 存 { period, chartMode, rightMode } 到 localStorage，进入工作台时自动恢复
 const VIEWPREF_KEY = 'quant_symbol_viewpref'
@@ -43,38 +39,6 @@ const readViewPrefs = (): Record<string, SymbolViewPref> => {
 const writeViewPrefs = (m: Record<string, SymbolViewPref>) => localStorage.setItem(VIEWPREF_KEY, JSON.stringify(m))
 const PERIOD_LABEL: Record<string, string> = {
   '1m': '分时', '5m': '5日', '15m': '15分', '1h': '1时', '4h': '4时', '1d': '日K', '1w': '周K', '1M': '月K', '1q': '季K', '1y': '年K',
-}
-
-function CompareChartPanel({ watchlist, updateTicker, mainSymbol, theme, syncGroup }: { watchlist: any[]; updateTicker: (s: string, d: any) => void; mainSymbol: string; theme: string | undefined; syncGroup: string }) {
-  const [compareSymbol, setCompareSymbol] = useState<string>(() => {
-    const others = watchlist.filter((w: any) => w.symbol !== mainSymbol)
-    return others[0]?.symbol ?? mainSymbol
-  })
-  const [comparePeriod, setComparePeriod] = useState<string>('1d')
-  const { realQuote, realHistory, gatewayStatus } = useMarketData({ selectedSymbol: compareSymbol, selectedPeriod: comparePeriod, watchlist, updateTicker })
-  const selected = watchlist.find((w: any) => w.symbol === compareSymbol) ?? watchlist[0]
-
-  return (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-2 px-3 py-1 border-b border-border/40 bg-secondary/20 text-[10px] shrink-0">
-        <span className="text-muted-foreground font-medium">对比标的</span>
-        <select value={compareSymbol} onChange={(e) => setCompareSymbol(e.target.value)} className="bg-card border border-border/50 rounded px-1.5 py-0.5 text-[10px]">
-          {watchlist.map((w: any) => <option key={w.symbol} value={w.symbol}>{w.symbol}</option>)}
-        </select>
-        <span className="text-muted-foreground font-medium ml-2">周期</span>
-        <select value={comparePeriod} onChange={(e) => setComparePeriod(e.target.value)} className="bg-card border border-border/50 rounded px-1.5 py-0.5 text-[10px]">
-          {COMPARE_PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </select>
-        <span className="text-muted-foreground/70 ml-auto">十字线已与主图同步</span>
-      </div>
-      <div className="flex-1 min-h-0">
-        <AnomalyFlash symbol={compareSymbol} className="h-full">
-          <LightweightChartCanvas selectedSymbol={compareSymbol} selectedPeriod={comparePeriod} setSelectedPeriod={setComparePeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={() => {}} selectedItem={selected} hasData={watchlist.length > 0} syncGroup={syncGroup} />
-          <NarratorBubble symbol={compareSymbol} />
-        </AnomalyFlash>
-      </div>
-    </div>
-  )
 }
 
 export function QuotesModule() {
@@ -100,14 +64,33 @@ export function QuotesModule() {
   // 💡 进入工作台时按当前标的自动恢复已保存的视图偏好
   const initialPref = readViewPrefs()['00700.HK']
   const [selectedPeriod, setSelectedPeriod] = useState<string>(initialPref?.period ?? '1m')  // 💡 默认显示分时图
-  // FE-26：中列 [K线|期权] 模式切换（Figma Frame 5）
+  // FE-26：中列 [K 线 | 期权] 模式切换（Figma Frame 5）
   const [chartMode, setChartMode] = useState<'chart' | 'options'>(initialPref?.chartMode ?? 'chart')
-  // FE-26：右栏 [盘口|微观|选择持久化] 模式切换（Figma Frame 4 / 第三个 tab）
+  // FE-26：右栏 [盘口 | 微观 | 选择持久化] 模式切换（Figma Frame 4 / 第三个 tab）
   const [rightMode, setRightMode] = useState<'dom' | 'micro' | 'persist'>(initialPref?.rightMode ?? 'dom')
   // 💡 已保存的全部标的视图偏好（localStorage 镜像）
   const [savedPrefs, setSavedPrefs] = useState<Record<string, SymbolViewPref>>(readViewPrefs())
 
+  // UIRF-20 深化：从 Store 读取场景模式并监听变化
+  const currentScene = useSceneModeStore((s) => s.mode)
+
   useEffect(() => { setMounted(true) }, [])
+
+  // UIRF-20 深化：不同场景下自动切换到对应的 Tab
+  // watch → DOM (盘口), research → Micro (微观)
+  useEffect(() => {
+    // 仅在非 persist 模式下才自动切换
+    if (rightMode === 'persist') return
+
+    // 盯盘模式 → 默认盘口
+    if (currentScene === 'watch' && rightMode !== 'dom') {
+      setRightMode('dom')
+    }
+    // 研究模式 → 默认微观
+    else if (currentScene === 'research' && rightMode !== 'micro') {
+      setRightMode('micro')
+    }
+  }, [currentScene, rightMode])
 
   // 💡 切换标的/周期/图表模式/右栏时自动持久化当前标的视图偏好
   useEffect(() => {
@@ -178,6 +161,33 @@ export function QuotesModule() {
       // 带修饰键的组合键（如 ⌘1/2/3 研究模式面板跳转）交由对应模式处理，不在此拦截
       if (e.metaKey || e.ctrlKey) return;
 
+      // UIRF-20: 个股工作台快捷鍵 D/M/C/O
+      // D: DOM(盘口), M: Micro(微观), C: Chart(K 线), O: Options(期权)
+      if (!e.altKey) {
+        // 無 Alt 時，優先級低於以下操作
+      } else {
+        // Alt+D → 切換盤口 (DOM)
+        if (e.key.toLowerCase() === 'd' && rightMode !== 'dom') {
+          e.preventDefault();
+          setRightMode('dom');
+        }
+        // Alt+M → 切換微观 (Micro)
+        else if (e.key.toLowerCase() === 'm' && rightMode !== 'micro') {
+          e.preventDefault();
+          setRightMode('micro');
+        }
+        // Alt+C → 切換 K 線圖 (Chart mode)
+        else if (e.key.toLowerCase() === 'c' && chartMode !== 'chart') {
+          e.preventDefault();
+          setChartMode('chart');
+        }
+        // Alt+O → 切換期權 (Options mode)
+        else if (e.key.toLowerCase() === 'o' && chartMode !== 'options') {
+          e.preventDefault();
+          setChartMode('options');
+        }
+      }
+
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (watchlist.length === 0) return;
         const currentIndex = watchlist.findIndex(item => item.symbol === selectedSymbol);
@@ -199,10 +209,10 @@ export function QuotesModule() {
       const periodMap: Record<string, string> = {
         '1': '1m',   // 分时
         '2': 'tick', // Tick
-        '3': '5m',   // 5日
-        '4': '1d',   // 日K
-        '5': '1w',   // 周K
-        '6': '1M',   // 月K
+        '3': '5m',   // 5 日
+        '4': '1d',   // 日 K
+        '5': '1w',   // 周 K
+        '6': '1M',   // 月 K
       };
       if (periodMap[e.key]) {
         e.preventDefault();
@@ -234,10 +244,16 @@ export function QuotesModule() {
       {/* 顶部标题区（对齐 Figma 设计稿：个股工作台 STOCK WORKBENCH + 多时区时钟 + 日期） */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-secondary/10 rounded-t-xl">
         <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-        {/* 标题随中列 [K线|期权] 模式联动（Figma Frame 4 / Frame 5） */}
-        <h1 className="text-base font-bold tracking-tight">{chartMode === 'options' ? '期权工作台' : '个股工作台'}</h1>
+        {/* 标题随中列 [K 线 | 期权] 模式联动（Figma Frame 4 / Frame 5）+ 场景模式 */}
+        <h1 className="text-base font-bold tracking-tight">
+          {currentScene === 'research' ? '研究工作台' : currentScene === 'monitor' ? '监控工作台' : '个股工作台'}
+        </h1>
         <span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">
           {chartMode === 'options' ? 'OPTION WORKBENCH' : 'STOCK WORKBENCH'}
+        </span>
+        {/* 场景徽章 */}
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-border/50 bg-secondary/50 text-muted-foreground">
+          {SCENE_META[currentScene]?.emoji} {SCENE_META[currentScene]?.short}
         </span>
         {/* 模式副标题（设计稿中列模式说明，随模式联动） */}
         <span className="ml-3 text-[10px] text-muted-foreground/70 hidden md:inline">
@@ -448,6 +464,10 @@ export function QuotesModule() {
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/40 bg-secondary/10 text-[10px] text-muted-foreground/80 rounded-b-xl">
         <span className="flex items-center gap-2 flex-wrap">
           <span>键盘 <kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">↑</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">↓</kbd> 切换周期</span>
+          <span>·</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+D</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+M</kbd> 盘口/微观</span>
+          <span>·</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+C</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+O</kbd> K 线/期权</span>
           <span>·</span>
           <span>休市时段醒收 K 线</span>
           <span>·</span>

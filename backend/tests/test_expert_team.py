@@ -30,6 +30,32 @@ from backend.services.expert_team.models import (
 )
 from backend.services.expert_team.orchestrator import DebateOrchestrator
 
+
+@pytest.fixture(autouse=True)
+def _mock_pg_upsert_globally():
+    """隔离 ExpertTeamService 后台落盘任务,避免测试事件循环关闭时任务悬挂泄漏
+
+    测试本意是「Mock Redis + PG 均不可用 → 走内存兜底」。但 save_session 会
+    fire-and-forget 多个后台任务(_pg_upsert 连真实 PG、_redis_set 连 Redis),
+    在 pytest-asyncio 关闭 loop 时触发 "Task was destroyed but it is pending"
+    / The operation was canceled。
+    通过 patch 类方法,使单例与所有实例均不创建真实异步后台任务。
+    """
+    from unittest.mock import AsyncMock, patch
+
+    with (
+        patch(
+            "backend.services.expert_team.expert_team_service.ExpertTeamService._pg_upsert",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.services.expert_team.expert_team_service.ExpertTeamService._redis_set",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        yield
+
+
 # ─── models.py 测试 ────────────────────────────────────────────
 
 
@@ -465,11 +491,28 @@ class TestExpertTeamRouter:
 
     @pytest.fixture
     def client(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         from fastapi.testclient import TestClient
 
         from backend.main import app
 
-        return TestClient(app)
+        # 隔离外部依赖：Redis + PG 均不可用 → 端点走内存兜底（符合测试意图）。
+        # 否则模块级全局 redis_client 在 TestClient 的多个独立事件循环间复用时会
+        # 出现跨 loop 连接错乱，导致 scan 永久挂起（test_list_sessions_endpoint 卡死）。
+        redis_mock = MagicMock()
+        redis_mock.scan = AsyncMock(return_value=(0, []))
+        redis_mock.get = AsyncMock(return_value=None)
+        redis_mock.set = AsyncMock(return_value="OK")
+
+        with (
+            patch("backend.core.redis_client.redis_client", redis_mock),
+            patch(
+                "backend.core.database.SessionLocal",
+                side_effect=RuntimeError("PG unavailable in test"),
+            ),
+        ):
+            yield TestClient(app)
 
     @pytest.fixture
     def auth_headers(self):

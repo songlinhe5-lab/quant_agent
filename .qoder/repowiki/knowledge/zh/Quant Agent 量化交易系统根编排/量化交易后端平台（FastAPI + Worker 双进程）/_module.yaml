@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend
+title: 量化交易后端平台（FastAPI + Worker 双进程）
+scope:
+    - backend/
+source_files: []
+depends_on: []
+related_to: []

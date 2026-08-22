@@ -75,6 +75,9 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
     safeSummary += '\n\n```';
   }
 
+  // UIRF-12: 失败态（生成失败/网络异常）→ 显示错误卡 + 重试，不渲染为正文
+  const isErrorState = /^❌\s*(生成失败|网络异常)/.test(safeSummary);
+
   const topPicks = results.slice(0, 5);
 
   return (
@@ -98,6 +101,10 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
               <Bot className={cn('w-4 h-4 text-primary', isGenerating && 'animate-pulse')} />
               <span className="text-xs font-bold text-primary">
                 {isGenerating ? 'DeepSeek 正在扫描新闻并推演盘面洞察...' : 'AI 选股结果解读'}
+              </span>
+              {/* UIRF-12: AI 生成 · 仅供参考 徽章必挂 */}
+              <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[8px] font-bold text-amber-500" title="AI 生成内容仅供研究参考，不构成投资建议">
+                AI 生成 · 仅供参考
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -136,6 +143,18 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
                   <div className="flex flex-col items-center justify-center py-6 gap-3">
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
                     <span className="text-xs text-muted-foreground font-mono">正在并发拉取 Top 10 标的最新新闻与走势...</span>
+                  </div>
+                ) : isErrorState ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-4 text-center">
+                    <AlertTriangle className="h-5 w-5 text-red-400" />
+                    <p className="text-xs text-red-400">{safeSummary.replace(/^❌\s*/, '')}</p>
+                    <button
+                      type="button"
+                      onClick={handleSummarize}
+                      className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-1.5 text-[11px] font-semibold text-red-300 hover:bg-red-500/20 transition-colors"
+                    >
+                      重试生成
+                    </button>
                   </div>
                 ) : activeDim === 'pick' ? (
                   <div className="flex flex-wrap gap-2">

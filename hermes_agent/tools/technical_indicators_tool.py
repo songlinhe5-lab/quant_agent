@@ -8,7 +8,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["indicators"])  # 技术指标 MA/MACD/RSI
 class TechnicalIndicatorsTool(BaseTool):
     """
     负责拉取历史 K 线并进行矩阵级的技术指标计算。

@@ -7,7 +7,7 @@ from .decorators import ToolCorrectionError, with_agent_self_correction
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["fundamental", "quote"])  # 智能量化选股（基本面 + 技术面筛选）
 class ScreenerTool(BaseTool):
     """
     全市场选股扫描工具。赋予 Agent 主动发现交易机会的能力。

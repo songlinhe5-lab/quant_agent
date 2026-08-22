@@ -44,6 +44,7 @@ _WORKER_IMPORTS = {
     "tavily": "data_subservice.search_worker",
     "bocha": "data_subservice.search_worker",
     "jina": "data_subservice.search_worker",
+    "sentiment": "data_subservice.sentiment_worker",
 }
 
 load_dotenv()

@@ -21,7 +21,7 @@ interface StrategyLabData {
   source?: string
 }
 
-export function OptionStrategyLabPanel({ ticker = 'US.AAPL', strategyType = 'STRANGLE', spread = 5 }: { ticker?: string; strategyType?: string; spread?: number }) {
+export function OptionStrategyLabPanel({ ticker, strategyType = 'STRANGLE', spread = 5 }: { ticker: string; strategyType?: string; spread?: number }) {
   const [data, setData] = useState<StrategyLabData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -107,7 +107,8 @@ export function OptionStrategyLabPanel({ ticker = 'US.AAPL', strategyType = 'STR
 
   const ref = useEChart(buildOption, [data])
 
-  if (loading) return <div className="p-6 text-sm text-slate-400">加载期权损益实验室 ({ticker})…</div>
+  if (!ticker) return <div className="p-6 text-sm text-slate-400">请在期权热力图点选合约以查看损益实验室</div>
+  if (loading) return <div className="p-6 text-sm text-slate-400">加载期权损益实验室…</div>
   if (error) return <div className="p-6 text-sm text-red-400">损益实验室数据获取失败：{error}</div>
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无期权损益数据</div>
   if (data.available === false) return <div className="p-6 text-sm text-slate-400">该标的暂无可组合的期权 legs（{data.notes?.join('；') || '数据不足'}）</div>

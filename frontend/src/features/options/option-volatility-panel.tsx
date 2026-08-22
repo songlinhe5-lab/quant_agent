@@ -24,7 +24,7 @@ function greeksTone(v: number | undefined, positiveGood = true): string {
   return good ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]'
 }
 
-export function OptionVolatilityPanel({ ticker = 'US.AAPL260320C200000' }: { ticker?: string }) {
+export function OptionVolatilityPanel({ ticker }: { ticker: string }) {
   const [data, setData] = useState<OptionVolData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +49,8 @@ export function OptionVolatilityPanel({ ticker = 'US.AAPL260320C200000' }: { tic
     }
   }, [ticker])
 
-  if (loading) return <div className="p-6 text-sm text-slate-400">加载期权波动率 ({ticker})…</div>
+  if (!ticker) return <div className="p-6 text-sm text-slate-400">请在期权热力图点选合约以查看 Greeks</div>
+  if (loading) return <div className="p-6 text-sm text-slate-400">加载期权波动率…</div>
   if (error) return <div className="p-6 text-sm text-red-400">期权波动率获取失败：{error}</div>
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无期权波动率数据</div>
 

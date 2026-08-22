@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1600" />
+<title>AI Copilot · Figma 导入稿</title>
+<style>
+  :root{
+    --bg:#0F0F14; --panel:#16181F; --panel-2:#1C1F28; --line:rgba(255,255,255,.07);
+    --txt:#F9FAFB; --txt-2:#9CA3AF; --txt-3:#6B7280;
+    --up:#34D399; --down:#F87171; --warn:#FBBF24; --ai:#A78BFA; --blue:#60A5FA;
+    --r:12px; --gap:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0A0A0E;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--txt);padding:24px 0;display:flex;flex-direction:column;align-items:center;gap:32px;}
+  .import-note{width:1600px;background:#101827;border:1px solid #1E3A5F;color:#93C5FD;padding:10px 16px;border-radius:8px;font-size:13px;}
+  .import-note b{color:#DBEAFE;}
+  /* ===== Frame ===== */
+  .frame{width:1600px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .frame-label{padding:10px 24px;background:#101018;color:var(--txt-3);font-size:13px;border-bottom:1px solid var(--line);}
+  /* ===== Common ===== */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);}
+  .card-pad{padding:16px;}
+  .mini-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .sec-sub{font-size:12px;color:var(--txt-3);font-weight:400;}
+  .lbl{font-size:12px;color:var(--txt-3);line-height:1.6;}
+  .grow{flex:1;}
+  .up-t{color:var(--up);} .down-t{color:var(--down);} .warn-t{color:var(--warn);} .ai-t{color:var(--ai);}
+  .bdg{font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;white-space:nowrap;}
+  .bdg.up{color:var(--up);background:rgba(52,211,153,.12);}
+  .bdg.down{color:var(--down);background:rgba(248,113,113,.12);}
+  .bdg.flat{color:var(--txt-3);background:rgba(107,114,128,.15);}
+  .bdg.warn{color:var(--warn);background:rgba(251,191,36,.12);}
+  .bdg.blue{color:var(--blue);background:rgba(96,165,250,.12);}
+  .bdg.ai{color:var(--ai);background:rgba(167,139,250,.14);}
+  .pill{padding:3px 10px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;color:var(--txt-2);white-space:nowrap;}
+  .pill.sandbox{color:var(--warn);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);font-weight:600;}
+  .btn-mini{font-size:12px;color:var(--blue);border:1px solid #1E3A5F;background:#101827;border-radius:8px;padding:5px 12px;white-space:nowrap;}
+  .btn-ai{font-size:12px;color:#0F0F14;background:var(--ai);border-radius:8px;padding:6px 14px;font-weight:700;white-space:nowrap;}
+  .seg{display:flex;gap:6px;}
+  .seg .tab{padding:6px 14px;font-size:13px;border-radius:999px;color:var(--txt-2);border:1px solid var(--line);background:transparent;}
+  .seg .tab.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;font-weight:600;}
+  .amber-strip{display:flex;align-items:center;gap:10px;padding:9px 14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.28);border-radius:9px;font-size:12.5px;color:#FDE68A;}
+  /* ===== Frame 1 · drawer stage ===== */
+  .cp-stage{display:flex;min-height:1020px;}
+  .appbg{flex:1;padding:20px 24px;opacity:.34;filter:saturate(.55);}
+  .appbg .bar{height:14px;border-radius:6px;background:#2A2D37;margin-bottom:10px;}
+  .appbg .krow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0;}
+  .appbg .k{height:74px;border-radius:10px;background:#1C1F28;border:1px solid var(--line);}
+  .appbg .chart{height:300px;border-radius:12px;background:#16181F;border:1px solid var(--line);margin-bottom:16px;overflow:hidden;}
+  .appbg .trow{height:34px;border-radius:7px;background:#181A22;margin-bottom:8px;}
+  .drawer{width:486px;flex:none;background:#131419;border-left:1px solid var(--line);display:flex;flex-direction:column;}
+  .dw-hd{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);}
+  .dw-title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:210px;}
+  .dw-ic{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--txt-2);flex:none;}
+  .dw-ic.hot{border-color:rgba(167,139,250,.45);color:var(--ai);}
+  .ctx-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--blue);background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.3);border-radius:999px;padding:3px 10px;}
+  .ctx-chip .x{color:var(--txt-3);cursor:pointer;}
+  .stream{flex:1;display:flex;flex-direction:column;gap:14px;padding:16px;overflow:hidden;}
+  .bub{border-radius:12px;padding:10px 13px;font-size:13px;line-height:1.65;}
+  .bub.us{align-self:flex-end;background:#1E2A44;border:1px solid #2C3E5F;max-width:86%;}
+  .bub .who{font-size:11px;color:var(--txt-3);margin-bottom:4px;}
+  .phases{display:flex;align-items:center;gap:6px;margin:6px 0 8px;}
+  .ph{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--txt-3);}
+  .ph i{width:9px;height:9px;border-radius:50%;background:#2A2D37;flex:none;}
+  .ph.done{color:var(--txt-2);} .ph.done i{background:var(--ai);}
+  .ph.run{color:var(--ai);} .ph.run i{background:var(--ai);box-shadow:0 0 0 4px rgba(167,139,250,.18);}
+  .phases em{flex:1;height:1px;background:var(--line);min-width:10px;}
+  .tstep{display:flex;align-items:center;gap:8px;background:#0B0D12;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--txt-2);margin-top:6px;}
+  .tstep .nm{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--txt);}
+  .tstep .st{margin-left:auto;font-size:11px;color:var(--txt-3);white-space:nowrap;}
+  .tstep .cache{color:var(--ai);}
+  .ai-text{font-size:13px;line-height:1.75;color:var(--txt);}
+  .ai-text b{color:var(--txt);}
+  .src-line{font-size:10.5px;color:var(--txt-3);margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;}
+  .sandbox-card{border:1px solid rgba(251,191,36,.35);border-radius:10px;background:rgba(251,191,36,.05);padding:11px 13px;}
+  .sandbox-card .code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:var(--txt-2);background:#0B0D12;border-radius:7px;padding:8px 10px;margin:8px 0;line-height:1.7;}
+  .dw-input{border-top:1px solid var(--line);padding:12px 16px 14px;display:flex;flex-direction:column;gap:9px;}
+  .qchips{display:flex;gap:7px;flex-wrap:wrap;}
+  .qchip{font-size:11.5px;color:var(--txt-2);border:1px solid var(--line);background:var(--panel-2);border-radius:999px;padding:4px 11px;}
+  .ta-mock{border:1px solid var(--line);background:#0B0D12;border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--txt-3);min-height:40px;}
+  .dw-in-row{display:flex;align-items:center;gap:8px;}
+  .ctx-add{font-size:11.5px;color:var(--txt-3);border:1px dashed rgba(255,255,255,.2);border-radius:999px;padding:4px 11px;}
+  .send{margin-left:auto;width:34px;height:30px;border-radius:8px;background:var(--ai);color:#0F0F14;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
+  .dw-foot{padding:8px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--txt-3);display:flex;gap:14px;}
+  /* ===== Frame 2 · research page ===== */
+  .pg-hd{display:flex;align-items:center;gap:14px;padding:14px 24px;border-bottom:1px solid var(--line);}
+  .pg-title{font-size:18px;font-weight:700;}
+  .pg-sub{font-size:11.5px;color:var(--txt-3);}
+  .rs-body{display:grid;grid-template-columns:242px 1fr 282px;min-height:980px;}
+  .rs-col{border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:10px;}
+  .rs-col.last{border-right:none;border-left:1px solid var(--line);}
+  .new-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .nb{border-radius:9px;padding:9px 6px;font-size:12px;font-weight:600;text-align:center;border:1px solid;}
+  .nb.chat{color:var(--blue);border-color:#1E3A5F;background:rgba(96,165,250,.08);}
+  .nb.team{color:var(--ai);border-color:rgba(167,139,250,.4);background:rgba(167,139,250,.09);}
+  .search{border:1px solid var(--line);background:#0B0D12;border-radius:8px;padding:7px 11px;font-size:12px;color:var(--txt-3);}
+  .grp-lbl{font-size:10.5px;color:var(--txt-3);margin:6px 2px 2px;letter-spacing:1px;}
+  .sess{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:9px;border:1px solid transparent;font-size:12.5px;}
+  .sess.on{background:var(--panel-2);border-color:var(--line);}
+  .sess .ic{flex:none;margin-top:1px;}
+  .sess .tt{color:var(--txt);line-height:1.4;}
+  .sess .tm{margin-left:auto;font-size:10.5px;color:var(--txt-3);flex:none;}
+  .sess .meta{font-size:10.5px;color:var(--txt-3);margin-top:2px;display:flex;gap:6px;align-items:center;}
+  .dot-live{width:7px;height:7px;border-radius:50%;background:var(--ai);display:inline-block;box-shadow:0 0 0 3px rgba(167,139,250,.2);}
+  .note-card{border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.06);border-radius:9px;padding:9px 11px;font-size:11px;color:#FDE68A;line-height:1.6;}
+  /* debate room */
+  .db-main{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0;}
+  .prop-bar{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px;flex-wrap:wrap;}
+  .prop-bar .pp{font-size:13.5px;font-weight:600;}
+  .stop-b{margin-left:auto;font-size:12px;color:var(--down);border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.08);border-radius:8px;padding:5px 12px;}
+  .tl{display:flex;align-items:center;gap:8px;padding:2px 4px;}
+  .tl-n{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;border:1px solid var(--line);background:var(--panel-2);color:var(--txt-3);}
+  .tl-n.done{background:rgba(52,211,153,.16);border-color:rgba(52,211,153,.5);color:var(--up);}
+  .tl-n.run{background:rgba(167,139,250,.16);border-color:rgba(167,139,250,.55);color:var(--ai);box-shadow:0 0 0 4px rgba(167,139,250,.12);}
+  .tl-l{font-size:12px;color:var(--txt-2);white-space:nowrap;}
+  .tl-c{width:56px;height:1px;background:var(--line);}
+  .tl-c.dim{opacity:.5;}
+  .db-cols{display:flex;gap:12px;flex:1;min-height:0;}
+  .op-stream{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;}
+  .round-sep{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--txt-3);}
+  .round-sep em{flex:1;height:1px;background:var(--line);}
+  .xp{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .xp.bull{border-left:3px solid var(--up);}
+  .xp.bear{border-left:3px solid var(--down);}
+  .xp.flat{border-left:3px solid #6B7280;}
+  .xp-hd{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+  .ava{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;background:#23262F;color:var(--txt-2);border:1px solid var(--line);}
+  .xp-name{font-size:13px;font-weight:600;}
+  .xp-role{font-size:10.5px;color:var(--txt-3);}
+  .conf{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:11px;color:var(--txt-3);}
+  .conf .cb{width:64px;height:6px;border-radius:99px;background:#0B0D12;overflow:hidden;}
+  .conf .cb i{display:block;height:100%;border-radius:99px;}
+  .xp-body{font-size:12.5px;line-height:1.7;color:var(--txt-2);margin-top:8px;}
+  .xp-ch{font-size:11px;color:var(--txt-3);margin-top:7px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .xp-ch .at{color:var(--warn);}
+  .xp.skel .sk{height:11px;border-radius:5px;background:#23262F;margin-top:8px;}
+  .camp{width:218px;flex:none;display:flex;flex-direction:column;gap:10px;}
+  .camp-bar{display:flex;height:16px;border-radius:6px;overflow:hidden;}
+  .camp-bar i{display:block;height:100%;}
+  .camp-lg{display:flex;justify-content:space-between;font-size:11.5px;color:var(--txt-2);}
+  .match{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--txt-2);padding:7px 9px;background:#0B0D12;border:1px solid var(--line);border-radius:8px;}
+  .match .vs{color:var(--txt-3);font-size:10px;}
+  /* right info column */
+  .info-sec{display:flex;flex-direction:column;gap:8px;}
+  .info-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt-2);}
+  .info-row .lat{margin-left:auto;font-size:11px;color:var(--txt-3);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .toggle{margin-left:auto;width:30px;height:17px;border-radius:99px;background:var(--ai);position:relative;flex:none;}
+  .toggle::after{content:"";position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:50%;background:#fff;}
+  /* ===== Frame 3 ===== */
+  .f3-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  .f3-spec{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);}
+  .composer .grp{margin-bottom:14px;}
+  .composer .g-lbl{font-size:12px;font-weight:600;color:var(--txt-2);margin-bottom:8px;display:flex;gap:8px;align-items:center;}
+  .composer .g-lbl .n{width:17px;height:17px;border-radius:5px;background:rgba(167,139,250,.16);color:var(--ai);font-size:10.5px;display:flex;align-items:center;justify-content:center;flex:none;}
+  .prop-ta{background:#0B0D12;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.5px;color:var(--txt);line-height:1.6;}
+  .prop-ta .cnt{display:block;text-align:right;font-size:10.5px;color:var(--txt-3);margin-top:4px;}
+  .scn4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .scn{border:1px solid var(--line);background:#0B0D12;border-radius:9px;padding:9px 10px;font-size:11.5px;}
+  .scn.on{border-color:rgba(167,139,250,.55);background:rgba(167,139,250,.08);}
+  .scn .snm{font-weight:600;color:var(--txt);margin-bottom:3px;display:flex;gap:5px;align-items:center;}
+  .scn .sds{font-size:10px;color:var(--txt-3);line-height:1.5;}
+  .roles{display:flex;flex-wrap:wrap;gap:7px;}
+  .role{font-size:11.5px;border:1px solid var(--line);background:#0B0D12;color:var(--txt-3);border-radius:999px;padding:4px 11px;}
+  .role.on{color:var(--txt);border-color:rgba(167,139,250,.5);background:rgba(167,139,250,.09);}
+  .role .ck{color:var(--ai);margin-right:3px;}
+  .rounds{display:flex;gap:7px;align-items:center;}
+  .rd{width:36px;height:28px;border-radius:8px;border:1px solid var(--line);background:#0B0D12;display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--txt-3);}
+  .rd.on{border-color:rgba(167,139,250,.55);background:rgba(167,139,250,.12);color:var(--ai);font-weight:700;}
+  .cta-run{display:flex;align-items:center;gap:12px;margin-top:4px;}
+  .cta-big{background:var(--ai);color:#0F0F14;font-weight:700;font-size:13.5px;border-radius:10px;padding:10px 26px;}
+  /* chief report */
+  .chief-hd{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+  .gauge-wrap{display:flex;justify-content:center;margin:4px 0 2px;}
+  .chief-sum{font-size:12.5px;line-height:1.75;color:var(--txt-2);}
+  .diverge{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+  .dv{border-radius:9px;padding:9px 11px;font-size:11.5px;line-height:1.6;}
+  .dv.bull{background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.3);color:var(--txt-2);}
+  .dv.bear{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.3);color:var(--txt-2);}
+  .dv .dt{font-weight:600;margin-bottom:3px;}
+  .meta-line{font-size:10.5px;color:var(--txt-3);margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;}
+  .act-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+  /* empty */
+  .empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:26px 12px;text-align:center;}
+  .empty .ei{width:44px;height:44px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:19px;}
+  .empty .et{font-size:13px;color:var(--txt-2);}
+  .empty .es{font-size:11px;color:var(--txt-3);max-width:280px;line-height:1.6;}
+</style>
+</head>
+<body>
+
+<div class="import-note">📐 <b>Figma 导入说明:</b>使用 html.to.design 插件 → 选择 <b>Full page</b> 一次性捕获,将得到 3 个独立 Frame(全局浮动 Copilot / 投研工作台·辩论室 / 组局·收敛与状态规范)。导入后可删除本说明条。(会话与数据均为示意;本文件为纯静态内联样式,无外部依赖)</div>
+
+<!-- ================= FRAME 1 · 全局浮动 Copilot ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 1 · 形态 A:全局浮动 Copilot(右抽屉 360–800px,⌘⇧A / 右缘把手 / 右键标的唤起;底层页面压暗不卸载)</div>
+  <div class="cp-stage">
+    <!-- 底层应用(压暗示意) -->
+    <div class="appbg">
+      <div class="bar" style="width:34%;"></div>
+      <div class="krow"><div class="k"></div><div class="k"></div><div class="k"></div><div class="k"></div></div>
+      <div class="chart">
+        <svg width="100%" height="100%" viewBox="0 0 900 300" preserveAspectRatio="none">
+          <polyline points="0,240 60,225 120,232 180,198 240,210 300,170 360,182 420,150 480,162 540,128 600,140 660,110 720,122 780,90 840,102 900,76" fill="none" stroke="#34D399" stroke-width="2" opacity=".8"/>
+          <polyline points="0,260 90,252 180,256 270,238 360,244 450,226 540,232 630,214 720,220 810,204 900,208" fill="none" stroke="#60A5FA" stroke-width="1.5" opacity=".5"/>
+        </svg>
+      </div>
+      <div class="trow"></div><div class="trow"></div><div class="trow"></div><div class="trow"></div>
+      <div style="margin-top:14px;font-size:11px;color:#3A3D48;">底层页面示意(行情 / 风控 / 选股等任意页面)· 抽屉为 fixed 浮层,不挤压主内容</div>
+    </div>
+
+    <!-- 抽屉本体 -->
+    <aside class="drawer">
+      <div class="dw-hd">
+        <span class="dw-title">阅文集团 · 卖空拥挤度追问</span>
+        <span class="bdg ai">ReAct · 3/8 步</span>
+        <span class="grow"></span>
+        <span class="dw-ic" title="历史(最近 8 条,全部 → 投研页)">⌕</span>
+        <span class="dw-ic hot" title="在投研页继续本会话(流不中断)">↗</span>
+        <span class="dw-ic" title="收起(width→0,连接保留)">→</span>
+      </div>
+
+      <div class="stream">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="ctx-chip">📎 上下文 · K线 712.HK · 5m <span class="x">×</span></span>
+        </div>
+
+        <div class="bub us">这只票现在的卖空拥挤度怎么样?空头仓位和基本面有没有明显背离?</div>
+
+        <div class="bub" style="background:var(--panel-2);border:1px solid var(--line);">
+          <div class="who">Hermes · 思维链</div>
+          <div class="phases">
+            <span class="ph done"><i></i>规划</span><em></em>
+            <span class="ph done"><i></i>调用工具</span><em></em>
+            <span class="ph done"><i></i>核验</span><em></em>
+            <span class="ph run"><i></i>输出</span>
+          </div>
+          <div class="tstep"><span style="color:var(--up);">✓</span><span class="nm">get_short_selling("712.HK")</span><span class="st">312ms · <span class="cache">缓存命中</span></span></div>
+          <div class="tstep"><span style="color:var(--up);">✓</span><span class="nm">get_fundamental_data("712.HK")</span><span class="st">289ms</span></div>
+          <div class="ai-text" style="margin-top:9px;">
+            卖空比例 <b>4.8%</b>,高于 20 日均值 0.6pct;卖空成交占比 <b>18.2%</b>,处于近 60 日高分位。基本面侧 Q2 业绩超预期(EPS 0.42 vs 一致预期 0.35),<b>空头仓位与基本面出现背离</b>,短期需留意逼空风险。
+          </div>
+          <div class="src-line"><span>数据:get_short_selling · 08-21 14:32 ✓</span><span>get_fundamental_data · 08-21 14:32 ✓</span></div>
+        </div>
+
+        <div class="sandbox-card">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12.5px;font-weight:600;">策略代码块 · mean_reversion_short_signal.py</span>
+            <span class="bdg warn" style="margin-left:auto;">SANDBOX · 未实盘</span>
+          </div>
+          <div class="code">if short_ratio &gt; ma(short_ratio,20)+2*std:<br/>&nbsp;&nbsp;signal = SQUEEZE_WATCH</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="btn-mini">去策略研发工作台(携带代码块)</span>
+            <span style="font-size:10.5px;color:var(--txt-3);margin-left:auto;">部署需过 REAL_TRADE_EXECUTE 闸门</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dw-input">
+        <div class="qchips">
+          <span class="qchip">个股深度研判</span><span class="qchip">对标分析</span><span class="qchip">财务异常检测</span><span class="qchip">目标价评估</span>
+        </div>
+        <div class="ta-mock">追问:如果把期权市场的 PCR 一起看…</div>
+        <div class="dw-in-row">
+          <span class="ctx-add">＋ 附加本页上下文</span>
+          <span style="font-size:10.5px;color:var(--txt-3);">图片/PDF 入口已撤下(链路未通 · roadmap)</span>
+          <span class="send">➤</span>
+        </div>
+      </div>
+      <div class="dw-foot"><span>⌘⇧A 展开 / 收起</span><span>收起不断流</span><span>右键标的 → 问 AI 分析</span></div>
+    </aside>
+  </div>
+</div>
+
+<!-- ================= FRAME 2 · 投研工作台 · 辩论室 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 2 · 形态 B:左导航「投研」工作台 · 投研会辩论室(辩论态,三列:会话中心 / 辩论室 / 运行信息)</div>
+  <div class="pg-hd">
+    <span class="pg-title">投研</span>
+    <span class="pg-sub">Hermes ReAct · 35 tools · deepseek-v4-flash</span>
+    <span class="seg" style="margin-left:18px;">
+      <span class="tab">对话</span><span class="tab on">投研会</span><span class="tab">资产库</span>
+    </span>
+    <span class="grow"></span>
+    <span class="pill">session · 7f3a9c</span>
+    <span class="pill sandbox">SANDBOX</span>
+    <span class="btn-mini">导出 MD</span>
+  </div>
+
+  <div class="rs-body">
+    <!-- B1 会话中心 -->
+    <div class="rs-col">
+      <div class="new-btns"><span class="nb chat">＋ 新对话</span><span class="nb team">＋ 发起投研会</span></div>
+      <div class="search">🔍 搜索会话…</div>
+      <div class="grp-lbl">今天</div>
+      <div class="sess on">
+        <span class="ic">⚖️</span>
+        <span class="tt">比亚迪 2026 估值投研会<span class="meta"><span class="dot-live"></span>辩论进行中 · R2</span></span>
+        <span class="tm">14:20</span>
+      </div>
+      <div class="sess">
+        <span class="ic">💬</span>
+        <span class="tt">阅文卖空拥挤度追问</span>
+        <span class="tm">13:02</span>
+      </div>
+      <div class="grp-lbl">近 7 天</div>
+      <div class="sess"><span class="ic">💬</span><span class="tt">美联储 9 月降息路径研判</span><span class="tm">08-19</span></div>
+      <div class="sess"><span class="ic">💬</span><span class="tt">SPY 动量因子月报</span><span class="tm">08-17</span></div>
+      <div class="grp-lbl">更早</div>
+      <div class="sess"><span class="ic">💬</span><span class="tt">NVDA 供应链对标分析</span><span class="tm">08-09</span></div>
+      <div class="note-card" style="margin-top:auto;">⚖️ 投研会历史<b>尚未持久化</b>——会话刷新即失。后端 save_session 待建(P0),此前本区保持诚实空态,不伪造历史。</div>
+      <div class="btn-mini" style="text-align:center;">导出当前会话 Markdown</div>
+    </div>
+
+    <!-- B2 辩论室 -->
+    <div class="db-main">
+      <div class="prop-bar">
+        <span class="pp">命题:比亚迪 2026 年估值是否已经透支?</span>
+        <span class="pill">场景 · 完整投决会</span>
+        <span class="pill">8 位专家</span>
+        <span class="pill">2 轮</span>
+        <span class="pill">已用时 4:12</span>
+        <span class="stop-b">■ 中止</span>
+      </div>
+
+      <div class="tl">
+        <span class="tl-n done">✓</span><span class="tl-l">R1 · 独立研判</span>
+        <em class="tl-c"></em>
+        <span class="tl-n run">2</span><span class="tl-l">R2 · 交叉辩论(进行中)</span>
+        <em class="tl-c dim"></em>
+        <span class="tl-n">✓</span><span class="tl-l" style="color:var(--txt-3);">首席收敛</span>
+      </div>
+
+      <div class="db-cols">
+        <div class="op-stream">
+          <div class="round-sep"><em></em>第 1 轮结束 · 8 位专家独立提交 · 共识度 38%<em></em></div>
+
+          <div class="xp bull">
+            <div class="xp-hd">
+              <span class="ava" style="color:var(--up);">基</span>
+              <span class="xp-name">基本面分析师</span><span class="xp-role">分析师团队 · R2</span>
+              <span class="bdg up">看多</span>
+              <span class="conf">信心 78<span class="cb"><i style="width:78%;background:var(--up);"></i></span></span>
+            </div>
+            <div class="xp-body">Q2 毛利率 21.4% 确认拐点;海外销量同比 +143%,规模效应兑现。估值分歧的本质是"出海故事"的可信度,我认为是可验证的。</div>
+            <div class="xp-ch">质疑 <span class="at">@估值专家</span>:溢价已提前定价出海预期,但 PEG 口径未计入海外产能爬坡的二阶效应。</div>
+          </div>
+
+          <div class="xp bear">
+            <div class="xp-hd">
+              <span class="ava" style="color:var(--down);">估</span>
+              <span class="xp-name">估值专家</span><span class="xp-role">分析师团队 · R2</span>
+              <span class="bdg down">看空</span>
+              <span class="conf">信心 64<span class="cb"><i style="width:64%;background:var(--down);"></i></span></span>
+            </div>
+            <div class="xp-body">动态 PE 38x vs 行业中位 22x;即便采纳 +143% 的海外增速假设,DCF 隐含回报仍低于 9% 门槛。当前价格奖励的是情绪,不是现金流。</div>
+            <div class="xp-ch">质疑 <span class="at">@基本面分析师</span>:毛利率拐点与价格战周期的可持续性存疑。</div>
+          </div>
+
+          <div class="xp flat">
+            <div class="xp-hd">
+              <span class="ava">宏</span>
+              <span class="xp-name">宏观策略师</span><span class="xp-role">研究员团队 · R2</span>
+              <span class="bdg flat">中性</span>
+              <span class="conf">信心 52<span class="cb"><i style="width:52%;background:#6B7280;"></i></span></span>
+            </div>
+            <div class="xp-body">降息周期利好成长股估值修复,但欧盟关税落地节奏存在不确定性,两者部分抵消;宏观维度不构成方向性投票。</div>
+          </div>
+
+          <div class="xp bear">
+            <div class="xp-hd">
+              <span class="ava" style="color:var(--down);">风</span>
+              <span class="xp-name">风控官</span><span class="xp-role">风控团队 · R2</span>
+              <span class="bdg down">看空</span>
+              <span class="conf">信心 71<span class="cb"><i style="width:71%;background:var(--down);"></i></span></span>
+            </div>
+            <div class="xp-body">组合内单一标的集中度已超限,30 日波动率 41% 高于组合容忍阈值。立场先于观点:先对冲,再谈加仓。</div>
+          </div>
+
+          <div class="xp skel">
+            <div class="xp-hd">
+              <span class="ava" style="color:var(--ai);">技</span>
+              <span class="xp-name">技术面分析师</span><span class="xp-role">流式输出中…</span>
+              <span class="bdg ai">接收中</span>
+            </div>
+            <div class="sk" style="width:88%;"></div><div class="sk" style="width:64%;"></div>
+          </div>
+        </div>
+
+        <div class="camp">
+          <div class="card card-pad" style="padding:12px;">
+            <div class="mini-title" style="margin-bottom:9px;">实时阵营</div>
+            <div class="camp-bar">
+              <i style="width:37.5%;background:var(--up);"></i><i style="width:37.5%;background:var(--down);"></i><i style="width:25%;background:#4B5563;"></i>
+            </div>
+            <div class="camp-lg" style="margin-top:7px;"><span class="up-t">多 3</span><span class="down-t">空 3</span><span style="color:var(--txt-3);">中性 2</span></div>
+            <div class="lbl" style="margin-top:8px;">平均信心 <b style="color:var(--txt);">66</b> / 100 · 较 R1 +7(辩论后立场强化)</div>
+          </div>
+          <div class="card card-pad" style="padding:12px;">
+            <div class="mini-title" style="margin-bottom:9px;">本轮交锋</div>
+            <div class="match"><span class="up-t">基本面</span><span class="vs">VS</span><span class="down-t">估值</span></div>
+            <div class="match" style="margin-top:7px;"><span class="down-t">风控官</span><span class="vs">VS</span><span style="color:var(--txt-2);">量化研究员</span></div>
+            <div class="lbl" style="margin-top:9px;">交锋对由 orchestrator 按上一轮质疑关系生成,非随机配对。</div>
+          </div>
+          <div class="card card-pad" style="padding:12px;">
+            <div class="mini-title" style="margin-bottom:7px;">断流保护</div>
+            <div class="lbl">SSE 中断 → 顶部 amber 横幅「已保留 N 条观点 · 重试」,不以假数据续写(见 Frame 3)。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B3 运行信息 -->
+    <div class="rs-col last">
+      <div class="info-sec">
+        <div class="mini-title">页面上下文 <span class="sec-sub">useCopilotContextStore</span></div>
+        <div class="card card-pad" style="padding:11px;">
+          <div class="info-row">🛡 风控 · 港股账户净值 $879,412<span class="toggle"></span></div>
+          <div class="lbl" style="margin-top:6px;">附加后随下一条消息注入 [当前页面上下文] 段。</div>
+        </div>
+      </div>
+      <div class="info-sec">
+        <div class="mini-title">工具调用记录 <span class="sec-sub">本会话</span></div>
+        <div class="info-row">✓ get_fundamental_data<span class="lat">289ms · 缓存</span></div>
+        <div class="info-row">✓ get_short_selling<span class="lat">412ms</span></div>
+        <div class="info-row">✓ get_macro_calendar<span class="lat">198ms · 缓存</span></div>
+        <div class="info-row"><span style="color:var(--ai);">●</span> web_search("比亚迪 欧盟关税")<span class="lat">运行中…</span></div>
+        <div class="info-row" style="color:var(--txt-3);">○ get_option_volatility<span class="lat">排队</span></div>
+        <div class="lbl">连续失败 3 次的工具显示「已熔断」徽章并停止重试。</div>
+      </div>
+      <div class="info-sec">
+        <div class="mini-title">运行参数</div>
+        <div class="lbl" style="line-height:2;">模型 deepseek-v4-flash<br/>ReAct 迭代 5 / 8(超限走兜底总结并披露)<br/>会话热缓存 TTL 12h · 冷存 PostgreSQL</div>
+      </div>
+      <div class="note-card" style="margin-top:auto;">本列可折叠;折叠后迭代数与熔断状态以头部微徽章透出。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= FRAME 3 · 组局 · 收敛与状态规范 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 3 · 投研工作台 · 组局态 / 收敛态 / 状态规范</div>
+  <div style="padding:20px 24px;display:flex;flex-direction:column;gap:var(--gap);">
+    <div class="f3-grid">
+      <!-- 组局态 -->
+      <div class="card card-pad composer">
+        <div class="mini-title" style="margin-bottom:14px;">① 组局态 · Proposition Composer <span class="sec-sub">发起投研会</span></div>
+
+        <div class="grp">
+          <div class="g-lbl"><span class="n">1</span>投研命题</div>
+          <div class="prop-ta">比亚迪 2026 年估值是否已经透支?<span class="cnt">18 / 500 · <span style="color:var(--blue);">从当前持仓生成(需风控上下文)</span></span></div>
+        </div>
+
+        <div class="grp">
+          <div class="g-lbl"><span class="n">2</span>投研场景 <span class="sec-sub">来自 GET /expert-team/scenarios,离线时回退静态镜像并挂兜底角标</span></div>
+          <div class="scn4">
+            <div class="scn"><div class="snm">金融投研</div><div class="sds">单标的多维度研判</div></div>
+            <div class="scn on"><div class="snm">完整投决会 <span class="bdg ai" style="font-size:9px;">当前</span></div><div class="sds">全角色多轮辩论</div></div>
+            <div class="scn"><div class="snm">交易决策</div><div class="sds">执行与风控优先</div></div>
+            <div class="scn"><div class="snm">代码审查</div><div class="sds">代码域 4 专家</div></div>
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="g-lbl"><span class="n">3</span>出战阵容 <span class="sec-sub">13 位金融域角色 · 按场景推荐勾选 · 可增减</span></div>
+          <div class="roles">
+            <span class="role on"><span class="ck">✓</span>基本面分析师</span><span class="role on"><span class="ck">✓</span>技术面分析师</span><span class="role on"><span class="ck">✓</span>宏观策略师</span><span class="role on"><span class="ck">✓</span>估值专家</span><span class="role on"><span class="ck">✓</span>行业分析师</span><span class="role">情绪分析师</span><span class="role on"><span class="ck">✓</span>新闻分析师</span><span class="role on"><span class="ck">✓</span>产业研究员</span><span class="role">量化研究员</span><span class="role">交易执行专家</span><span class="role on"><span class="ck">✓</span>风控官</span><span class="role">组合风控经理</span><span class="role on"><span class="ck">✓</span>首席投资官</span>
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="g-lbl"><span class="n">4</span>辩论轮数 <span class="sec-sub">后端上限 4,UI 开放 1–3</span></div>
+          <div class="rounds">
+            <span class="rd">1</span><span class="rd on">2</span><span class="rd">3</span>
+            <span class="lbl" style="margin-left:10px;">预估耗时 ≈ 8 专家 × 2 轮 × 20s ≈ 5.3 分钟(经验估算)</span>
+          </div>
+        </div>
+
+        <div class="cta-run">
+          <span class="cta-big">▶ 发起投研会</span>
+          <span class="lbl">命题为空时禁用 · 首席投资官必选(负责收敛)</span>
+        </div>
+      </div>
+
+      <!-- 收敛态 -->
+      <div class="card card-pad">
+        <div class="chief-hd">
+          <span class="ava" style="color:var(--ai);width:34px;height:34px;border-color:rgba(167,139,250,.4);">CIO</span>
+          <span style="font-size:14px;font-weight:700;">首席投资官 · 收敛报告</span>
+          <span class="bdg ai">chief_report</span>
+          <span class="grow"></span>
+          <span class="lbl">bullish_probability 原始值直出,不做二次加工</span>
+        </div>
+
+        <div class="gauge-wrap">
+          <svg width="230" height="128" viewBox="0 0 230 128">
+            <path d="M 25 112 A 90 90 0 0 1 205 112" stroke="#23262F" stroke-width="14" fill="none" stroke-linecap="round"/>
+            <path d="M 25 112 A 90 90 0 0 1 205 112" stroke="#34D399" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="192 283"/>
+            <text x="115" y="92" text-anchor="middle" fill="#F9FAFB" font-size="34" font-weight="700">68%</text>
+            <text x="115" y="114" text-anchor="middle" fill="#9CA3AF" font-size="12">偏多 · 概率档位 ≥60</text>
+          </svg>
+        </div>
+
+        <div class="chief-sum">
+          结论:<b style="color:var(--txt);">审慎看多</b>。基本面拐点证据强于估值溢价证据,但组合层面波动率与集中度约束先于观点生效。建议以"持有 + 期权对冲"替代直接加仓,将决策降级为风险管理问题。
+        </div>
+
+        <div class="diverge">
+          <div class="dv bull"><div class="dt up-t">多方核心(保留)</div>毛利率拐点 + 海外销量 +143%,出海逻辑可验证</div>
+          <div class="dv bear"><div class="dt down-t">空方核心(保留)</div>动态 PE 38x,DCF 隐含回报低于 9% 门槛</div>
+        </div>
+
+        <div class="meta-line"><span>参与 8 专家</span><span>2 轮辩论</span><span>总耗时 6:42</span><span>deepseek-v4-flash</span></div>
+        <div class="act-row">
+          <span class="btn-ai">存入资产库</span><span class="btn-mini">导出 Markdown</span><span class="btn-mini">调整阵容重跑</span><span class="btn-mini">追问首席(转入对话)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 状态规范条 -->
+    <div class="f3-spec">
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:9px;">断流横幅(辩论态)</div>
+        <div class="amber-strip">⚠ 连接中断 · 已保留 5 条观点 · <b style="color:var(--blue);">重试</b></div>
+        <div class="lbl" style="margin-top:8px;">SSE 断开即挂横幅;已产出观点全部保留并标「未完成」,禁止以假数据续写辩论。</div>
+      </div>
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:9px;">迭代上限披露</div>
+        <div class="amber-strip">ℹ 已达 8 步推理上限,以下为 pro 模型兜底总结</div>
+        <div class="lbl" style="margin-top:8px;">agent.py 超 max_iterations 后强制降级总结;UI 必须挂 amber 提示条,不掩盖降级事实。</div>
+      </div>
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:9px;">错误卡(对话态)</div>
+        <div style="border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.06);border-radius:9px;padding:9px 12px;font-size:12px;">
+          <div style="display:flex;gap:8px;align-items:center;"><span class="bdg down">E-CHAT-503</span><b>工具已熔断:get_short_selling 连续 3 次失败</b></div>
+          <div class="lbl" style="margin-top:6px;">建议检查数据源连接 · <span style="color:var(--blue);">重试</span> · 结论不含该项数据,不使用估计值</div>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div class="mini-title" style="margin-bottom:9px;">资产库空态 / 附件撤下</div>
+        <div class="empty" style="padding:12px;">
+          <div class="ei">🗂</div>
+          <div class="et">还没有沉淀的研究成果</div>
+          <div class="es">完成一次投研会或导出对话后,这里会成为你的研究档案室。图片/PDF 上传入口已撤下——后端上传链路就绪后恢复(不设假入口)。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Verification helper only: ?frame=N isolates the Nth frame for screenshots.
+  (function(){
+    var m = /[?&]frame=(\d+)/.exec(location.search);
+    if(!m) return;
+    var n = parseInt(m[1],10);
+    var frames = document.querySelectorAll('.frame');
+    var note = document.querySelector('.import-note');
+    if(note) note.style.display='none';
+    frames.forEach(function(f,i){ if(i+1!==n) f.style.display='none'; });
+  })();
+</script>
+
+</body>
+</html>

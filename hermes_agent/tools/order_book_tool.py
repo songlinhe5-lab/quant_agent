@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["quote"])  # L2 盘口深度
 class OrderBookTool(BaseTool):
     """实时 L2 盘口深度（Futu ORDER_BOOK）。
 

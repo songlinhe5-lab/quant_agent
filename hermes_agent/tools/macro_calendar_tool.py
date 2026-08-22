@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["macro"])  # 宏观经济日历 FOMC/非农
 class MacroCalendarTool(BaseTool):
     """
     单一职责 (SRP)：获取并提纯全球核心经济体的宏观日历数据。

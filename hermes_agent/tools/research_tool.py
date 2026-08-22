@@ -17,7 +17,7 @@ class ScreenerToolInput(BaseModel):
     limit: int = Field(default=10, description="返回的标的数量上限，默认 10只")
 
 
-@register_tool
+@register_tool(scopes=["fundamental", "quote"])  # 智能量化选股
 class ScreenerTool:
     name = "screen_stocks"
     description = (
@@ -81,7 +81,7 @@ class BatchBacktestInput(BaseModel):
     )
 
 
-@register_tool
+@register_tool(scopes=["trade"])  # 批量回测引擎
 class BatchBacktestTool:
     name = "batch_backtest_strategy"
     description = "对股票备选池执行批量量化回测。提供策略名称和股票池代码列表，返回组合的总收益率、夏普比率等核心指标，用于出具最终的投研研报。"

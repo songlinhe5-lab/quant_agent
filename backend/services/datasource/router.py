@@ -139,6 +139,12 @@ _FINNHUB_ACTION_MAP = {
     "ipo_calendar": "IPO_CALENDAR",
 }
 
+# 主服务内部 fetch_type -> 子服务 action 映射 (Sentiment / ApeWisdom)
+# 散户社交媒体热度数据源已下沉 data_subservice (_internal/sentiment + sentiment_worker.py)。
+_SENTIMENT_ACTION_MAP = {
+    "trending": "TRENDING",
+}
+
 # DIST-19: AKShare STALE 缓存配置
 _AK_STALE_PREFIX = "quant:akshare:stale"
 _AK_STALE_TTL = int(os.getenv("AKSHARE_STALE_TTL", "86400"))  # 默认 24h
@@ -574,6 +580,18 @@ class DataSourceRouter:
             url=search_url,
             weight=10,
             capabilities=["tavily", "bocha", "jina"],
+        )
+
+        # 散户情绪源远程节点 (ApeWisdom)
+        # 散户社交媒体热度连接层 (ApeWisdom REST) 已下沉 data_subservice
+        # (_internal/sentiment + sentiment_worker.py)。主服务经 HTTP 调 source=sentiment 获取数据，
+        # 不持有本地 SDK 兜底。仅远程。
+        sentiment_url = os.getenv("SENTIMENT_REMOTE_URL", "http://localhost:8001")
+        self._nodes["sentiment_master"] = DataSourceNode(
+            name="sentiment_master",
+            url=sentiment_url,
+            weight=10,
+            capabilities=["sentiment", "trending"],
         )
 
         logger.info(f"[Router] 初始化完成: enabled={self._enabled}, nodes={list(self._nodes.keys())}")
@@ -1753,6 +1771,69 @@ class DataSourceRouter:
 
         logger.warning(f"[Search/{source}] 远程节点失败（后端已移除直连）")
         return {"status": "error", "message": f"Search remote node failed (direct API disabled) source={source}"}
+
+    async def fetch_sentiment(self, action: str, **params) -> Dict[str, Any]:
+        """Sentiment 远程节点代理 (主节点 DS_CAPABILITIES=sentiment)。
+
+        ApeWisdom 连接层 (REST) 已下沉 data_subservice
+        (_internal/sentiment + sentiment_worker.py)。主服务不持有本地 SDK，仅远程。
+        """
+        record_breaker = bool(params.pop("_record_breaker", True))
+        offline = self._maybe_offline("sentiment", action, **params)
+        if offline is not None:
+            return offline
+
+        remote_action = _SENTIMENT_ACTION_MAP.get(action.lower(), action.upper())
+        remote_node = self._nodes.get("sentiment_master")
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
+            logger.warning("[Sentiment] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy Sentiment remote node (local SDK disabled)"}
+
+        try:
+            payload = {
+                "source": "sentiment",
+                "action": remote_action,
+                "params": dict(params),
+            }
+            result = await self._send_request(remote_node, "sentiment", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(
+                    remote_node.name, success=True, action=remote_action, record_breaker=record_breaker
+                )
+                return result
+            ec = result.get("error_category")
+            if ec:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    error_category=ErrorCategory(ec)
+                    if ec in {e.value for e in ErrorCategory}
+                    else ErrorCategory.NORMAL,
+                    action=remote_action,
+                    record_breaker=record_breaker,
+                )
+            else:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    action=remote_action,
+                    record_breaker=record_breaker,
+                )
+        except Exception as e:
+            logger.warning(f"[Sentiment] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(e), action=remote_action, record_breaker=record_breaker
+            )
+
+        logger.warning("[Sentiment] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "Sentiment remote node failed (local SDK disabled)"}
 
     # ─────────────────────────────────────────
     #  DIST-19: AKShare STALE 缓存降级

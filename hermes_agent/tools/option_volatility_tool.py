@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["trade"])  # 期权波动率分析
 class OptionVolatilityTool(BaseTool):
     """
     F3：期权波动率（单合约，需期权 OCC 代码）。

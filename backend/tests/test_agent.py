@@ -18,7 +18,7 @@ os.environ.setdefault("LLM_BASE_URL", "https://api.test.com")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -82,13 +82,15 @@ class TestMemoryHealing:
         from hermes_agent.agent import HermesAgent
 
         agent._heal_memory = HermesAgent._heal_memory.__get__(agent)
+        # _heal_memory 内部会 await self._compress_memory()，提供 AsyncMock 避免报错
+        agent._compress_memory = AsyncMock()
         return agent
 
     def test_heal_empty_messages(self):
         """空消息列表不崩溃"""
         agent = self._make_agent_stub()
         agent.messages = []
-        agent._heal_memory()
+        asyncio.run(agent._heal_memory())
         assert agent.messages == []
 
     def test_heal_normal_conversation(self):
@@ -100,7 +102,7 @@ class TestMemoryHealing:
             {"role": "assistant", "content": "hi there"},
         ]
         original_len = len(agent.messages)
-        agent._heal_memory()
+        asyncio.run(agent._heal_memory())
         assert len(agent.messages) == original_len
 
     def test_heal_orphan_tool_calls(self):
@@ -117,7 +119,7 @@ class TestMemoryHealing:
             # 缺少 tool 回复 → 孤立
             {"role": "user", "content": "next question"},
         ]
-        agent._heal_memory()
+        asyncio.run(agent._heal_memory())
         # 孤立的 tool_calls 应被移除
         for msg in agent.messages:
             if msg.get("role") == "assistant":
@@ -135,7 +137,7 @@ class TestMemoryHealing:
                 "tool_calls": [{"id": "call_1"}],
             },  # noqa: E501
         ]
-        agent._heal_memory()
+        asyncio.run(agent._heal_memory())
         # 末尾的 tool_calls 应被剔除
         last_msg = agent.messages[-1]
         assert last_msg.get("role") != "assistant" or not last_msg.get("tool_calls")

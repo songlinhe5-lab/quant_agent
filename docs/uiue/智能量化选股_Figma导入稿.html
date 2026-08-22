@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1600" />
+<title>智能量化选股 · Figma 导入稿</title>
+<style>
+  :root{
+    --bg:#0F0F14; --panel:#16181F; --panel-2:#1C1F28; --line:rgba(255,255,255,.07);
+    --txt:#F9FAFB; --txt-2:#9CA3AF; --txt-3:#6B7280;
+    --up:#34D399; --down:#F87171; --warn:#FBBF24; --ai:#A78BFA; --blue:#60A5FA;
+    --r:12px; --gap:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0A0A0E;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--txt);padding:24px 0;display:flex;flex-direction:column;align-items:center;gap:32px;}
+  .import-note{width:1600px;background:#101827;border:1px solid #1E3A5F;color:#93C5FD;padding:10px 16px;border-radius:8px;font-size:13px;}
+  .import-note b{color:#DBEAFE;}
+  /* ===== Frame ===== */
+  .frame{width:1600px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .frame-label{padding:10px 24px;background:#101018;color:var(--txt-3);font-size:13px;border-bottom:1px solid var(--line);}
+  /* ===== Header ===== */
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--line);}
+  .brand{font-size:20px;font-weight:700;}
+  .brand .en{font-size:12px;font-weight:400;color:var(--txt-3);margin-left:8px;letter-spacing:.5px;}
+  .hd-right{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--txt-2);}
+  .pill{padding:3px 10px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;}
+  .pill.sandbox{color:var(--warn);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.35);font-weight:600;}
+  .btn-mini{font-size:12px;color:var(--blue);border:1px solid #1E3A5F;background:#101827;border-radius:8px;padding:5px 12px;}
+  .btn-primary{font-size:13px;font-weight:600;color:#fff;background:#2563EB;border:1px solid #3B82F6;border-radius:8px;padding:9px 20px;}
+  .btn-ai{font-size:12px;font-weight:600;color:var(--ai);background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.4);border-radius:8px;padding:6px 14px;}
+  /* ===== Body ===== */
+  .bd{padding:20px 24px;display:flex;flex-direction:column;gap:var(--gap);}
+  .sec-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .sec-sub{font-size:12px;color:var(--txt-3);font-weight:400;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);}
+  .card-pad{padding:16px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{padding:5px 13px;border-radius:999px;font-size:12px;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line);}
+  .chip.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;}
+  .grow{flex:1;}
+  .lbl{font-size:12px;color:var(--txt-3);}
+  .up-t{color:var(--up);} .down-t{color:var(--down);}
+  .bdg{font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;}
+  .bdg.up{color:var(--up);background:rgba(52,211,153,.12);}
+  .bdg.down{color:var(--down);background:rgba(248,113,113,.12);}
+  .bdg.flat{color:var(--txt-3);background:rgba(107,114,128,.15);}
+  .bdg.merge{color:var(--blue);background:rgba(96,165,250,.12);}
+  .foot{display:flex;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--txt-3);}
+  /* ===== Query ===== */
+  .query-box{display:flex;align-items:center;gap:12px;background:var(--panel-2);border:1px solid #2C3E5F;border-radius:10px;padding:13px 16px;}
+  .query-box .q{flex:1;font-size:14px;}
+  .query-box .q .lbl{font-size:13px;}
+  /* ===== Rules ===== */
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  .rule-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;font-size:12.5px;color:var(--txt);background:#1E2A44;border:1px solid #2C3E5F;}
+  .rule-chip b{color:#DBEAFE;font-weight:600;}
+  .rule-chip .val{color:var(--blue);border-bottom:1px dashed rgba(96,165,250,.6);cursor:pointer;font-variant-numeric:tabular-nums;}
+  .rule-chip .x{color:var(--txt-3);}
+  .add-chip{display:inline-flex;align-items:center;padding:7px 14px;border-radius:999px;font-size:12.5px;color:var(--blue);border:1px dashed #2C3E5F;background:transparent;}
+  .cite{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px;}
+  .cite:last-child{border:none;}
+  .cite .src-b{flex:none;font-size:10.5px;font-weight:600;color:var(--ai);background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);padding:2px 8px;border-radius:999px;margin-top:1px;}
+  .cite .rel{flex:none;color:var(--txt-3);font-size:11px;font-variant-numeric:tabular-nums;margin-top:2px;}
+  .code-block{margin-top:8px;background:#0B0D12;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#86EFAC;line-height:1.7;display:none;}
+  /* ===== Tabs / table ===== */
+  .seg{display:flex;gap:6px;}
+  .seg .tab{padding:6px 14px;font-size:13px;border-radius:999px;color:var(--txt-2);border:1px solid var(--line);background:transparent;}
+  .seg .tab.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;font-weight:600;}
+  .ai-card{border:1px solid rgba(167,139,250,.35);background:linear-gradient(180deg,rgba(167,139,250,.07),var(--panel));border-radius:var(--r);padding:14px 16px;}
+  .ai-bdg{color:var(--ai);background:rgba(167,139,250,.14);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;}
+  table.res{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;}
+  table.res th{text-align:left;color:var(--txt-3);font-weight:500;font-size:12px;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.res td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;}
+  table.res th.num,table.res td.num{text-align:right;}
+  table.res tr:hover td{background:rgba(255,255,255,.02);}
+  .stale{color:var(--warn);background:rgba(251,191,36,.12);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;}
+  .stale-zone{opacity:.6;filter:saturate(.5);}
+  .pager{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt-2);}
+  .pager .pg{padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);}
+  .pager .pg.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;}
+  .empty{border:1px dashed #2C3E5F;border-radius:var(--r);padding:34px 20px;text-align:center;background:var(--panel);}
+  .switch{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--txt-2);}
+  .switch .knob{width:30px;height:16px;border-radius:999px;background:rgba(52,211,153,.5);position:relative;}
+  .switch .knob::after{content:"";position:absolute;top:2px;right:2px;width:12px;height:12px;border-radius:50%;background:#fff;}
+</style>
+</head>
+<body>
+
+<div class="import-note">📐 <b>Figma 导入说明:</b>使用 html.to.design 插件 → 选择 <b>Full page</b> 一次性捕获,将得到 2 个独立 Frame(选股主页面 / AI 洞察展开与状态规范)。导入后可删除本说明条。(表格内数据为示意;本文件为纯静态内联样式,无外部依赖)</div>
+
+<!-- ================= FRAME 1 · 选股主页面 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 1 / 2 · 智能量化选股(Agentic Screener)主页面 — 一句话提问 → 看懂规则 → 看到结果 → 下钻/订阅</div>
+  <div class="hd">
+    <div><span class="brand">智能量化选股<span class="en">AGENTIC SCREENER</span></span></div>
+    <div class="hd-right">
+      <span class="pill sandbox">SANDBOX · 单次推演,无持久账本</span>
+      <span class="pill">覆盖 5,832 只 · facade+screener-engine</span>
+      <span class="btn-mini">⏱ 历史记录</span>
+    </div>
+  </div>
+  <div class="bd">
+
+    <!-- ① 提问层 -->
+    <div class="card card-pad">
+      <div class="query-box">
+        <span class="lbl">✦ 用一句话描述选股逻辑</span>
+        <span class="q">市盈率超百倍,但营收出现负增长的刺破泡沫股</span>
+        <div class="grow"></div>
+        <span class="btn-primary">生成策略</span>
+      </div>
+      <div class="chips" style="margin-top:10px;">
+        <span class="lbl" style="align-self:center;">试试:</span>
+        <span class="chip">高股息低波动</span>
+        <span class="chip">净利连增 3 季</span>
+        <span class="chip">52 周新高 + 放量</span>
+        <span class="chip on">高 PE 负增长泡沫股</span>
+      </div>
+    </div>
+
+    <!-- ② 透明层 -->
+    <div class="grid-2">
+      <div class="card card-pad">
+        <div class="sec-title" style="margin-bottom:8px;">RAG 知识库召回依据 <span class="sec-sub">为什么这样理解你的话</span></div>
+        <div class="cite">
+          <span class="src-b">知识库</span>
+          <span class="grow" style="color:var(--txt-2);line-height:1.5;">「成长陷阱与估值消化」:超高 PE 叠加营收负增长,通常处于估值消化后期,需警惕戴维斯双杀。</span>
+          <span class="rel">相关度 0.87</span>
+        </div>
+        <div class="cite">
+          <span class="src-b">研报</span>
+          <span class="grow" style="color:var(--txt-2);line-height:1.5;">「半导体周期复盘 2026Q2」:板块库存去化压制营收增速,高估值标的率先承压。</span>
+          <span class="rel">相关度 0.81</span>
+        </div>
+        <div class="lbl" style="margin-top:8px;">共召回 3 条 · 显示前 2 · 检索耗时 320ms</div>
+      </div>
+      <div class="card card-pad">
+        <div class="sec-title" style="margin-bottom:10px;">AGENT 解析的过滤规则 <span class="sec-sub">可编辑:点数值修改 · × 删除 · + 追加</span></div>
+        <div class="chips" style="gap:8px;">
+          <span class="rule-chip">市场: <b>美股 · 港股 · 沪股 · 深股</b> <span class="x">×</span></span>
+          <span class="rule-chip">市盈率 TTM ≥ <span class="val">100</span> <span class="x">×</span></span>
+          <span class="rule-chip">营业额增长率(最新) ≤ <span class="val">0%</span> <span class="x">×</span></span>
+          <span class="add-chip">+ 添加条件</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:14px;">
+          <span class="bdg up">置信度 · 高</span>
+          <span class="lbl">Hermes ReAct 解析 · 1.2s</span>
+          <div class="grow"></div>
+          <span class="btn-mini">订阅策略</span>
+          <span class="btn-mini">▾ 查看源码</span>
+        </div>
+        <div class="code-block" style="display:block;">pe_ttm &gt;= 100 AND revenue_growth_latest &lt;= 0 AND market IN (US, HK, SH, SZ)</div>
+      </div>
+    </div>
+
+    <!-- ③ 结果层 -->
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);">
+        <div class="seg"><div class="tab on">筛选结果 <b style="color:#DBEAFE;">630</b></div><div class="tab">CEP 异动</div></div>
+        <span class="switch"><span class="knob"></span>归并同名多市场 · 已归并 118 条重复</span>
+        <div class="grow"></div>
+        <span class="lbl">排序:市盈率 TTM ↓</span>
+        <span class="btn-ai">✦ AI 一键洞察</span>
+      </div>
+
+      <div style="padding:12px 16px 0;">
+        <div class="ai-card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;">
+          <span class="ai-bdg">AI 生成 · 仅供参考</span>
+          <span style="font-size:12.5px;color:var(--txt-2);">主线概念:<b style="color:var(--txt);">半导体设备</b>(214 只)· <b style="color:var(--txt);">自动化</b>(97 只);高估值 + 成长失速集中于科创板 — 点击展开完整点评</span>
+          <div class="grow"></div>
+          <span class="lbl">▴ 折叠</span>
+        </div>
+      </div>
+
+      <div style="padding:12px 16px;">
+        <table class="res">
+          <tr>
+            <th>#</th><th>代码</th><th>名称</th><th class="num">最新价</th><th class="num">涨跌幅</th><th>行业</th><th class="num">市值</th><th class="num">平均成交额</th><th class="num">市盈率 TTM</th><th class="num">市净率</th><th class="num">营业额增长率</th><th class="num">换手率</th>
+          </tr>
+          <tr>
+            <td>1</td><td>688729.SH <span class="bdg merge">沪/深</span></td><td>呛唐股份</td><td class="num">27.33</td><td class="num"><span class="bdg down">-0.26%</span></td><td>半导体</td><td class="num">807.8亿</td><td class="num">7.26亿</td><td class="num">132.0</td><td class="num">9.04</td><td class="num down-t">-10.58%</td><td class="num">1.53%</td>
+          </tr>
+          <tr>
+            <td>2</td><td>688777.SH <span class="bdg merge">沪/深</span></td><td>中控技术</td><td class="num">96.55</td><td class="num"><span class="bdg down">-0.27%</span></td><td>自动化设备</td><td class="num">763.9亿</td><td class="num">11.18亿</td><td class="num">192.7</td><td class="num">7.78</td><td class="num down-t">-6.29%</td><td class="num">1.47%</td>
+          </tr>
+          <tr>
+            <td>3</td><td>688111.SH</td><td>金山办公</td><td class="num">268.40</td><td class="num"><span class="bdg down">-1.05%</span></td><td>软件</td><td class="num">1,180亿</td><td class="num">15.0亿</td><td class="num">186.3</td><td class="num">22.40</td><td class="num down-t">-2.10%</td><td class="num">0.92%</td>
+          </tr>
+          <tr>
+            <td>4</td><td>688561.SH</td><td>奇安信</td><td class="num">41.87</td><td class="num"><span class="bdg up">+0.34%</span></td><td>网络安全</td><td class="num">285.4亿</td><td class="num">3.10亿</td><td class="num">154.8</td><td class="num">5.62</td><td class="num down-t">-8.75%</td><td class="num">2.05%</td>
+          </tr>
+          <tr>
+            <td>5</td><td>300418.SZ</td><td>昆仑万维</td><td class="num">38.62</td><td class="num"><span class="bdg down">-2.14%</span></td><td>游戏</td><td class="num">468.2亿</td><td class="num">12.0亿</td><td class="num">121.5</td><td class="num">3.88</td><td class="num down-t">-4.30%</td><td class="num">3.61%</td>
+          </tr>
+        </table>
+        <div class="lbl" style="margin-top:8px;">行点击 → /market/:ticker → 个股工作台(复用现成深链) · AG Grid 虚拟滚动(示意用静态表)</div>
+      </div>
+
+      <div class="foot">
+        <span>数据源:facade · screener-engine · RAG</span>
+        <span style="display:flex;align-items:center;gap:12px;">
+          <span>更新于 09:42 · 归并后 512 只 · 50 只/页</span>
+          <span class="pager"><span class="pg on">1</span><span class="pg">2</span><span class="pg">3</span><span class="pg">… 11</span><span class="pg">›</span></span>
+        </span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FRAME 2 · AI 洞察展开与状态规范 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 2 / 2 · AI 一键洞察(展开态)与状态规范(STALE / 空态 / 错误 / SANDBOX)</div>
+  <div class="hd">
+    <div><span class="brand">智能量化选股<span class="en">AGENTIC SCREENER · 状态规范</span></span></div>
+    <div class="hd-right"><span class="pill sandbox">SANDBOX · 单次推演,无持久账本</span><span class="pill">规范帧 · 供开发对照</span></div>
+  </div>
+  <div class="bd">
+    <div class="grid-2">
+
+      <!-- 左:AI 洞察展开 -->
+      <div class="ai-card">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="ai-bdg">AI 生成 · 仅供参考</span>
+          <span style="font-weight:600;">AI 一键洞察 · 当前 630 条结果</span>
+          <div class="grow"></div>
+          <span class="lbl">Hermes · SSE 流式生成</span>
+        </div>
+        <div style="margin-top:12px;font-size:13px;color:var(--txt-2);line-height:1.8;">
+          <b style="color:var(--txt);">主线概念:</b>高估值 + 成长失速集中于两条线——半导体设备/材料(214 只,占 34%)与工业自动化(97 只),均为 2025 年估值扩张后营收兑现不及预期的板块。<br/>
+          <b style="color:var(--txt);">结构特征:</b>结果中市值中位数 96 亿,市盈率 TTM 中位数 148×,营收增速中位数 -6.1%,典型的"小盘高估值负增长"组合。<br/>
+          <b style="color:var(--txt);">龙头点评:</b>
+        </div>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;font-size:12.5px;">
+          <div style="display:flex;align-items:center;gap:10px;"><span class="bdg down">-0.26%</span><span><b>呛唐股份</b> · PE 132× 而营收 -10.6%,设备验证周期拉长,估值依赖订单预期兑现</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><span class="bdg down">-0.27%</span><span><b>中控技术</b> · PE 193× 为结果集最高,海外扩张尚未反映到营收,波动敏感度高</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><span class="bdg down">-2.14%</span><span><b>昆仑万维</b> · AI 投入期营收转负,估值锚从游戏切换到 AI 叙事,分歧最大</span></div>
+        </div>
+        <div class="lbl" style="margin-top:12px;">由 Hermes 调用筛选结果 Tool 生成 · 数字均来自 Tool 返回,失败时显示错误态不编数 · 不构成投资建议</div>
+      </div>
+
+      <!-- 右:状态规范 -->
+      <div style="display:flex;flex-direction:column;gap:var(--gap);">
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <span style="font-weight:600;font-size:13px;">状态 ① WS 断连 / 数据过期</span>
+            <span class="stale">STALE</span>
+            <div class="grow"></div><span class="lbl">区域 opacity-60 saturate-50</span>
+          </div>
+          <div class="stale-zone" style="background:var(--panel-2);border-radius:8px;padding:10px 12px;font-size:12.5px;display:flex;gap:16px;">
+            <span>688729.SH 呛唐股份</span><span>27.33</span><span class="down-t">-0.26%</span><span>PE 132.0</span>
+          </div>
+          <div class="lbl" style="margin-top:8px;">说明文案:"行情快照可能滞后,展示为最后一次成功数据" · 禁止无标注展示过期数</div>
+        </div>
+        <div class="empty">
+          <div style="font-size:15px;font-weight:600;margin-bottom:6px;">状态 ② 没有满足条件的标的</div>
+          <div class="lbl" style="margin-bottom:14px;">EmptyState · 不渲染 "--" 与 0.00,直接给出放宽路径</div>
+          <div class="chips" style="justify-content:center;">
+            <span class="chip on">市盈率放宽到 ≥ 80</span>
+            <span class="chip on">市场扩到美股</span>
+            <span class="chip on">增长率放宽到 ≤ +2%</span>
+          </div>
+        </div>
+        <div class="card card-pad" style="border-color:rgba(248,113,113,.35);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="bdg down">E-504</span>
+            <span style="font-weight:600;font-size:13px;">状态 ③ 筛选引擎超时</span>
+            <div class="grow"></div>
+            <span class="btn-mini">重试</span>
+          </div>
+          <div class="lbl" style="margin-top:8px;">错误走错误卡(错误码 + 原因 + 重试),禁止内联红字;解析失败与引擎失败文案分开</div>
+        </div>
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="pill sandbox">SANDBOX</span>
+            <span class="lbl">→ 订阅策略仅入纸面</span>
+          </div>
+          <div class="lbl" style="margin-top:8px;">切换 LIVE 须先通过 REAL_TRADE_EXECUTE 校验,横幅转红并二次确认(宪法 §4)</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // Verification helper only: ?frame=N isolates the Nth frame for screenshots.
+  (function(){
+    var m = /[?&]frame=(\d+)/.exec(location.search);
+    if(!m) return;
+    var n = parseInt(m[1],10);
+    var frames = document.querySelectorAll('.frame');
+    var note = document.querySelector('.import-note');
+    if(note) note.style.display='none';
+    frames.forEach(function(f,i){ if(i+1!==n) f.style.display='none'; });
+  })();
+</script>
+
+</body>
+</html>

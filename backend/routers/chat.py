@@ -381,3 +381,212 @@ async def delete_session(session_id: str, username: str = Depends(get_current_us
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
+# --- AGENT-05: 批量工具执行 RPC 端点 ---
+# ==========================================
+
+
+class BatchToolCallRequest(BaseModel):
+    """批量工具调用请求体"""
+
+    tool_name: str
+    arguments: dict = {}
+    call_id: Optional[str] = None
+
+
+class BatchExecuteRequest(BaseModel):
+    """批量执行请求"""
+
+    tool_calls: list[BatchToolCallRequest]
+    batch_id: str = "default"
+
+
+@router.post("/agent/batch-execute")
+async def batch_execute_tools(
+    request: BatchExecuteRequest,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-05: 脚本经 RPC 批量调工具（零上下文成本轮次）。
+
+    将 N 次带上下文的工具往返压成 1 轮批量执行，大幅节省 token 成本。
+    安全约束：白名单仅限只读数据工具，交易类工具被硬编码拒绝。
+    """
+    from hermes_agent.agent import HermesAgent
+    from hermes_agent.tool_registry import ToolRegistry
+
+    try:
+        # 创建临时 agent 实例（仅用于批量执行，不走 LLM）
+        registry = ToolRegistry()
+        agent = HermesAgent(tool_registry=registry)
+
+        # 转换请求格式
+        tool_calls = [
+            {
+                "tool_name": tc.tool_name,
+                "arguments": tc.arguments,
+                "call_id": tc.call_id,
+            }
+            for tc in request.tool_calls
+        ]
+
+        # 执行批量调用
+        report = await agent.batch_execute_tools(
+            tool_calls=tool_calls,
+            batch_id=request.batch_id,
+        )
+
+        return {"status": "success", "data": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量执行失败: {str(e)}")
+
+
+# ========================================================================
+# AGENT-14: 子代理并行编排 API
+# ========================================================================
+
+
+class SubAgentTaskRequest(BaseModel):
+    """子代理任务请求"""
+
+    task_id: str
+    target: str
+    instruction: str
+    scopes: Optional[list[str]] = None
+
+
+class ParallelAnalyzeRequest(BaseModel):
+    """并行分析请求"""
+
+    tasks: list[SubAgentTaskRequest]
+    orchestration_id: str = "default"
+
+
+@router.post("/agent/parallel-analyze")
+async def parallel_analyze(
+    request: ParallelAnalyzeRequest,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-14: 子代理并行编排（多标的横截面分析加速）。
+
+    每个子代理拥有隔离的上下文，继承父级的 ToolRegistry 和审批策略，
+    不得提权。子代理执行完毕后汇总结果返回。
+
+    约束：
+    - 子代理只能使用只读数据工具（quote/indicators/fund_flow/fundamental/macro/news）
+    - 交易类工具不可访问
+    - 最大并发 5 个子代理，单个超时 60s，整体超时 120s
+    """
+    from hermes_agent.agent import HermesAgent
+    from hermes_agent.tool_registry import ToolRegistry
+
+    try:
+        registry = ToolRegistry()
+        agent = HermesAgent(tool_registry=registry)
+
+        # 转换请求格式
+        tasks = [
+            {
+                "task_id": t.task_id,
+                "target": t.target,
+                "instruction": t.instruction,
+                "scopes": t.scopes,
+            }
+            for t in request.tasks
+        ]
+
+        # 执行并行分析
+        report = await agent.parallel_analyze(
+            tasks=tasks,
+            orchestration_id=request.orchestration_id,
+        )
+
+        return {"status": "success", "data": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"并行分析失败: {str(e)}")
+
+
+# ========================================================================
+# AGENT-15: Rollout 持久化查询 API
+# ========================================================================
+
+
+@router.get("/sessions/{session_id}/rollout")
+async def get_session_rollout(
+    session_id: str,
+    cursor: Optional[int] = None,
+    limit: int = 50,
+    direction: str = "forward",
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-15: Cursor 分页查询会话事件日志（Rollout JSONL）。
+
+    参数:
+        session_id: 会话 ID
+        cursor: 起始 seq（None=从头/尾开始）
+        limit: 每页事件数（默认 50）
+        direction: "forward"（向后）或 "backward"（向前）
+    """
+    safe_session_id = f"user_{username}_{session_id}"
+
+    try:
+        from hermes_agent.rollout_storage import RolloutStorage
+
+        storage = RolloutStorage()
+        page = storage.read_events_paginated(
+            session_id=safe_session_id,
+            cursor=cursor,
+            limit=limit,
+            direction=direction,
+        )
+        return {"status": "success", "data": page.to_dict()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询 Rollout 失败: {str(e)}")
+
+
+@router.get("/sessions/{session_id}/rollout/stats")
+async def get_session_rollout_stats(
+    session_id: str,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-15: 获取会话事件统计信息（事件数/类型分布/文件大小/时间范围）。
+    """
+    safe_session_id = f"user_{username}_{session_id}"
+
+    try:
+        from hermes_agent.rollout_storage import RolloutStorage
+
+        storage = RolloutStorage()
+        stats = storage.get_event_stats(safe_session_id)
+        return {"status": "success", "data": stats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询统计失败: {str(e)}")
+
+
+@router.get("/rollout/sessions")
+async def list_rollout_sessions(
+    limit: int = 20,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-15: 列出最近的 Rollout 会话（按日期倒序）。
+    """
+    try:
+        from hermes_agent.rollout_storage import RolloutStorage
+
+        storage = RolloutStorage()
+        sessions = storage.list_sessions(limit=limit)
+        # 过滤当前用户的会话
+        prefix = f"user_{username}_"
+        user_sessions = [s for s in sessions if s.session_id.startswith(prefix)]
+        return {
+            "status": "success",
+            "data": [s.to_dict() for s in user_sessions],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"列出会话失败: {str(e)}")

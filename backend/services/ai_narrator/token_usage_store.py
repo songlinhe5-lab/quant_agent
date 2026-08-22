@@ -110,13 +110,12 @@ class TokenUsageStore:
             "total_tokens": 0,
             "calls": 0,
         }
-        # 启动时 best-effort 清理旧镜像残留的脏 key（不阻塞业务构造）
-        if self._enabled:
-            try:
-                asyncio.ensure_future(self._cleanup_legacy_keys())
-            except RuntimeError:
-                # 无 running event loop（如 import 期）时跳过，下次调用自然走干净逻辑
-                pass
+        # best-effort 清理旧镜像残留脏 key 的后台任务引用（懒触发，见 record()）。
+        # 注意：不在 __init__ 里创建任务——单例常在模块导入期（尚无 running loop）
+        # 被实例化，过早创建的任务会绑定到错误的事件循环，在 pytest 关闭 loop 时
+        # 悬挂并触发 "Task was destroyed but it is pending" / canceled。
+        self._cleanup_task: Optional[asyncio.Future] = None
+        self._cleanup_triggered = False
 
     @staticmethod
     async def _cleanup_legacy_keys() -> None:
@@ -125,23 +124,33 @@ class TokenUsageStore:
 
         best-effort：任何 Redis 异常均静默吞掉，绝不抛回业务层。
         使用 SCAN 游标分批删除，避免 KEYS 在大键空间下阻塞 Redis。
+        整体加 5s 超时：测试/Redis 不可达时任务不会无限悬挂，
+        事件循环关闭时被取消也静默返回，不触发 canceled 告警。
         """
         try:
-            cursor = 0
-            deleted = 0
-            while True:
-                cursor, keys = await redis_client.scan(cursor, match="quant:metrics:llm:tokens:*", count=200)
-                if keys:
-                    legacy = [k for k in keys if _LEGACY_KEY_RE.match(k)]
-                    if legacy:
-                        await redis_client.delete(*legacy)
-                        deleted += len(legacy)
-                if cursor == 0:
-                    break
-            if deleted:
-                logger.info(f"[TokenUsage] 已清理 {deleted} 个旧镜像残留的脏 key")
+            await asyncio.wait_for(TokenUsageStore._cleanup_legacy_keys_impl(), timeout=5.0)
+        except asyncio.CancelledError:
+            # 事件循环关闭时任务被取消，静默返回
+            return
         except Exception as e:  # noqa: BLE001
             logger.debug(f"[TokenUsage] 旧格式脏 key 清理跳过（非致命）: {e}")
+
+    @staticmethod
+    async def _cleanup_legacy_keys_impl() -> None:
+        """实际清理逻辑（由 _cleanup_legacy_keys 包超时后调用）"""
+        cursor = 0
+        deleted = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor, match="quant:metrics:llm:tokens:*", count=200)
+            if keys:
+                legacy = [k for k in keys if _LEGACY_KEY_RE.match(k)]
+                if legacy:
+                    await redis_client.delete(*legacy)
+                    deleted += len(legacy)
+            if cursor == 0:
+                break
+        if deleted:
+            logger.info(f"[TokenUsage] 已清理 {deleted} 个旧镜像残留的脏 key")
 
     @property
     def enabled(self) -> bool:
@@ -161,6 +170,15 @@ class TokenUsageStore:
         """
         if not self._enabled:
             return
+        # 首次 record 时懒触发一次后台脏 key 清理（此时已有稳定 running loop，
+        # 任务不会绑定到错误的事件循环；持有强引用且内部超时+捕获 CancelledError）
+        if not self._cleanup_triggered:
+            self._cleanup_triggered = True
+            try:
+                self._cleanup_task = asyncio.ensure_future(self._cleanup_legacy_keys())
+            except RuntimeError:
+                # 仍无 running loop 时跳过，下次 record 再尝试
+                self._cleanup_triggered = False
         prompt_tokens = int(prompt_tokens or 0)
         completion_tokens = int(completion_tokens or 0)
         if total_tokens <= 0:

@@ -7,7 +7,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["macro", "news"])  # 全球宏观新闻 + 核弹雷达
 class MacroNewsTool(BaseTool):
     """
     获取市场实时新闻与宏观舆情，用于撰写早报或大盘情绪分析。

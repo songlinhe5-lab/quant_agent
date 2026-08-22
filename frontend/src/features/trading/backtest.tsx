@@ -39,6 +39,7 @@ export function BacktestModule() {
         running={bt.running}
         done={bt.done}
         progress={bt.progress}
+        progressStage={bt.progressStage}
         ticker={bt.ticker} setTicker={bt.setTicker}
         period={bt.period} setPeriod={bt.setPeriod}
         interval={bt.interval} setIntervalVal={bt.setIntervalVal}
@@ -58,6 +59,8 @@ export function BacktestModule() {
         setStrategyParams={bt.setStrategyParams}
         customExpr={bt.customExpr}
         setCustomExpr={bt.setCustomExpr}
+        reproParams={bt.reproParams}
+        setReproParams={bt.setReproParams}
       />
 
       {/* Results */}
@@ -73,6 +76,9 @@ export function BacktestModule() {
         curve={bt.curve}
         underwaterDataComputed={bt.underwaterDataComputed}
         histogramData={bt.histogramData}
+        // UIRF-02: 错误态（错误卡 + 重试）
+        error={bt.error}
+        onRetry={() => { bt.setError(null); bt.setDone(false); bt.handleRun() }}
       />
     </div>
   )

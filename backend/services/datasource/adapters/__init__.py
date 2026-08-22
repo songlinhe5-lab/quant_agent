@@ -97,5 +97,15 @@ def ensure_all_datasources_registered() -> list[str]:
     except Exception as e:
         logger.warning(f"[Registry] 搜索数据源注册失败: {e}")
 
+    # ── 散户情绪源 (Sentiment / ApeWisdom, 远程) ──
+    try:
+        from backend.services.datasource.adapters.sentiment import ensure_sentiment_registered
+
+        name = ensure_sentiment_registered()
+        if name:
+            registered.append(name)
+    except Exception as e:
+        logger.warning(f"[Registry] Sentiment 注册失败: {e}")
+
     logger.info(f"[Registry] 数据源适配器注册完成: {registered}")
     return registered

@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["quote"])  # 批量实时盘口快照
 class MarketSnapshotTool(BaseTool):
     """批量实时快照（Futu SNAPSHOT，最多 400 只/批）。
 

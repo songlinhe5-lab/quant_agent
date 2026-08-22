@@ -144,6 +144,11 @@ async def test_registry_execute_uses_cache():
     reg.result_cache = cache
     reg.rate_limiter = MagicMock()
     reg.rate_limiter.acquire = AsyncMock()
+    # AGENT-02: 中间件管线初始化
+    from hermes_agent.middleware import FailureTracker
+
+    reg.failure_tracker = FailureTracker(threshold=3)
+    reg._pipeline = reg._build_pipeline()
 
     DummyTool.calls = 0
     r1 = await reg.execute("dummy_quote_tool", ticker="US.AAPL")

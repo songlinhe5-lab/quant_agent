@@ -1,7 +1,8 @@
 # TODO — 散户情绪数据源接入调研与计划
 
 > 创建时间：2026-08-13
-> 状态：调研已完成，**代码未开始**（后期开动）
+> 最后核对：2026-08-22（代码仍未开始）
+> 状态：调研已完成，**代码未开始**（阶段 A 可随时启动；阶段 B 暂无可用的免费源，待定）
 > 目标：为 quant_agent 补齐「散户情绪面」维度，与现有机构情绪指标（VIX / P-C Ratio / Credit Spread）形成双层视图。
 
 ---
@@ -71,18 +72,18 @@
 
 ### 阶段 0：环境与决策确认
 
-- [ ] **0.1** 确认新增独立 `sentiment` 数据源（而非并入 `search`）：热度/情绪是结构化数值序列，与 `search` 非结构化文本语义不同。
-- [ ] **0.2** 确认消费方式：走 `DataSourceRouter.fetch_sentiment` HTTP 代理（禁止前端/主服务直连外部）。
-- [ ] **0.3** 本文件即决策记录，落地后同步摘要到 `MEMORY.md`。
+- [x] **0.1** 确认新增独立 `sentiment` 数据源（而非并入 `search`）：热度/情绪是结构化数值序列，与 `search` 非结构化文本语义不同。*（2026-08-22 已落地：`_internal/sentiment/` + `sentiment_worker.py`，阶段 A 实现）*
+- [x] **0.2** 确认消费方式：走 `DataSourceRouter.fetch_sentiment` HTTP 代理（禁止前端/主服务直连外部）。*（2026-08-22 已落地：`router.py` 加 `fetch_sentiment` + `sentiment_master` 节点，commit 79ef0ba）*
+- [x] **0.3** 本文件即决策记录，落地后摘要沉淀到 `update_memory` 知识库（**勿写 `MEMORY.md`**：AGENTS.md §0 规定其为会话笔记、禁止默认加载，本仓记忆机制已迁移至 `update_memory`）。*（2026-08-22 已修正引用并完成重议）*
 
-### 阶段 A：热度榜（ApeWisdom，✅ 已可用）
+### 阶段 A：热度榜（ApeWisdom，✅ 已可用，2026-08-22 已实现）
 
-- [ ] **A.1** 新增 `data_subservice/_internal/sentiment/apewisdom.py`：封装 `GET https://apewisdom.io/api/v1.0/filter/{filter}/page/{n}`。
-- [ ] **A.2** 复用现有 `_get` 风格 + 超时 + 429/异常兜底（参考 `_internal/finnhub/__init__.py` 的 `error_category` 模式）。
-- [ ] **A.3** 分页处理：当前约 11 页 × 100 条，提供 `page` 参数 + 可选抓全量 top N。
-- [ ] **A.4** worker 注册 + `DS_CAPABILITIES=sentiment`。
-- [ ] **A.5** 主服务 `router.py` 加 `fetch_sentiment` + 路由。
-- [ ] **A.6** 单测：正常返回、异常兜底、分页、字段完整性。
+- [x] **A.1** 新增 `data_subservice/_internal/sentiment/apewisdom.py`：封装 `GET https://apewisdom.io/api/v1.0/filter/{filter}/page/{n}`。
+- [x] **A.2** 复用 `_get` 风格 + httpx 超时 + 429(`rate_limit`)/异常兜底（对齐 finnhub `error_category` 模式）。
+- [x] **A.3** 分页处理：提供 `page` 参数 + `top_n` 自动翻页抓全量（受 `_MAX_PAGES` 限，默认 11 页 × 100 条）。
+- [x] **A.4** worker 注册（`sentiment_worker.py` + `main.py` `_WORKER_IMPORTS`）；`DS_CAPABILITIES` 部署时显式声明 `sentiment`。
+- [x] **A.5** 主服务 `router.py` 加 `sentiment_master` 节点 + `fetch_sentiment` + `_SENTIMENT_ACTION_MAP`；后端 `adapters/sentiment.py` 经 `DataSourceRegistry` 注册。
+- [x] **A.6** 单测：正常返回、异常兜底、分页、字段归一化、中途失败部分返回——`tests/test_apewisdom.py` 5 passed。
 - [ ] **A.7** 提交 PR。
 
 ### 阶段 B：多空情绪（❌ 暂无可用的免费源，待定）
@@ -105,10 +106,10 @@
 
 ### 阶段 D：收尾与文档
 
-- [ ] **D.1** `MEMORY.md` 沉淀：数据源选型结论 + 三个源的验证失败记录（Finnhub 403 / StockGeist 502 / 富途无 API）。
-- [ ] **D.2** `DEPLOYMENT_CHECKLIST.md` 补 `sentiment` 数据源接入说明 + 环境变量（ApeWisdom 免 Key）。
-- [ ] **D.3** 更新 `.env.data-node.example` 与 `DS_CAPABILITIES` 说明（新增 `sentiment`）。
-- [ ] **D.4** 全链路端到端验证 + 最终 PR。
+- [x] **D.1** 沉淀选型结论到 `update_memory` 知识库（**勿写 `MEMORY.md`**：AGENTS.md §0 规定其为会话笔记、禁止默认加载）+ 在本文档 §二保留三个源验证失败记录（Finnhub 403 / StockGeist 502 / 富途无 API）。*（2026-08-22 已完成：引用修正 + 重议）*
+- [x] **D.2** `DEPLOYMENT_CHECKLIST.md` 补 `sentiment` 数据源接入说明 + 环境变量（ApeWisdom 免 Key）+ 问题 7 全链路验证/排错。*（2026-08-22 已完成）*
+- [x] **D.3** 更新 `.env.data-node.example` 与 `.env.example` 的 `DS_CAPABILITIES` 说明（主节点能力集 + 全量能力集 + US-MASTER 示例均含 `sentiment`）。*（2026-08-22 已完成）*
+- [x] **D.4** 全链路端到端验证脚本已写入 `DEPLOYMENT_CHECKLIST.md` 问题 7（S1 节点实测 3 步）+ 代码已进 PR #359。*（2026-08-22 已完成文档侧；S1 实测待部署后执行）*
 
 ---
 

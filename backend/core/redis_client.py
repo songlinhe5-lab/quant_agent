@@ -29,6 +29,8 @@ redis_pool = redis.ConnectionPool(
     decode_responses=True,
     protocol=2,  # 💡 升级到 redis-py 5.x 后，重新加回此参数以强制使用 RESP2 协议向下兼容
     max_connections=REDIS_MAX_CONNECTIONS,
+    socket_connect_timeout=2,  # 无 Redis 服务时 2s 内快速失败，避免连接永久挂起
+    socket_timeout=2,
 )
 
 redis_client = redis.Redis(connection_pool=redis_pool)

@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["news"])  # 公司新闻聚合
 class GetCompanyNewsTool(BaseTool):
     name = "get_company_news"
     description = "获取指定股票（如 AAPL, 0700.HK）的近期相关公司新闻与舆情公告。"

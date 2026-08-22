@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["trade"])  # 期权损益实验室
 class OptionStrategyLabTool(BaseTool):
     """
     G4：期权损益实验室（依赖 F3 OPTION_STRATEGY）。

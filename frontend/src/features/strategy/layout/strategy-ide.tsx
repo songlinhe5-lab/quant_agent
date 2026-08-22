@@ -67,6 +67,20 @@ export function StrategyIDE({ className }: { className?: string }) {
       setWorkspaceTab('code')
       sessionStorage.removeItem('quant_strategy_initial_code')
     }
+    // COPILOT-22: 兼容 /strategy?code=<base64> 深链（策略卡跳转），未命中 sessionStorage 时兜底
+    if (!savedCode) {
+      try {
+        const params = new URLSearchParams(window.location.search)
+        const q = params.get('code')
+        if (q) {
+          const decoded = decodeURIComponent(atob(q))
+          enterDiff(decoded, 'hermes')
+          setWorkspaceTab('code')
+        }
+      } catch {
+        /* base64 解码失败则忽略，保持空态 */
+      }
+    }
 
     return () => window.removeEventListener('quant_strategy_code_invoke', handleStrategyCodeInvoke)
   }, [enterDiff, setWorkspaceTab])

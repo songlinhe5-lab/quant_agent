@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { EChartsCoreOption } from 'echarts'
-import { API_BASE_URL, SEMANTIC_COLORS } from '@/lib/constants'
+import { SEMANTIC_COLORS } from '@/lib/constants'
+import { apiClient } from '@/lib/api-client'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
 import { cn } from '@/lib/utils'
 
@@ -29,19 +30,14 @@ export function OptionPcrPanel() {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(`${API_BASE_URL}/macro/sentiment-history?limit=60`, { credentials: 'include' })
-      .then((r) => {
-        if (!r.ok) return r.json().then((err) => {
-          throw new Error(err?.detail || `HTTP ${r.status}`)
-        })
-        return r.json()
-      })
+    apiClient
+      .get<unknown>(`/macro/sentiment-history?limit=60`)
       .then((j) => {
         // 兼容：信封 {code,msg,data:{status,data:[...]}} → 取 data.data；老格式直接是数组
         if (!cancelled) setRows(Array.isArray(j) ? j : (j as any)?.data?.data ?? (j as any)?.data ?? null)
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e))
+        if (!cancelled) setError(String(e?.message || e))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -50,6 +46,10 @@ export function OptionPcrPanel() {
       cancelled = true
     }
   }, [])
+
+  if (loading) return <div className="p-6 text-sm text-slate-400">加载 PCR 情绪…</div>
+  if (error) return <div className="p-6 text-sm text-red-400">PCR 情绪获取失败：{error}</div>
+  if (!rows || rows.length === 0) return <div className="p-6 text-sm text-slate-400">暂无 PCR 情绪数据</div>
 
   const buildOption = () => {
     if (!rows || !rows.length) return null

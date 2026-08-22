@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: hermes_agent
+title: Hermes 量化交易对话 Agent
+scope:
+    - hermes_agent/
+source_files: []
+depends_on: []
+related_to: []

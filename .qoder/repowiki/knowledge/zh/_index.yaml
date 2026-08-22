@@ -1,0 +1,541 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: develop
+nodes_managed: true
+exported_at: "2026-08-22T01:24:48Z"
+modules:
+    "":
+        dir_name: Quant Agent 量化交易系统根编排
+        title: Quant Agent 量化交易系统根编排
+        scope:
+            - README.md
+            - .gitignore
+            - Makefile
+            - pyproject.toml
+            - package.json
+            - pnpm-lock.yaml
+            - Dockerfile
+            - docker-compose.*.yml
+            - prometheus.yml
+            - grafana/
+            - tempo/
+            - config/
+            - shared/proto/
+            - .github/
+            - .aiexclude
+            - .env.data-node.example
+            - .env.example
+            - .pre-commit-config.yaml
+            - AGENTS.md
+            - AI_INSTRUCTIONS.md
+            - CHANGELOG.md
+            - DEPLOYMENT_CHECKLIST.md
+            - FUTU_API_VALUE_FORMAT_DIAGNOSIS.md
+            - LEARNING_JOURNAL_2026-07-10.md
+            - MEMORY.md
+            - REFACTOR_REPORT.md
+            - _probe_futu_svc.py
+            - _smoke_g_series_s1.py
+            - _test_futu_local.py
+            - alembic.ini
+            - codecov.yml
+            - dashboard.yml
+            - docker-compose.master.yml
+            - docker-compose.node-bj.yml
+            - docker-compose.node-s1.yml
+            - docker-compose.node-s2.yml
+            - docker-compose.node-s3.yml
+            - docker-compose.node-s4.yml
+            - docker-publish.yml
+            - lint.yml
+            - quant-agent-dashboard.json
+            - quant.conf
+            - registry-config.yml
+            - start.sh
+            - uv.lock
+        source_files: []
+        children:
+            - backend
+            - client_flutter
+            - data_subservice
+            - docs
+            - frontend
+            - hermes_agent
+            - prompts
+            - scripts
+        depends_on: []
+        related_to: []
+    backend:
+        dir_name: 量化交易后端平台（FastAPI + Worker 双进程）
+        title: 量化交易后端平台（FastAPI + Worker 双进程）
+        scope:
+            - backend/
+        source_files: []
+        children:
+            - backend/ai_research
+            - backend/alerting
+            - backend/api_routers
+            - backend/backtest_engine
+            - backend/core_infrastructure
+            - backend/datalake
+            - backend/datasource_market_data
+            - backend/macro_fundamental
+            - backend/migrations_scripts
+            - backend/oms_trading
+            - backend/risk_portfolio
+            - backend/screener
+            - backend/tests
+            - backend/workers_daemons
+        depends_on: []
+        related_to: []
+    backend/ai_research:
+        dir_name: AI 研究能力与质量保障服务集
+        title: AI 研究能力与质量保障服务集
+        scope:
+            - backend/services/ai_narrator/
+            - backend/services/expert_team/
+            - backend/app/research/
+            - backend/app/rag/
+            - backend/app/eval/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/alerting:
+        dir_name: 告警引擎与多通道推送系统
+        title: 告警引擎与多通道推送系统
+        scope:
+            - backend/services/alert/
+            - backend/services/alert_adapters/
+            - backend/workers/alert_engine.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers:
+        dir_name: 后端 HTTP API 网关与路由编排（backend_routers + app + schemas）
+        title: 后端 HTTP API 网关与路由编排（backend/routers + app + schemas）
+        scope:
+            - backend/routers/
+            - backend/schemas/
+            - backend/app/
+        source_files: []
+        children:
+            - backend/api_routers/app_services
+            - backend/api_routers/data_source_routers
+            - backend/api_routers/market_data_routers
+            - backend/api_routers/portfolio_trading_routers
+            - backend/api_routers/research_analysis_routers
+            - backend/api_routers/risk_backtest_routers
+            - backend/api_routers/system_admin_routers
+        depends_on: []
+        related_to: []
+    backend/api_routers/app_services:
+        dir_name: 量化应用用例编排层（backend_app）
+        title: 量化应用用例编排层（backend/app）
+        scope:
+            - backend/app/
+        source_files: []
+        children:
+            - backend/api_routers/app_services/analytics_apps
+            - backend/api_routers/app_services/optimization_apps
+            - backend/api_routers/app_services/trading_apps
+        depends_on: []
+        related_to: []
+    backend/api_routers/app_services/analytics_apps:
+        dir_name: 业务编排层（选股_宏观_系统 APM）
+        title: 业务编排层（选股/宏观/系统 APM）
+        scope:
+            - backend/app/screener_app.py
+            - backend/app/macro_app.py
+            - backend/app/system_app.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/app_services/optimization_apps:
+        dir_name: 量化策略优化用例（网格搜索_蒙特卡洛_Walk-Forward）
+        title: 量化策略优化用例（网格搜索/蒙特卡洛/Walk-Forward）
+        scope:
+            - backend/app/grid_search_app.py
+            - backend/app/monte_carlo_app.py
+            - backend/app/walk_forward_app.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/app_services/trading_apps:
+        dir_name: 交易应用编排层（OMS_Trade_Broker 入口）
+        title: 交易应用编排层（OMS/Trade/Broker 入口）
+        scope:
+            - backend/app/oms_app.py
+            - backend/app/trade_app.py
+            - backend/app/broker.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/data_source_routers:
+        dir_name: 数据源与数据湖路由层（限流_健康_投票_快照）
+        title: 数据源与数据湖路由层（限流/健康/投票/快照）
+        scope:
+            - backend/routers/datasource.py
+            - backend/routers/datalake.py
+            - backend/routers/datasource_vote.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/market_data_routers:
+        dir_name: 行情、期权与全球市场日历 HTTP_WS 路由层
+        title: 行情、期权与全球市场日历 HTTP/WS 路由层
+        scope:
+            - backend/routers/market.py
+            - backend/routers/options.py
+            - backend/routers/calendars.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/portfolio_trading_routers:
+        dir_name: 投资组合与交易路由层（Portfolio_Trade_Paper）
+        title: 投资组合与交易路由层（Portfolio/Trade/Paper）
+        scope:
+            - backend/routers/portfolio.py
+            - backend/routers/trade.py
+            - backend/routers/paper.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/research_analysis_routers:
+        dir_name: 投研与因子分析 HTTP 路由层
+        title: 投研与因子分析 HTTP 路由层
+        scope:
+            - backend/routers/research.py
+            - backend/routers/screener.py
+            - backend/routers/factor.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/risk_backtest_routers:
+        dir_name: 风控与回测引擎 API 路由
+        title: 风控与回测引擎 API 路由
+        scope:
+            - backend/routers/risk.py
+            - backend/routers/backtest.py
+            - backend/routers/backtest_reports.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/api_routers/system_admin_routers:
+        dir_name: 系统管理 API 路由层（认证、系统监控、告警中心）
+        title: 系统管理 API 路由层（认证、系统监控、告警中心）
+        scope:
+            - backend/routers/auth.py
+            - backend/routers/system.py
+            - backend/routers/alert.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/backtest_engine:
+        dir_name: 回测引擎与策略编排层
+        title: 回测引擎与策略编排层
+        scope:
+            - backend/backtest/
+            - backend/engine/
+            - backend/app/backtest/
+            - backend/strategies/
+        source_files: []
+        children:
+            - backend/backtest_engine/engine_core
+            - backend/backtest_engine/event_engine
+            - backend/backtest_engine/strategies
+        depends_on: []
+        related_to: []
+    backend/backtest_engine/engine_core:
+        dir_name: 同构策略引擎（Isomorphic Strategy Engine）
+        title: 同构策略引擎（Isomorphic Strategy Engine）
+        scope:
+            - backend/engine/
+        source_files: []
+        children:
+            - backend/backtest_engine/engine_core/analysis_tools
+            - backend/backtest_engine/engine_core/core_runtime
+            - backend/backtest_engine/engine_core/drivers
+            - backend/backtest_engine/engine_core/strategy_and_verification
+        depends_on: []
+        related_to: []
+    backend/backtest_engine/engine_core/analysis_tools:
+        dir_name: 回测分析工具集（网格搜索_蒙特卡洛_Walk-Forward）
+        title: 回测分析工具集（网格搜索/蒙特卡洛/Walk-Forward）
+        scope:
+            - backend/engine/grid_search.py
+            - backend/engine/monte_carlo.py
+            - backend/engine/walk_forward.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/backtest_engine/engine_core/core_runtime:
+        dir_name: 回测引擎核心运行时契约与协议
+        title: 回测引擎核心运行时契约与协议
+        scope:
+            - backend/engine/clock.py
+            - backend/engine/context.py
+            - backend/engine/contracts.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/backtest_engine/engine_core/drivers:
+        dir_name: 回测_实盘执行驱动层（Backtest_Live_Vector_SimBroker）
+        title: 回测/实盘执行驱动层（Backtest/Live/Vector/SimBroker）
+        scope:
+            - backend/engine/drivers/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/backtest_engine/engine_core/strategy_and_verification:
+        dir_name: 策略抽象、订单网关与回测同构校验
+        title: 策略抽象、订单网关与回测同构校验
+        scope:
+            - backend/engine/gateway.py
+            - backend/engine/strategy.py
+            - backend/engine/verify.py
+            - backend/engine/overfit.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/backtest_engine/event_engine:
+        dir_name: 事件驱动回测引擎与动态策略沙箱
+        title: 事件驱动回测引擎与动态策略沙箱
+        scope:
+            - backend/backtest/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/backtest_engine/strategies:
+        dir_name: 量化交易策略集合
+        title: 量化交易策略集合
+        scope:
+            - backend/strategies/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/core_infrastructure:
+        dir_name: 后端核心基础设施（启动生命周期、中间件栈与共享能力）
+        title: 后端核心基础设施（启动生命周期、中间件栈与共享能力）
+        scope:
+            - backend/core/
+            - backend/middleware/
+            - backend/bootstrap/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/datalake:
+        dir_name: 数据湖与 K 线快照服务（Kline Warehouse _ Snapshot _ PIT）
+        title: 数据湖与 K 线快照服务（Kline Warehouse / Snapshot / PIT）
+        scope:
+            - backend/services/datalake/
+            - backend/data/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/datasource_market_data:
+        dir_name: 多数据源市场数据服务聚合层
+        title: 多数据源市场数据服务聚合层
+        scope:
+            - backend/services/datasource/
+            - backend/services/akshare/
+            - backend/services/finnhub/
+            - backend/services/fmp/
+            - backend/services/tushare/
+        source_files: []
+        children:
+            - backend/datasource_market_data/datasource_facade_core
+            - backend/datasource_market_data/fundamental_macro_search
+            - backend/datasource_market_data/market_quote_sources
+        depends_on: []
+        related_to: []
+    backend/datasource_market_data/datasource_facade_core:
+        dir_name: 数据源门面与限流熔断核心框架
+        title: 数据源门面与限流熔断核心框架
+        scope:
+            - backend/services/datasource/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/datasource_market_data/fundamental_macro_search:
+        dir_name: 数据源适配器注册中心（行情_宏观_搜索）
+        title: 数据源适配器注册中心（行情/宏观/搜索）
+        scope:
+            - backend/services/datasource/adapters/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/datasource_market_data/market_quote_sources:
+        dir_name: 市场报价数据源适配层（AKShare _ Finnhub _ FMP _ Tushare）
+        title: 市场报价数据源适配层（AKShare / Finnhub / FMP / Tushare）
+        scope:
+            - backend/services/akshare/
+            - backend/services/finnhub/
+            - backend/services/fmp/
+            - backend/services/tushare/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/macro_fundamental:
+        dir_name: 宏观_资金流_情绪与复盘早报服务
+        title: 宏观/资金流/情绪与复盘早报服务
+        scope:
+            - backend/services/macro/
+            - backend/services/fund_flow/
+            - backend/services/sentiment/
+            - backend/services/market_review/
+            - backend/services/morning_briefing/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/migrations_scripts:
+        dir_name: 数据库迁移、运维脚本与技术指标工具集
+        title: 数据库迁移、运维脚本与技术指标工具集
+        scope:
+            - backend/alembic/
+            - backend/scripts/
+            - backend/utils/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/oms_trading:
+        dir_name: OMS 订单管理系统与纸面交易结算
+        title: OMS 订单管理系统与纸面交易结算
+        scope:
+            - backend/services/oms_service.py
+            - backend/services/paper_ledger_service.py
+            - backend/services/strategy_version_service.py
+            - backend/workers/oms/
+            - backend/workers/paper/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/risk_portfolio:
+        dir_name: 投资组合风控与融资融券余额服务
+        title: 投资组合风控与融资融券余额服务
+        scope:
+            - backend/domain/
+            - backend/services/risk/
+            - backend/services/margin/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/screener:
+        dir_name: 选股器编排与 DSL 转译服务
+        title: 选股器编排与 DSL 转译服务
+        scope:
+            - backend/services/screener/
+            - backend/app/screener_app.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/tests:
+        dir_name: 后端全量 pytest 测试套件
+        title: 后端全量 pytest 测试套件
+        scope:
+            - backend/tests/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend/workers_daemons:
+        dir_name: 后台 Worker 与守护进程集群（数据采集_告警_OMS_CEP_数据质量）
+        title: 后台 Worker 与守护进程集群（数据采集/告警/OMS/CEP/数据质量）
+        scope:
+            - backend/workers/
+            - backend/services/cep/
+            - backend/services/data_quality/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    client_flutter:
+        dir_name: Quant Agent Flutter 客户端（CLI-01 脚手架）
+        title: Quant Agent Flutter 客户端（CLI-01 脚手架）
+        scope:
+            - client/flutter_app/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    data_subservice:
+        dir_name: 数据子服务（Data Subservice）— 物理解耦的叶子数据源 HTTP 节点
+        title: 数据子服务（Data Subservice）— 物理解耦的叶子数据源 HTTP 节点
+        scope:
+            - data_subservice/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    docs:
+        dir_name: 量化交易系统文档与架构规范集
+        title: 量化交易系统文档与架构规范集
+        scope:
+            - docs/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend:
+        dir_name: 量化交易前端工作台（Quant Agent Frontend）
+        title: 量化交易前端工作台（Quant Agent Frontend）
+        scope:
+            - frontend/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    hermes_agent:
+        dir_name: Hermes 量化交易对话 Agent
+        title: Hermes 量化交易对话 Agent
+        scope:
+            - hermes_agent/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    prompts:
+        dir_name: Prompt 版本管理与模板库
+        title: Prompt 版本管理与模板库
+        scope:
+            - prompts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    scripts:
+        dir_name: 运维脚本与数据源探针集
+        title: 运维脚本与数据源探针集
+        scope:
+            - scripts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

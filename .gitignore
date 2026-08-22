@@ -231,6 +231,8 @@ keys/
 # Agent 运行状态与记忆
 .hermes/
 memory/
+# CodeBuddy/工作台会话日志（逐日记录，不进版本库）
+.workbuddy/memory/
 session.db
 *.session
 

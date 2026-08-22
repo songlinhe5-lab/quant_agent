@@ -23,7 +23,7 @@ class StockTrackingInput(BaseModel):
     user_id: str = Field(default="admin", description="当前操作的用户ID（系统根据会话上下文自动注入）")
 
 
-@register_tool
+@register_tool(scopes=["system", "news"])  # 股票监控告警
 class StockTrackingTool:
     """
     用于将特定股票加入或移出系统级长期监控池的 Agent Tool。

@@ -1,5 +1,6 @@
 import { useTheme } from 'next-themes'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
+import { BarChart3 } from 'lucide-react'
 import { MARKET_COLORS } from '@/lib/constants'
 import { ReturnsHistogramChart, type HistogramBin } from '@/features/strategy/workspace/returns-histogram-chart'
 
@@ -116,7 +117,9 @@ export function BacktestUnderwaterChart({
 }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  const maxDd = parseFloat(maxDrawdown || '-12.3')
+  // UIRF-18: 清除写死 -12.3 fallback —— 无真实最大回撤时不画假标记线
+  const maxDd = maxDrawdown ? parseFloat(maxDrawdown) : 0
+  const hasMaxDd = maxDrawdown != null && maxDrawdown !== '' && !isNaN(maxDd)
   const ddColor = MARKET_COLORS.bear
 
   const chartRef = useEChart(
@@ -148,18 +151,18 @@ export function BacktestUnderwaterChart({
           showSymbol: false,
           lineStyle: { color: ddColor, width: 1.5 },
           areaStyle: { color: ddColor, opacity: 0.1 },
-          markLine: {
+          markLine: hasMaxDd ? {
             silent: true,
             symbol: 'none',
             data: [{ yAxis: maxDd }],
             lineStyle: { color: isDark ? 'rgba(248,113,113,0.4)' : 'rgba(220,38,38,0.4)', type: 'dashed' },
             label: {
-              formatter: `Max DD ${maxDrawdown || '-12.3%'}`,
+              formatter: `Max DD ${maxDrawdown}%`,
               color: isDark ? 'rgba(248,113,113,0.7)' : 'rgba(220,38,38,0.7)',
               fontSize: 10,
               position: 'insideEndTop',
             },
-          },
+          } : undefined,
         }],
       }
     },
@@ -170,5 +173,15 @@ export function BacktestUnderwaterChart({
 }
 
 export function BacktestReturnsHistogram({ data }: { data: HistogramBin[] }) {
+  // UIRF-01: 删除 Box-Muller 假收益后，无真实收益序列时显示诚实空态，禁止假分布图
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-center">
+        <BarChart3 className="h-6 w-6 text-muted-foreground/40" />
+        <p className="text-xs text-muted-foreground">暂无收益分布数据</p>
+        <p className="text-[10px] text-muted-foreground/60 max-w-[220px]">回测结果未包含真实日收益率序列，不展示伪造分布。</p>
+      </div>
+    )
+  }
   return <ReturnsHistogramChart data={data} />
 }
