@@ -112,6 +112,68 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         elif action == "HK_SECTOR_FLOW":
             # F4-5 港股行业板块资金流聚合（板块资金流向面板）
             return await futu_service.get_hk_sector_flow()
+        elif action == "RATING_SUMMARY":
+            # P1.2 分析师评级明细（INSTITUTION/ANALYST）
+            return await futu_service.get_research_rating_summary(
+                params.get("symbol") or params.get("ticker"),
+                rating_dimension_type=params.get("rating_dimension_type", "INSTITUTION"),
+                uid=params.get("uid"),
+                num=int(params.get("num", 10)) if params.get("num") else None,
+            )
+        elif action == "REVENUE_BREAKDOWN":
+            # P1.3 主营构成（收入拆分）
+            return await futu_service.get_financials_revenue_breakdown(
+                params.get("symbol") or params.get("ticker"),
+                financial_type=params.get("financial_type", "ANNUAL"),
+                date=params.get("date"),
+                currency_code=params.get("currency_code"),
+            )
+        elif action == "SHORT_INTEREST":
+            # P1.4 累计卖空持仓（short interest）
+            return await futu_service.get_short_interest(
+                params.get("symbol") or params.get("ticker"),
+                num=int(params.get("num", 10)),
+            )
+        elif action == "SHAREHOLDERS_OVERVIEW":
+            return await futu_service.get_shareholders_overview(params.get("symbol") or params.get("ticker"))
+        elif action == "SHAREHOLDERS_HOLDING_CHANGES":
+            return await futu_service.get_shareholders_holding_changes(
+                params.get("symbol") or params.get("ticker"),
+                num=int(params.get("num", 10)),
+            )
+        elif action == "SHAREHOLDERS_INSTITUTIONAL":
+            return await futu_service.get_shareholders_institutional(
+                params.get("symbol") or params.get("ticker"),
+                num=int(params.get("num", 10)),
+            )
+        elif action == "SHAREHOLDERS_HOLDER_DETAIL":
+            return await futu_service.get_shareholders_holder_detail(
+                params.get("symbol") or params.get("ticker"),
+                request_type=params.get("request_type", "ALL"),
+                num=int(params.get("num", 10)),
+            )
+        elif action == "INSIDER_HOLDER_LIST":
+            return await futu_service.get_insider_holder_list(
+                params.get("symbol") or params.get("ticker"),
+                num=int(params.get("num", 10)),
+            )
+        elif action == "INSIDER_TRADE_LIST":
+            return await futu_service.get_insider_trade_list(
+                params.get("symbol") or params.get("ticker"),
+                num=int(params.get("num", 10)),
+            )
+        elif action == "CORP_ACTIONS_DIVIDENDS":
+            return await futu_service.get_corporate_actions_dividends(params.get("symbol") or params.get("ticker"))
+        elif action == "CORP_ACTIONS_BUYBACKS":
+            return await futu_service.get_corporate_actions_buybacks(
+                params.get("symbol") or params.get("ticker"),
+                num=int(params.get("num", 10)),
+            )
+        elif action == "CORP_ACTIONS_SPLITS":
+            return await futu_service.get_corporate_actions_stock_splits(
+                params.get("symbol") or params.get("ticker"),
+                num=int(params.get("num", 10)),
+            )
         elif action == "WARRANT_CHAIN":
             return await futu_service.get_warrant_chain(params.get("symbol"))
         elif action == "SNAPSHOT":

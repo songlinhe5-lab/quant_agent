@@ -434,6 +434,172 @@ class FutuService:
             market=market,
         )
 
+    # ── P1.2: 分析师评级明细 ─────────────────────────────────────────
+    async def get_research_rating_summary(
+        self,
+        ticker: str,
+        rating_dimension_type: str = "INSTITUTION",
+        uid: Optional[str] = None,
+        num: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """P1.2 分析师评级明细（INSTITUTION / ANALYST 两维）。"""
+        return await self._route(
+            "fetch_research_rating_summary",
+            {"ticker": ticker, "rating_dimension_type": rating_dimension_type, "uid": uid, "num": num},
+            self.option_fund_handler.get_research_rating_summary,
+            ticker=ticker,
+            rating_dimension_type=rating_dimension_type,
+            uid=uid,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── P1.3: 主营构成 ──────────────────────────────────────────────
+    async def get_financials_revenue_breakdown(
+        self,
+        ticker: str,
+        financial_type: str = "ANNUAL",
+        date: Optional[str] = None,
+        currency_code: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """P1.3 主营构成（按地区/产品收入拆分）。"""
+        return await self._route(
+            "fetch_financials_revenue_breakdown",
+            {"ticker": ticker, "financial_type": financial_type, "date": date, "currency_code": currency_code},
+            self.option_fund_handler.get_financials_revenue_breakdown,
+            ticker=ticker,
+            financial_type=financial_type,
+            date=date,
+            currency_code=currency_code,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── P1.4: 卖空持仓（short interest）──────────────────────────────
+    async def get_short_interest(self, ticker: str, num: int = 10) -> Dict[str, Any]:
+        """P1.4 累计卖空持仓（美股）。"""
+        return await self._route(
+            "fetch_short_interest",
+            {"ticker": ticker, "num": num},
+            self.option_fund_handler.get_short_interest,
+            ticker=ticker,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── P1.5: 股东持股 / 内部人交易 ──────────────────────────────────
+    async def get_shareholders_overview(self, ticker: str) -> Dict[str, Any]:
+        """P1.5 股东概况。"""
+        return await self._route(
+            "fetch_shareholders_overview",
+            {"ticker": ticker},
+            self.option_fund_handler.get_shareholders_overview,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_shareholders_holding_changes(self, ticker: str, num: int = 10) -> Dict[str, Any]:
+        """P1.5 股东持股变动。"""
+        return await self._route(
+            "fetch_shareholders_holding_changes",
+            {"ticker": ticker, "num": num},
+            self.option_fund_handler.get_shareholders_holding_changes,
+            ticker=ticker,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_shareholders_institutional(self, ticker: str, num: int = 10) -> Dict[str, Any]:
+        """P1.5 机构持股统计。"""
+        return await self._route(
+            "fetch_shareholders_institutional",
+            {"ticker": ticker, "num": num},
+            self.option_fund_handler.get_shareholders_institutional,
+            ticker=ticker,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_shareholders_holder_detail(
+        self, ticker: str, request_type: str = "ALL", num: int = 10
+    ) -> Dict[str, Any]:
+        """P1.5 股东明细。"""
+        return await self._route(
+            "fetch_shareholders_holder_detail",
+            {"ticker": ticker, "request_type": request_type, "num": num},
+            self.option_fund_handler.get_shareholders_holder_detail,
+            ticker=ticker,
+            request_type=request_type,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_insider_holder_list(self, ticker: str, num: int = 10) -> Dict[str, Any]:
+        """P1.5 内部人持股列表。"""
+        return await self._route(
+            "fetch_insider_holder_list",
+            {"ticker": ticker, "num": num},
+            self.option_fund_handler.get_insider_holder_list,
+            ticker=ticker,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_insider_trade_list(self, ticker: str, num: int = 10) -> Dict[str, Any]:
+        """P1.5 内部人交易明细。"""
+        return await self._route(
+            "fetch_insider_trade_list",
+            {"ticker": ticker, "num": num},
+            self.option_fund_handler.get_insider_trade_list,
+            ticker=ticker,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── P1.6: 分红 / 回购 / 拆股 ─────────────────────────────────────
+    async def get_corporate_actions_dividends(self, ticker: str) -> Dict[str, Any]:
+        """P1.6 分红记录。"""
+        return await self._route(
+            "fetch_corporate_actions_dividends",
+            {"ticker": ticker},
+            self.option_fund_handler.get_corporate_actions_dividends,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_corporate_actions_buybacks(self, ticker: str, num: int = 10) -> Dict[str, Any]:
+        """P1.6 回购记录（仅港股/A股）。"""
+        return await self._route(
+            "fetch_corporate_actions_buybacks",
+            {"ticker": ticker, "num": num},
+            self.option_fund_handler.get_corporate_actions_buybacks,
+            ticker=ticker,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_corporate_actions_stock_splits(self, ticker: str, num: int = 10) -> Dict[str, Any]:
+        """P1.6 拆股记录。"""
+        return await self._route(
+            "fetch_corporate_actions_stock_splits",
+            {"ticker": ticker, "num": num},
+            self.option_fund_handler.get_corporate_actions_stock_splits,
+            ticker=ticker,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
 
 # 导出全局单例
 futu_service = FutuService()

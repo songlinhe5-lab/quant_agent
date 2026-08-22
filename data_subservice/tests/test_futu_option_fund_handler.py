@@ -661,3 +661,210 @@ class TestFinancialsStatements:
             )
         assert result["status"] == "error"
         assert called["n"] == 0
+
+
+class TestP1FundamentalFamily:
+    """P1.2~P1.6 基本面接口族（分析师评级/主营/卖空/股东/内部人/公司行动）"""
+
+    # ── P1.2 分析师评级明细 ──────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_rating_summary_unsupported(self):
+        handler, _, _ = _make_handler()
+        r = await handler.get_research_rating_summary("GC=F", is_unsupported_func=_unsupported, format_ticker_func=_fmt)
+        assert r["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_rating_summary_invalid_dimension(self):
+        handler, _, _ = _make_handler()
+        r = await handler.get_research_rating_summary("US.AAPL", rating_dimension_type="BAD", format_ticker_func=_fmt)
+        assert r["status"] == "error"
+        assert "rating_dimension_type" in r["message"]
+
+    @pytest.mark.asyncio
+    async def test_rating_summary_success(self):
+        handler, _, _ = _make_handler()
+        resp = {
+            "next_key": "2",
+            "inst_rating_summary_list": [
+                {
+                    "institution_info": {"institution_uid": "u1", "institution_name": "美银证券"},
+                    "rating_item_list": [
+                        {"rating": "BUY", "target_price": 250.0, "recommendation_date_str": "2025-08-25"}
+                    ],
+                }
+            ],
+        }
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, resp)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_research_rating_summary("US.AAPL", "INSTITUTION", None, 3, _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["rating"] == "BUY"
+        assert r["data"][0]["name"] == "美银证券"
+        assert r["data"][0]["target_price"] == 250.0
+
+    @pytest.mark.asyncio
+    async def test_rating_summary_sdk_fail(self):
+        handler, _, _ = _make_handler()
+
+        async def fake(fn, *args, **kw):
+            return (-1, "no permission")
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_research_rating_summary("US.AAPL", "INSTITUTION", None, 3, _fmt)
+        assert r["status"] == "error"
+
+    # ── P1.3 主营构成 ──────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_revenue_breakdown_success(self):
+        handler, _, _ = _make_handler()
+        resp = {
+            "period": "2025/FY",
+            "currency_code": "USD",
+            "breakdown_list": [
+                {
+                    "type": "REGION",
+                    "item_list": [{"name": "美国", "main_oper_income": 151790000000.0, "ratio": 36.47}],
+                }
+            ],
+            "screen_date_list": ["2025/FY"],
+        }
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, resp)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_financials_revenue_breakdown("US.AAPL", "ANNUAL", None, None, _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["type"] == "REGION"
+        assert r["data"][0]["items"][0]["name"] == "美国"
+        assert r["data"][0]["items"][0]["ratio_pct"] == 36.47
+
+    # ── P1.4 卖空持仓 ──────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_short_interest_success(self):
+        handler, _, _ = _make_handler()
+        df1 = pd.DataFrame(
+            [{"timestamp_str": "2026-07-31", "shares_short": 141606163, "short_percent": 0.969, "days_to_cover": 2.42}]
+        )
+        df2 = pd.DataFrame()
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, df1, df2)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_short_interest("US.AAPL", 3, _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["shares_short"] == 141606163
+        assert r["data"][0]["time"] == "2026-07-31"
+
+    # ── P1.5 股东/内部人 ───────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_shareholders_overview_success(self):
+        handler, _, _ = _make_handler()
+        main_df = pd.DataFrame([{"name": "贝莱德", "holder_pct": 7.96, "static_date_str": "2026-08-22"}])
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, {"main_holder": main_df})
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_shareholders_overview("US.AAPL", _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["name"] == "贝莱德"
+
+    @pytest.mark.asyncio
+    async def test_shareholders_institutional_success(self):
+        handler, _, _ = _make_handler()
+        df = pd.DataFrame([{"period_text": "2026/Q2", "institution_quantity": 7013, "holder_pct": 65.461}])
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, df)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_shareholders_institutional("US.AAPL", 3, _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["holder_pct"] == 65.461
+
+    @pytest.mark.asyncio
+    async def test_insider_trade_list_success(self):
+        handler, _, _ = _make_handler()
+        df = pd.DataFrame(
+            [{"name": "Jennifer Newstead", "title": "高级副总裁", "transaction_type": "卖出", "trade_shares": -1439}]
+        )
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, df)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_insider_trade_list("US.AAPL", 3, _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["transaction_type"] == "卖出"
+        assert r["data"][0]["trade_shares"] == -1439
+
+    # ── P1.6 公司行动 ──────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_dividends_success(self):
+        handler, _, _ = _make_handler()
+        resp = {"dividend_list": [{"pub_date": "2026/07/31", "ex_date": "2026/08/10", "statement": "1股派息0.27USD"}]}
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, resp)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_corporate_actions_dividends("US.AAPL", _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["statement"] == "1股派息0.27USD"
+
+    @pytest.mark.asyncio
+    async def test_buybacks_hk_success(self):
+        handler, _, _ = _make_handler()
+        hk_df = pd.DataFrame(
+            [
+                {
+                    "publ_date_str": "2026-08-21",
+                    "buy_back_money": 300279998.3,
+                    "cumulative_percentage": 0.43243,
+                    "share_type": "普通股",
+                }
+            ]
+        )
+        resp = {"next_key": "2", "hk_buy_back_list": hk_df, "a_buy_back_list": pd.DataFrame()}
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, resp)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_corporate_actions_buybacks("HK.00700", 3, _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["buy_back_money"] == 300279998.3
+        assert r["data"][0]["market"] == "HK"
+
+    @pytest.mark.asyncio
+    async def test_splits_success(self):
+        handler, _, _ = _make_handler()
+        resp = {
+            "next_key": "2",
+            "split_list": [{"dir_deci_pub_date_str": "2020-08-31", "reform_type": "拆股", "rate": "1→4"}],
+        }
+
+        async def fake(fn, *args, **kw):
+            return (RET_OK, resp)
+
+        with patch("asyncio.to_thread", new=fake):
+            r = await handler.get_corporate_actions_stock_splits("US.AAPL", 3, _fmt)
+        assert r["status"] == "success"
+        assert r["data"][0]["rate"] == "1→4"
+
+    @pytest.mark.asyncio
+    async def test_p1_disconnected_returns_error(self):
+        """P1 全族未 CONNECTED 时返回 error（零幻觉，禁 mock 兜底）"""
+        handler, conn_mgr, _ = _make_handler(connected=False)
+        conn_mgr.status = "DISCONNECTED"
+        conn_mgr.quote_ctx = None
+        conn_mgr.get_quote_ctx.return_value = None  # ctx 空 → handler 返回"未连接"
+        with patch.dict("os.environ", {"QUANT_ENV": "development"}):
+            r = await handler.get_short_interest("US.AAPL", 3, _fmt)
+        assert r["status"] == "error"
+        assert "未连接" in r["message"]

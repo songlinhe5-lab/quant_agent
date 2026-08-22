@@ -92,14 +92,14 @@ company_name / trailing_PE / price_to_book / dividend_yield / market_cap
 ### 阶段 P1：基本面接口族（按需分批「填坑」）
 
 - [x] **P1.1** 估值详情 `get_valuation_detail`：✅ 2026-08-22 实跑验证有效（`option_fund_handler.py`，`ctx.get_valuation_detail(code)` 返回估值分布类 7 字段：trend/market_distribution/profit_growth_rate 等）。PE/PB/市值等核心估值已由 `get_fundamental` 的 trailing_PE/market_cap 覆盖。注：当前返回偏「估值分布」而非逐指标 PE/PB/PS 拆解，如需纯 PE/PB/PS 明细再增强（非阻塞）。
-- [ ] **P1.2** 分析师评级 `get_research_analyst_consensus` / `get_research_rating_summary`。
-- [ ] **P1.3** 主营构成 `get_financials_revenue_breakdown`。
-- [ ] **P1.4** 卖空数据 `get_short_interest` / `get_daily_short_volume`（美股）。
-- [ ] **P1.5** 股东持股 / 内部人交易 `get_shareholders_*` / `get_insider_*`。
-- [ ] **P1.6** 分红/回购/拆股 `get_corporate_actions_*`。
-- [ ] **P1.7** 十大经纪商 `get_top_ten_buy_sell_brokers`（港股）。
-- [ ] **P1.8** 资金流向 `get_capital_flow` / `get_capital_distribution`。
-- [ ] **P1.9** 每批单测 + 提交 PR（Vibe Coding 即时 commit）。
+- [x] **P1.2** 分析师评级：✅ 2026-08-22 实现并实测。`get_research_analyst_consensus`（共识）此前已实现；本次补 `get_research_rating_summary`（INSTITUTION/ANALYST 两维，`option_fund_handler.py`）。**实测修正**：`rating_dimension_type` 有效值 `INSTITUTION/ANALYST`（带 `RATING_DIMENSION_BY_` 前缀会报错）；rating/target_price 在 `rating_item_list` 内（非顶层）。
+- [x] **P1.3** 主营构成 `get_financials_revenue_breakdown`：✅ 2026-08-22 实现并实测。**实测修正**：`financial_type` 需大写枚举 `ANNUAL`（小写 annual 报错）；返回 REGION/PRODUCT 两维收入拆分。
+- [x] **P1.4** 卖空数据：✅ `get_daily_short_volume`/`get_short_selling_rank` 此前已实现（`short_selling_handler.py`）；本次补 `get_short_interest`（累计卖空持仓，美股，`option_fund_handler.py`）。实测返回 3 元组 (ret, 逐期 DF, 聚合 DF)。
+- [x] **P1.5** 股东持股 / 内部人交易：✅ 2026-08-22 实现并实测 6 方法（`option_fund_handler.py`）：`get_shareholders_overview`/`get_shareholders_holding_changes`/`get_shareholders_institutional`/`get_shareholders_holder_detail`/`get_insider_holder_list`/`get_insider_trade_list`。**SDK 10.10 真实符号**（文档 `get_shareholders_*`/`get_insider_*` 为通配命名）：`get_insider_trade_list`（非 transaction）、`get_insider_holder_list`。
+- [x] **P1.6** 分红/回购/拆股：✅ 2026-08-22 实现并实测 3 方法（`option_fund_handler.py`）：`get_corporate_actions_dividends`/`get_corporate_actions_buybacks`（仅港股/A股，US 报错）/`get_corporate_actions_stock_splits`。**SDK 10.10 真实符号**（非 `get_corporate_actions_*` 通配）：`get_corporate_actions_dividends/buybacks/stock_splits`。实测字段：buybacks 列 `buy_back_money/buy_back_sum/percentage/cumulative_percentage`；splits 字段 `rate`（如 `1→4`）。
+- [x] **P1.7** 十大经纪商 `get_top_brokers`：✅ 已完成（`option_fund_handler.py` L708，底层调 `ctx.get_top_ten_buy_sell_brokers`）。仅港股正股/基金支持，US 返回 unsupported。
+- [ ] **P1.8** 资金流向 `get_capital_flow` / `get_capital_distribution`：✅ 已完成（`get_capital_flow` L805 / `get_capital_distribution` L500 已存在并实测可用）。
+- [x] **P1.9** 每批单测 + 提交 PR：✅ 本次 P1.2~P1.7 新增 `TestP1FundamentalFamily`（13 例），`test_futu_option_fund_handler.py` 共 **50 例全过**。全链路（handler→service→worker→adapter→router）已打通并端到端实测（US.AAPL + HK.00700）。
 
 ### 阶段 P2：选股因子补全（轻量）
 

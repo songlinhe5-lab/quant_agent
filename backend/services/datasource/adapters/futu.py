@@ -78,6 +78,19 @@ class FutuDataSource:
             "FED_WATCH",  # F4-2: FedWatch FOMC隐含概率(支撑G5)
             "HEAT_MAP",  # F4-3: 板块热力图(支撑G6)
             "HK_SECTOR_FLOW",  # F4-5: 港股行业板块资金流聚合(支撑板块资金流向面板)
+            # ── P1.2~P1.7: 基本面接口族（按需填坑）────────────────────
+            "RATING_SUMMARY",  # P1.2: 分析师评级明细(机构/分析师)
+            "REVENUE_BREAKDOWN",  # P1.3: 主营构成(收入拆分)
+            "SHORT_INTEREST",  # P1.4: 累计卖空持仓(美股)
+            "SHAREHOLDERS_OVERVIEW",  # P1.5: 股东概况
+            "SHAREHOLDERS_HOLDING_CHANGES",  # P1.5: 股东持股变动
+            "SHAREHOLDERS_INSTITUTIONAL",  # P1.5: 机构持股统计
+            "SHAREHOLDERS_HOLDER_DETAIL",  # P1.5: 股东明细
+            "INSIDER_HOLDER_LIST",  # P1.5: 内部人持股列表
+            "INSIDER_TRADE_LIST",  # P1.5: 内部人交易明细
+            "CORP_ACTIONS_DIVIDENDS",  # P1.6: 分红记录
+            "CORP_ACTIONS_BUYBACKS",  # P1.6: 回购记录(仅港股/A股)
+            "CORP_ACTIONS_SPLITS",  # P1.6: 拆股记录
         ]
 
     # ── 远程节点状态感知 ──────────────────────────────────────

@@ -123,6 +123,19 @@ _FUTU_ACTION_MAP = {
     "analyst_consensus": "ANALYST_CONSENSUS",
     "fed_watch": "FED_WATCH",
     "heat_map": "HEAT_MAP",
+    # P1.2~P1.6: 基本面接口族（按需填坑）
+    "rating_summary": "RATING_SUMMARY",
+    "revenue_breakdown": "REVENUE_BREAKDOWN",
+    "short_interest": "SHORT_INTEREST",
+    "shareholders_overview": "SHAREHOLDERS_OVERVIEW",
+    "shareholders_holding_changes": "SHAREHOLDERS_HOLDING_CHANGES",
+    "shareholders_institutional": "SHAREHOLDERS_INSTITUTIONAL",
+    "shareholders_holder_detail": "SHAREHOLDERS_HOLDER_DETAIL",
+    "insider_holder_list": "INSIDER_HOLDER_LIST",
+    "insider_trade_list": "INSIDER_TRADE_LIST",
+    "corp_actions_dividends": "CORP_ACTIONS_DIVIDENDS",
+    "corp_actions_buybacks": "CORP_ACTIONS_BUYBACKS",
+    "corp_actions_splits": "CORP_ACTIONS_SPLITS",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)
