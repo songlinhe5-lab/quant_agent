@@ -302,7 +302,6 @@ class LLMProviderRouter:
         Returns:
             FailoverEvent 如果成功切换，否则 None
         """
-        old_index = self._active_index
         old_provider = failed_provider
 
         # 尝试下一个 provider

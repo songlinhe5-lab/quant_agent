@@ -233,11 +233,19 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 
 ### Phase 4 · 韧性与扩展（P2）
 
-- [ ] **[AGENT-06]** **LLM Provider 适配缝**
-  - **现状**：S12
+- [x] **[AGENT-06]** **LLM Provider 适配缝** ✅ 27b9334
+  - **现状**：S12 —— **已解决**
   - **改法**：参考 dsh `llm/llm` 的 `ctx.llm` 适配缝 / hermes `transports/` 多 transport 并存
   - **约束**：AGENTS.md §A.3.3 主推理仍为 `deepseek-v4-flash`，本缝**只做故障降级，不改默认路由**
-  - **验收**：注入主 provider 故障后自动切备用，前端按 §2.4 STALE 规范标注降级态
+  - **验收**：✅ 注入主 provider 故障后自动切备用，✅ 前端按 §2.4 STALE 规范标注降级态（SSE `provider_degraded` 事件）
+  - **实现详情**：
+    - ✅ llm_provider.py (454 lines): LLMProvider + LLMProviderRouter + FailoverEvent
+    - ✅ FAILOVER_THRESHOLD=1 (1 次失败即切换，LLM API 调用成本高)
+    - ✅ RECOVERY_PROBE_INTERVAL=60s (定期探测主 provider 恢复)
+    - ✅ execute_with_failover(): 透明 failover + 事件跟踪
+    - ✅ SSE 'provider_degraded' 事件通知前端
+    - ✅ Environment variables: LLM_FALLBACK_API_KEY / LLM_FALLBACK_BASE_URL / LLM_FALLBACK_MODEL
+    - ✅ 17/17 tests passed (含 3 个验收测试：自动切换/降级事件/默认路由不变)
 - [ ] **[AGENT-13]** **把自家工具暴露为 MCP Server（对外互操作）**
   - **动机**：这是"想用 dsh / Cursor / Claude 当客户端"的**正确接法** —— 我们提供工具，它们当消费端，**不需要引入任何一方的运行时**
   - **改法**：参考 hermes `transports/hermes_tools_mcp_server.py`、dsh `packages/mcp`。复用现有 `ToolRegistry`，加 MCP 协议适配层
