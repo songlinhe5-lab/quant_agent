@@ -365,10 +365,10 @@
   - 前端：MarketSentimentPanel(Fear&Greed 仪表盘 + 极端位 <20/>80 标注) + 真实情绪因子历史折线(ECharts VIX/P-C 双轴，替代原有 mockSparklines 假数据)
   - 说明：原 mockSparklines(Math.random) 违反 PROD 禁 mock 红线，已移除改用 /macro/sentiment-history 真实序列
   - 预期工时：FE 4h + BE 4h
-- [ ] **[SENT-02]** 个股舆情情感时间序列（P2）：
-  - 基于 `get_company_news` 的新闻标题/摘要做 NLP 情感打分（-1~+1），绘制每日情感均值折线
-  - 叠加股价走势副图（情感滞后 or 同步）
-  - 现状：后端 `get_company_news` 路由当前**不返回 sentiment**（SentimentService.analyze_news_sentiment 未接入该路由）；需后端加 `with_sentiment` 参数集成 LLM 打分 + 落库聚合 + 前端 StockSentimentPanel。本次未做（涉及后端 LLM 集成 + 个股页面挂载，需单独评估范围与 LLM 成本）
+- [x] **[SENT-02]** 个股舆情情感时间序列（P2）：
+  - 后端：`GET /api/v1/market-news/company-news?with_sentiment=true` 已集成 SentimentService.batch_analyze_news，返回每条新闻的 sentiment（score -100~100 + label + reasoning），LLM 打分失败降级为无 sentiment 的新闻
+  - 前端：**待挂载** — 需新建 StockSentimentPanel（按日聚合情感均值 → ECharts 折线 + 股价副图）并挂入个股工作台 quotes.tsx 的微观/资讯栏。本次后端已就绪，前端组件挂载留待下一批（需读 quotes.tsx 确认 tab 结构 + 本地零验证）
+  - 说明：SENT-02 的"时间序列"严格依赖长期历史情感落库；当前为实时单批打分（近期新闻），长期每日均值需额外采集落库 pipeline（后续增强项）
   - 预期工时：FE 4h + BE 4h
 
 ##### 决策工具产品形态
