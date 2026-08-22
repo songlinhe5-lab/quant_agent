@@ -44,11 +44,11 @@ import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-
-logger = logging.getLogger(__name__)
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from openai import AsyncOpenAI
+
+logger = logging.getLogger(__name__)
 
 # ========================================================================
 # 数据结构
