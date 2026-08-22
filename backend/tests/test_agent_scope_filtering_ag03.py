@@ -104,7 +104,7 @@ class TestBuildRequestKwargsScopeFiltering:
         # 应该打印 deprecation warning
         import warnings
 
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             # 调用会触发 get_all_schemas(warn=True)
             # 由于没有完整的 tool_registry，这里只验证提取逻辑
