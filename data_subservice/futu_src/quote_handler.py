@@ -1248,3 +1248,63 @@ class QuoteHandler:
         except Exception as e:  # noqa: BLE001
             logger.error("❌ get_market_state 失败: %s", e)
             return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── G6: 板块轮动前置 —— 标的所属板块（get_owner_plate）─────────────
+    @with_global_retry
+    async def get_owner_plate(
+        self,
+        ticker: str,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G6 标的所属板块（板块轮动/标的分组前置）。
+
+        get_owner_plate(code) → (ret, DataFrame)。实测列: code/name/plate_code/
+        plate_name/plate_type（腾讯 → 明星科网股/人工智能/港股通 等 CONCEPT/OTHER 板块）。
+        与 get_hk_sector_flow（板块→成分）互补，构成板块轮动的双向索引。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": code,
+            }
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_owner_plate, code)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"所属板块获取失败: {data}",
+                    "code": code,
+                }
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "plate_code": r.get("plate_code"),
+                    "plate_name": r.get("plate_name"),
+                    "plate_type": r.get("plate_type"),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_owner_plate 失败 %s: %s", code, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}

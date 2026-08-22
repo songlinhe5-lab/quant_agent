@@ -961,3 +961,49 @@ class TestG8DataCorrectness:
         conn_mgr.quote_ctx.get_rehab.return_value = (-1, "fail")
         result = await handler.get_rehab("HK.00700")
         assert result["status"] == "error"
+
+
+# ── G6 板块轮动前置：标的所属板块（get_owner_plate）─────────────────────
+class TestG6OwnerPlate:
+    """G6 get_owner_plate：标的→所属板块（与 get_hk_sector_flow 构成双向索引）"""
+
+    async def test_owner_plate_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_owner_plate.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "code": "HK.00700",
+                        "name": "腾讯控股",
+                        "plate_code": "HK.LIST23586",
+                        "plate_name": "人工智能",
+                        "plate_type": "CONCEPT",
+                    }
+                ]
+            ),
+        )
+        result = await handler.get_owner_plate("HK.00700")
+        assert result["status"] == "success"
+        assert result["data"][0]["plate_name"] == "人工智能"
+        assert result["data"][0]["plate_type"] == "CONCEPT"
+
+    async def test_owner_plate_unsupported(self):
+        handler, conn_mgr, _ = _make_handler()
+        result = await handler.get_owner_plate(
+            "GC=F", is_unsupported_func=lambda t: t.startswith("GC"), format_ticker_func=lambda t: t
+        )
+        assert result["status"] == "error"
+
+    async def test_owner_plate_disconnected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_owner_plate("HK.00700")
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    async def test_owner_plate_failure(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_owner_plate.return_value = (-1, "fail")
+        result = await handler.get_owner_plate("HK.00700")
+        assert result["status"] == "error"

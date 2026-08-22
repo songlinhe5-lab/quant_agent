@@ -145,6 +145,7 @@ _FUTU_ACTION_MAP = {
     "trading_days": "TRADING_DAYS",
     "kl_quota": "KL_QUOTA",
     "market_state": "MARKET_STATE",
+    "owner_plate": "OWNER_PLATE",
     "heat_map": "HEAT_MAP",
     # P1.2~P1.6: 基本面接口族（按需填坑）
     "rating_summary": "RATING_SUMMARY",

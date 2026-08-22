@@ -248,6 +248,9 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         elif action == "MARKET_STATE":
             # G8 市场状态（区分盘后正常空 vs 故障空）
             return await futu_service.get_market_state(params.get("codes") or params.get("symbol"))
+        elif action == "OWNER_PLATE":
+            # G6 标的所属板块（板块轮动/标的分组前置）
+            return await futu_service.get_owner_plate(params.get("symbol") or params.get("ticker"))
         elif action == "HEAT_MAP":
             # F4-3 板块热力图（需 market 参数）
             return await futu_service.get_heat_map(market=params.get("market", "HK"))

@@ -721,6 +721,17 @@ class FutuService:
             codes=codes,
         )
 
+    async def get_owner_plate(self, ticker: str) -> Dict[str, Any]:
+        """G6 标的所属板块（板块轮动/标的分组前置）。"""
+        return await self._route(
+            "fetch_owner_plate",
+            {"ticker": ticker},
+            self.quote_handler.get_owner_plate,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
     async def get_heat_map(self, market: str = "HK") -> Dict[str, Any]:
         """F4-3 板块热力图（需 market 参数，支撑 G6）。"""
         return await self._route(
