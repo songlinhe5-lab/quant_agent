@@ -225,6 +225,210 @@ class OptionDataService:
         }
         return res
 
+    # ── P0.5: 期权全维数据（IV/HV/Put-Call/0DTE/财报/卖方/行权概率）────────
+    async def get_option_underlying_his_volatility(
+        self,
+        ticker: str,
+        begin_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.2 标的已实现波动率 HV（时间序列，正股/ETF 代码）。"""
+        self._validate_ticker(ticker)
+        return await self._facade._dispatch(
+            "OPTION_UNDERLYING_HIS_VOL",
+            {"ticker": ticker, "begin_time": begin_time, "end_time": end_time},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_underlying_overview(
+        self,
+        ticker: str,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.2 标的期权总览（IV/IV_RANK/HV 多周期 + Put/Call 量仓）。"""
+        self._validate_ticker(ticker)
+        return await self._facade._dispatch(
+            "OPTION_UNDERLYING_OVERVIEW",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_market_statistic(
+        self,
+        option_market: str = "US_SECURITY",
+        data_type: str = "VOLUME",
+        begin_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.3 期权市场 Put/Call 比（市场级情绪指标，对标期权多空比）。"""
+        return await self._facade._dispatch(
+            "OPTION_MARKET_STATISTIC",
+            {"option_market": option_market, "data_type": data_type, "begin_time": begin_time, "end_time": end_time},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_put_call_panel(
+        self,
+        option_market: str = "US_SECURITY",
+        data_type: str = "VOLUME",
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.3·产品级聚合：Put/Call 情绪面板。
+
+        拉取 OPTION_MARKET_STATISTIC 真实 P/C 比序列，派生最新值 + 5 日滑动均值 +
+        情绪判定（<0.7 偏谨慎 / >1.0 偏乐观），供期权情绪指标面板消费。
+        失败给 note 而非崩溃（零幻觉红线，不臆造数据）。
+        """
+        res = await self.get_option_market_statistic(
+            option_market=option_market, data_type=data_type, prefer_sources=prefer_sources
+        )
+        if res.is_error:
+            return res
+        data = res.data
+        if not isinstance(data, dict):
+            return res
+        rows = data.get("data") or []
+        panel = {"available": False, "note": "Put/Call 统计为空", "latest": None, "avg_5d": None, "signal": None}
+        if isinstance(rows, list) and len(rows) > 0:
+            ratios = []
+            for r in rows:
+                try:
+                    ratios.append(float(r.get("put_call_ratio")))
+                except (TypeError, ValueError):
+                    continue
+            if ratios:
+                latest = ratios[-1]
+                avg5 = sum(ratios[-5:]) / len(ratios[-5:]) if ratios[-5:] else None
+                signal = "偏谨慎" if latest < 0.7 else ("偏乐观" if latest > 1.0 else "中性")
+                panel = {
+                    "available": True,
+                    "latest": round(latest, 4),
+                    "avg_5d": round(avg5, 4) if avg5 is not None else None,
+                    "signal": signal,
+                    "count": len(ratios),
+                    "option_market": option_market,
+                    "data_type": data_type,
+                }
+        data["put_call_panel"] = panel
+        return res
+
+    async def get_option_zero_dte_screener(
+        self,
+        market: str = "US_SECURITY",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        count: int = 20,
+        page: int = 1,
+        filter_list: Optional[Any] = None,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.4 0DTE 末日期权筛选器（市场级列表，item 含 owner+chain_info）。"""
+        return await self._facade._dispatch(
+            "OPTION_ZERO_DTE_SCREENER",
+            {
+                "market": market,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "count": count,
+                "page": page,
+                "filter_list": filter_list,
+            },
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_zero_dte_contract(
+        self,
+        owner: str,
+        chain_info: Any,
+        strike_date_timestamp: Optional[int] = None,
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        filter_list: Optional[Any] = None,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.4 0DTE 合约明细（入参 chain_info 取自 screener item）。"""
+        return await self._facade._dispatch(
+            "OPTION_ZERO_DTE_CONTRACT",
+            {
+                "owner": owner,
+                "chain_info": chain_info,
+                "strike_date_timestamp": strike_date_timestamp,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "filter_list": filter_list,
+            },
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_earnings_screener(
+        self,
+        market: str = "US_SECURITY",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        count: int = 20,
+        page: int = 1,
+        filter_list: Optional[Any] = None,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.5 财报期权筛选器（财报公布标的期权数据）。"""
+        return await self._facade._dispatch(
+            "OPTION_EARNINGS_SCREENER",
+            {
+                "market": market,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "count": count,
+                "page": page,
+                "filter_list": filter_list,
+            },
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_seller_screener(
+        self,
+        market: str = "US_SECURITY",
+        seller_type: str = "COVERED_CALL",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        filter_list: Optional[Any] = None,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.6 卖方策略筛选器（备兑看涨/现金担保卖沽）。"""
+        return await self._facade._dispatch(
+            "OPTION_SELLER_SCREENER",
+            {
+                "market": market,
+                "seller_type": seller_type,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "filter_list": filter_list,
+            },
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_exercise_probability(
+        self,
+        ticker: str,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """P0.5.7 行权概率（入参须为期权合约代码）。"""
+        self._validate_ticker(ticker)
+        return await self._facade._dispatch(
+            "OPTION_EXERCISE_PROBABILITY",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
     @staticmethod
     def _validate_ticker(ticker: str) -> None:
         if not ticker or not str(ticker).strip():

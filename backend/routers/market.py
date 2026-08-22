@@ -657,6 +657,139 @@ async def get_option_volatility(ticker: str):
     }
 
 
+# ── P0.5 期权全维数据端点（IV/HV/Put-Call/0DTE/财报/卖方/行权概率）─────────
+
+
+@router.get("/option-underlying-his-volatility")
+async def get_option_underlying_his_volatility(ticker: str, begin_time: str | None = None, end_time: str | None = None):
+    """P0.5.2 标的已实现波动率 HV（时间序列，正股/ETF 代码）。"""
+    facade_res = await _facade_option.get_option_underlying_his_volatility(
+        ticker, begin_time=begin_time, end_time=end_time
+    )
+    if facade_res.is_error:
+        raise HTTPException(status_code=400, detail=facade_res.error.message if facade_res.error else "HV 数据不可用")
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-underlying-overview")
+async def get_option_underlying_overview(ticker: str):
+    """P0.5.2 标的期权总览（IV/IV_RANK/HV 多周期 + Put/Call 量仓）。"""
+    facade_res = await _facade_option.get_option_underlying_overview(ticker)
+    if facade_res.is_error:
+        raise HTTPException(status_code=400, detail=facade_res.error.message if facade_res.error else "标的总览不可用")
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-market-statistic")
+async def get_option_market_statistic(
+    option_market: str = "US_SECURITY",
+    data_type: str = "VOLUME",
+    begin_time: str | None = None,
+    end_time: str | None = None,
+):
+    """P0.5.3 期权市场 Put/Call 比（市场级情绪指标，原始序列）。"""
+    facade_res = await _facade_option.get_option_market_statistic(
+        option_market=option_market, data_type=data_type, begin_time=begin_time, end_time=end_time
+    )
+    if facade_res.is_error:
+        raise HTTPException(status_code=400, detail=facade_res.error.message if facade_res.error else "市场统计不可用")
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-put-call-panel")
+async def get_option_put_call_panel(option_market: str = "US_SECURITY", data_type: str = "VOLUME"):
+    """P0.5.3 期权 Put/Call 情绪面板（latest/avg_5d/signal 产品级聚合）。"""
+    facade_res = await _facade_option.get_option_put_call_panel(option_market=option_market, data_type=data_type)
+    if facade_res.is_error:
+        raise HTTPException(
+            status_code=400, detail=facade_res.error.message if facade_res.error else "Put/Call 面板不可用"
+        )
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-zero-dte-screener")
+async def get_option_zero_dte_screener(
+    market: str = "US_SECURITY",
+    sort_type: str | None = None,
+    is_asc: bool | None = None,
+    count: int = 20,
+    page: int = 1,
+):
+    """P0.5.4 0DTE 末日期权筛选器（市场级列表，item 含 owner+chain_info）。"""
+    facade_res = await _facade_option.get_option_zero_dte_screener(
+        market=market, sort_type=sort_type, is_asc=is_asc, count=count, page=page
+    )
+    if facade_res.is_error:
+        raise HTTPException(status_code=400, detail=facade_res.error.message if facade_res.error else "0DTE 筛选不可用")
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-zero-dte-contract")
+async def get_option_zero_dte_contract(
+    owner: str,
+    strike_date_timestamp: int | None = None,
+    sort_type: str | None = None,
+    is_asc: bool | None = None,
+):
+    """P0.5.4 0DTE 合约明细（chain_info 由前端从 screener item 传入）。
+
+    注意：chain_info 为嵌套对象，走 body 或 query 编码均可；此处默认从 query 收 owner+timestamp，
+    chain_info 完整入参建议用 POST 场景（见 options.py 约定）。演示 owner 级查询。
+    """
+    facade_res = await _facade_option.get_option_zero_dte_contract(
+        owner, None, strike_date_timestamp=strike_date_timestamp, sort_type=sort_type, is_asc=is_asc
+    )
+    if facade_res.is_error:
+        raise HTTPException(status_code=400, detail=facade_res.error.message if facade_res.error else "0DTE 合约不可用")
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-earnings-screener")
+async def get_option_earnings_screener(
+    market: str = "US_SECURITY",
+    sort_type: str | None = None,
+    is_asc: bool | None = None,
+    count: int = 20,
+    page: int = 1,
+):
+    """P0.5.5 财报期权筛选器（财报公布标的期权数据）。"""
+    facade_res = await _facade_option.get_option_earnings_screener(
+        market=market, sort_type=sort_type, is_asc=is_asc, count=count, page=page
+    )
+    if facade_res.is_error:
+        raise HTTPException(
+            status_code=400, detail=facade_res.error.message if facade_res.error else "财报期权筛选不可用"
+        )
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-seller-screener")
+async def get_option_seller_screener(
+    market: str = "US_SECURITY",
+    seller_type: str = "COVERED_CALL",
+    sort_type: str | None = None,
+    is_asc: bool | None = None,
+):
+    """P0.5.6 卖方策略筛选器（备兑看涨/现金担保卖沽）。"""
+    facade_res = await _facade_option.get_option_seller_screener(
+        market=market, seller_type=seller_type, sort_type=sort_type, is_asc=is_asc
+    )
+    if facade_res.is_error:
+        raise HTTPException(
+            status_code=400, detail=facade_res.error.message if facade_res.error else "卖方策略筛选不可用"
+        )
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
+@router.get("/option-exercise-probability")
+async def get_option_exercise_probability(ticker: str):
+    """P0.5.7 行权概率（入参须为期权合约代码）。"""
+    facade_res = await _facade_option.get_option_exercise_probability(ticker)
+    if facade_res.is_error:
+        raise HTTPException(status_code=400, detail=facade_res.error.message if facade_res.error else "行权概率不可用")
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
 @router.get("/fund-flow")
 async def get_fund_flow(ticker: str):
     """

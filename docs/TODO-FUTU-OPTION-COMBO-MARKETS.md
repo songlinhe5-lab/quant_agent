@@ -74,6 +74,7 @@
 - [x] **P0.5.7** 行权概率：✅ `get_option_exercise_probability`（实测 5 条：date_str/security_price/strike_probability）。
 - [x] **P0.5.8** 接入链路：✅ 8 个新方法均带 `@with_global_retry`；worker 新增 8 个 action（OPTION_UNDERLYING_HIS_VOL/OVERVIEW、OPTION_MARKET_STATISTIC、OPTION_ZERO_DTE_SCREENER/CONTRACT、OPTION_EARNINGS_SCREENER、OPTION_SELLER_SCREENER、OPTION_EXERCISE_PROBABILITY）+ adapter capabilities + router 映射，全链路打通。
 - [x] **P0.5.9** 单测 + 提交 PR：✅ 新增 `TestOptionFullDim` 10 例，`test_option_fund_handler.py` 共 **60 例全过**；worker/service 61 例全过无回归。
+- [x] **P0.5.10 主服务 business 层聚合**（2026-08-22 追加）：✅ `backend/services/datasource/business/option.py` 新增 8 个聚合方法（`get_option_underlying_his_volatility` / `get_option_underlying_overview` / `get_option_market_statistic` / `get_option_zero_dte_screener` / `get_option_zero_dte_contract` / `get_option_earnings_screener` / `get_option_seller_screener` / `get_option_exercise_probability`）+ **`get_option_put_call_panel`**（P0.5.3 产品级聚合：P/C 比派生 latest/avg_5d/signal 情绪判定，<0.7 偏谨慎 / >1.0 偏乐观，空数据降级不臆造）。`backend/routers/market.py` 新增 9 个 HTTP 端点（/option-underlying-his-volatility、/option-underlying-overview、/option-market-statistic、/option-put-call-panel、/option-zero-dte-screener、/option-zero-dte-contract、/option-earnings-screener、/option-seller-screener、/option-exercise-probability）。单测 `test_option_full_dim_service.py` **12 例全过**（8 个 dispatch + Put/Call 面板 4 例），期权相关 37 例全过无回归。
 
 ### 阶段 P1：组合期权交易（预留，待 OMS 实装）
 
