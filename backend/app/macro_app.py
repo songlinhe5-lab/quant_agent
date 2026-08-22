@@ -719,6 +719,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
         soxx_task = _get_flow("US.SOXX")
         tlt_task = _get_flow("US.TLT")
         kweb_task = _get_flow("US.KWEB")
+        # PERF-卡顿: A股两融(akshare 远程)并入 gather 并发，不再串行在 gather 之后放大耗时
+        margin_task = get_a_share_margin()
 
         results = await asyncio.gather(
             south_task,
@@ -727,6 +729,7 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
             soxx_task,
             tlt_task,
             kweb_task,
+            margin_task,
             return_exceptions=True,
         )  # noqa: E501
         south_res = results[0] if isinstance(results[0], dict) else {}
@@ -735,6 +738,7 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
         soxx_res = results[3] if isinstance(results[3], dict) else {}
         tlt_res = results[4] if isinstance(results[4], dict) else {}
         kweb_res = results[5] if isinstance(results[5], dict) else {}
+        margin_res = results[6] if isinstance(results[6], dict) else {}
 
         flows = []
 
@@ -790,7 +794,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
         csi_source = "N/A"
         csi_updated = None
         try:
-            _margin_res = await get_a_share_margin()
+            # PERF-卡顿: 复用 gather 并发结果 margin_res（已在上面与 6 项任务并发拉取）
+            _margin_res = margin_res
             if _margin_res and _margin_res.get("status") == "success":
                 _md = _margin_res.get("data") or {}
                 _fc = _to_float(_md.get("financing_change"))
@@ -987,6 +992,16 @@ async def get_macro_news(
         return await market_data.get_market_news(category=category)
 
     try:
+        # PERF-卡顿: 结果级 Redis 缓存（TTL 90s）——避免冷路径每次轮询都重打
+        # finnhub(15s 超时) + LLM 逐条打分，消除 15s 慢请求。
+        _news_cache_key = f"macro_news_results_{category}_{limit}"
+        try:
+            _cached_news = await redis_client.get(_news_cache_key)
+            if _cached_news:
+                return {"status": "success", "data": json.loads(_cached_news)}
+        except Exception:  # noqa: BLE001
+            _cached_news = None  # Redis 不可用则跳过缓存
+
         news_list = await _fetch_macro_news_from_stream(limit)
         # 如果 Redis 是空的（初次启动），主动拉取一次
         if not news_list:
@@ -1004,6 +1019,11 @@ async def get_macro_news(
                 s = scored_by_headline.get(n.get("headline"))
                 if s and s.get("sentiment"):
                     n["sentiment"] = s["sentiment"]
+        if _cached_news is None:
+            try:
+                await redis_client.set(_news_cache_key, json.dumps(news_list, ensure_ascii=False), ex=90)
+            except Exception:  # noqa: BLE001
+                pass  # 缓存写失败不影响返回
         return {"status": "success", "data": news_list}
     except Exception as e:
         raise AppError(status_code=500, detail=str(e))
@@ -1158,7 +1178,9 @@ async def get_data_center_dashboard(
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            ttl = 60 + random.randint(10, 30)
+            # PERF-卡顿: 顶层 TTL 由 60-90s 拉长到 300s——dashboard 含 ≥3 次 LLM(日历/财报/
+            # 新闻打分) + akshare/finnhub 外部源，TTL 过短导致冷重打频繁 → 16.5s 慢请求。
+            ttl = 300 + random.randint(10, 30)
             await redis_client.set(cache_key, json.dumps(result), ex=ttl)
             return result
     except Exception as e:

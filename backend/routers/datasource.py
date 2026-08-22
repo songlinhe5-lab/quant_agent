@@ -295,9 +295,29 @@ async def get_health_overview() -> Dict[str, Any]:
 
     ensure_all_datasources_registered()
 
+    # PERF-卡顿: 短期结果缓存（8s）——前端轮询/WS 每 15s 重建，加缓存降低事件循环占用
+    # （dashboard/news 的 LLM/外部源 15s 慢 await 会拖累共享事件循环，health 卡顿多数是排队）
+    import json as _json
+
+    try:
+        from backend.core.redis_client import redis_client
+
+        _cached = await redis_client.get("quant:datasource:health_overview")
+        if _cached:
+            cached_payload = _json.loads(_cached)
+            cached_payload["from_cache"] = True
+            return cached_payload
+    except Exception:  # noqa: BLE001
+        pass  # Redis 不可用则跳过缓存
+
     names = datasource_registry.list_names()
     cards = await asyncio.gather(*[_build_health_card(n) for n in names])
-    return {"sources": cards, "total": len(cards), "generated_at": time.time()}
+    payload = {"sources": cards, "total": len(cards), "generated_at": time.time()}
+    try:
+        await redis_client.set("quant:datasource:health_overview", _json.dumps(payload), ex=8)
+    except Exception:  # noqa: BLE001
+        pass
+    return payload
 
 
 @router.get("/{name}/health")

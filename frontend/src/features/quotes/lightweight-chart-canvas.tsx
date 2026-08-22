@@ -759,6 +759,43 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     return () => window.removeEventListener('market_tick', handleTick);
   }, [selectedSymbol, theme, selectedPeriod]);
 
+  // PERF-01: quant:kline 增量 —— 新 K 线时真正 append，替代等 15s 全量重拉。
+  // 轻量路径（series.update）不触发全量重建；指标/均线由 30s 对账 /history 补全。
+  useEffect(() => {
+    const handleKlineIncremental = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.kline) return
+      const cleanSym = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
+      if (cleanSym(detail.ticker) !== cleanSym(selectedSymbol)) return
+      if (selectedPeriod === 'tick') return
+      const k = detail.kline
+      const ts = toChartTime(k.time)
+      if (ts == null) return
+      const last = lastCandleRef.current
+      if (!last || seriesRef.current === null) return
+      const isUp = Number(k.close) >= Number(k.open)
+      const point: any = { time: ts as UTCTimestamp, open: Number(k.open), high: Number(k.high), low: Number(k.low), close: Number(k.close), volume: Number(k.volume) || 0 }
+      const tsTime = ts as UTCTimestamp
+      if (last.time === ts) {
+        // 同 bar：更新最后一根（OHLC 更完整）
+        seriesRef.current.update(point)
+        if (volumeRef.current) volumeRef.current.update({ time: tsTime, value: point.volume, color: isUp ? CHART_COLORS[resolvedTheme].volumeUp : CHART_COLORS[resolvedTheme].volumeDown })
+        lastCandleRef.current = point
+      } else if (ts > last.time) {
+        // 新 K 线：append（轻量；30s 对账补全指标）
+        seriesRef.current.update(point)
+        if (volumeRef.current) volumeRef.current.update({ time: tsTime, value: point.volume, color: isUp ? CHART_COLORS[resolvedTheme].volumeUp : CHART_COLORS[resolvedTheme].volumeDown })
+        lastCandleRef.current = point
+      }
+      if (currentPriceLineRef.current) currentPriceLineRef.current.applyOptions({ price: point.close })
+      if (updateOhlcvDomRef.current && !isCrosshairActiveRef.current) updateOhlcvDomRef.current(point)
+    };
+    window.addEventListener('kline_incremental', handleKlineIncremental);
+    return () => window.removeEventListener('kline_incremental', handleKlineIncremental);
+    // resolvedTheme / toChartTime 为组件闭包，随 selectedSymbol 等变化即可
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSymbol, selectedPeriod, theme]);
+
   useEffect(() => {
     if (!chartContainerRef.current) return
     if (chartRef.current) chartRef.current.remove()

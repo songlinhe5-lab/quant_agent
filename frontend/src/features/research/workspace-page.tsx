@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
 import { Microscope, PanelRightClose, PanelRightOpen, Activity, Archive, Minimize2 } from 'lucide-react'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
-import { useLayoutStore } from '@/stores/useLayoutStore'
 import { MODE_META } from '@/features/trading/trading-mode-types'
 import { SessionCenter, type SessionItem } from './session-center'
 import { ChatWorkspace } from './chat-workspace'
@@ -42,15 +41,13 @@ export function ResearchWorkspacePage() {
   const chatIterCount = chatMessages.reduce((acc, m) => acc + (m.tools?.length ?? 0), 0)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const openCopilot = useLayoutStore((s) => s.openCopilot)
   const handleSelectSession = useChatStore((s) => s.handleSelectSession)
   const mode = useTradingModeStore((s) => s.mode)
   const modeMeta = MODE_META[mode]
 
-  // COPILOT-20: 反向「收起」→ 打开抽屉返回
+  // COPILOT-20: 反向「收起」→ 返回数据中心（UI 拆分后抽屉已隐藏）
   const collapseToDrawer = () => {
-    openCopilot()
-    navigate('/')
+    navigate('/data-center')
   }
 
   const handleLaunchDebate = (r: ComposerResult) => {
@@ -124,12 +121,12 @@ export function ResearchWorkspacePage() {
         >
           {modeMeta?.emoji} {modeMeta?.label}
         </span>
-        {/* COPILOT-20: 收起 → 返回抽屉形态 */}
+        {/* COPILOT-20: 收起 → 返回数据中心（UI 拆分后抽屉已隐藏） */}
         <button
           type="button"
           onClick={collapseToDrawer}
           className="flex items-center gap-1 rounded-full border border-border/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"
-          title="收起为抽屉形态"
+          title="返回数据中心"
         >
           <Minimize2 className="h-3 w-3" /> 收起
         </button>

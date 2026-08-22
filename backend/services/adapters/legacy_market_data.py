@@ -10,6 +10,7 @@ YFinance 主路径经 DataSourceInterface Registry（`datasource_registry.fetch`
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -280,8 +281,17 @@ class MarketDataGateway:
             legs: list = []
             degraded_signal = False
             degraded_msgs: list[str] = []
-            for exp in exp_dates[:max_expiries]:
-                chain = await self.get_option_chain(ticker, exp)
+            # PERF: 原为串行逐个 await 取期权链（≤8 个外部调用），改为并发拉取。
+            # 用信号量限制并行度，避免打爆 Futu/YF 频控。
+            _exp_slice = exp_dates[:max_expiries]
+            _sem = asyncio.Semaphore(3)
+
+            async def _fetch_one(exp: str):
+                async with _sem:
+                    return exp, await self.get_option_chain(ticker, exp)
+
+            _chains = await asyncio.gather(*(_fetch_one(e) for e in _exp_slice))
+            for exp, chain in _chains:
                 if chain.get("status") != "success":
                     logger.warning(f"[MarketData] matrix: 到期 {exp} 取链失败: {chain.get('message')}")
                     continue

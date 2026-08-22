@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { useToast } from '@/hooks/use-toast'
 import { useWatchlist } from '@/stores/use-watchlist'
 import { apiClient } from '@/lib/api-client'
+import { navigate } from '@/lib/navigate'
 import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
 import { useScreenerWs } from './use-screener-ws'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
@@ -253,7 +254,8 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     toast({ title: '🧠 正在召唤 Agent...', description: `即将对 ${formatDisplaySymbol(symbol)} 进行深度投研分析。` })
     const prompt = `请帮我生成一份针对【${symbol}】的深度体检研报。\n它是我刚刚通过量价筛选器捕获的高潜标的。请结合它当前的盘面特征，提取最新的财务基本面与近期新闻舆情，并给出风控建议。`
     window.dispatchEvent(new CustomEvent('quant_copilot_invoke', { detail: { prompt } }))
-    window.location.hash = 'copilot'
+    // UI 拆分：AI 副驾迁至左侧「投研」分栏
+    navigate('/research')
   }, [toast])
   const handleSendToBacktest = useCallback((symbol: string) => {
     window.dispatchEvent(new CustomEvent('quant_strategy_invoke', { detail: { ticker: symbol } }))

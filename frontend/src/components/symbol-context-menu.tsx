@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/context-menu'
 import { Bell, Brain, Copy, Eye, LineChart, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useToast } from '@/hooks/use-toast'
 
 type SymbolContextMenuProps = {
@@ -24,7 +23,6 @@ type SymbolContextMenuProps = {
  */
 export function SymbolContextMenu({ symbol, children, onRemove, onSelect }: SymbolContextMenuProps) {
   const navigate = useNavigate()
-  const openCopilot = useLayoutStore((s) => s.openCopilot)
   const { toast } = useToast()
 
   const copySymbol = async () => {
@@ -43,7 +41,8 @@ export function SymbolContextMenu({ symbol, children, onRemove, onSelect }: Symb
   }
 
   const askAi = () => {
-    openCopilot()
+    // UI 拆分：AI 副驾迁至左侧「投研」分栏，导航过去后由常驻聊天运行时消费 invoke 指令
+    navigate('/research')
     window.dispatchEvent(
       new CustomEvent('quant_copilot_invoke', {
         detail: { prompt: `请分析 ${symbol} 的最新走势与风险点` },
