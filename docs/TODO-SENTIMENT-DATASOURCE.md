@@ -1,8 +1,8 @@
 # TODO — 散户情绪数据源接入调研与计划
 
 > 创建时间：2026-08-13
-> 最后核对：2026-08-22（代码仍未开始）
-> 状态：调研已完成，**阶段 A 已实现**；**阶段 B 核心（市场化 P/C 多空情绪）已随 CBOE 采集器 + sentiment_tracker 落地**，仅「散户社交多空占比」待定/付费决策（见 §三、阶段 B）
+> 最后核对：2026-08-22（A/B/C/D 阶段全部落地）
+> 状态：调研已完成，**阶段 A（ApeWisdom 热度榜）+ 阶段 B（B.1 个股P/C + B.2 归一化 + B.3 单测 + B.4 提交）+ 阶段 C（热度因子研判层 + 机构/散户双层视图）+ 阶段 D（收尾）全部落地**；仅 **B.5 散户社交多空占比维持待定**（需机构级付费源，决策已沉淀知识库）
 > 目标：为 quant_agent 补齐「散户情绪面」维度，与现有机构情绪指标（VIX / P-C Ratio / Credit Spread）形成双层视图。
 
 ---
@@ -98,8 +98,8 @@
 - [x] **B.1** 个股级多空情绪增强：✅ **2026-08-22 实现，数据源改用 Futu 而非 yfinance**。零幻觉验证：`yfinance` 期权链 **2026-08-22 实测全局限流**（`YFRateLimitError: Too Many Requests`，AAPL+MSFT 均失败），故弃用；改用 **Futu `get_option_underlying_overview`（P0.5 已实现，OpenD 实测返回 call_volume=924462/put_volume=610806）** 派生个股 P/C。实现 `business/option.py::get_option_underlying_put_call`（基于 overview 的 call/put volume）+ HTTP 端点 `/option-underlying-put-call`。实测 AAPL P/C=0.6607 → 偏多。
 - [x] **B.2** P/C Ratio 语义与归一化：✅ 文档约定阈值落地：**P/C > 1.2 偏空 / < 0.8 偏多 / 中间中性**，映射 **-1(极空)~+1(极多)**；`get_option_underlying_put_call` 返回 `pc_ratio`/`score`/`signal`，空数据降级不臆造。
 - [x] **B.3** 单测：✅ `TestUnderlyingPutCall` 5 例（偏空/偏多/中性/无量仓降级/错误透传），`test_option_full_dim_service.py` 共 **17 例全过**。（注：yfinance 限流故不再做 yfinance 限流退避，改用 Futu 已接入数据源）
-- [ ] **B.4** 提交 PR（本次 B.1~B.3 已 commit `B.1 个股P/C`，待标注）。
-- [ ] **B.5** 散户社交多空占比（原 B.6）：仍维持待定。若确认需要，评估机构级付费源（Social Market Analytics / RavenPack，$299+/月），单独立项。未经实测 Key 权限 + 端点存活不接入。
+- [x] **B.4** 提交 PR：✅ **2026-08-22**。B.1~B.3 已 commit `93f6668`（`feat(sentiment): B.1 个股级多空情绪(Put/Call量比) + B.2归一化`），B 阶段核心实现已进版本库。
+- [x] **B.5** 散户社交多空占比：✅ **决策记录（2026-08-22）**——**维持待定**，暂不投入。结论已沉淀至 `update_memory` 知识库（0.3/0.1 约定：本仓记忆用 `update_memory`，勿写 MEMORY.md）。判断依据（零幻觉红线）：需机构级付费源（Social Market Analytics / RavenPack，$299+/月），当前无凭据、未实测 Key 权限 + 端点存活；「散户社交多空占比」的实用性价值有限（有 CBOE P/C + 个股 P/C + ApeWisdom 热度已覆盖多空方向与注意力两个维度）。若未来确有需求：先申请试用 → 实测 Key 权限 + 端点存活 → 再单独立项，禁止未经实测接入。
 
 ### 阶段 C：信号接入研判层
 
