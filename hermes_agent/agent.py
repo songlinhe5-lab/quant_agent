@@ -15,6 +15,7 @@ from backend.services.ai_narrator.repetition_guard import repetition_guard
 from backend.services.ai_narrator.token_usage_store import token_usage_store
 from backend.services.ai_narrator.usage_pricing import usage_pricing_calculator
 from hermes_agent.memory_ops import MemoryOperationsMixin
+from hermes_agent.relay_tools import BatchToolCall, BatchToolExecutor
 
 # 盘中主脑 prompt（与 IDE 编码宪法 AGENTS.md 分离）
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -224,6 +225,39 @@ class HermesAgent(MemoryOperationsMixin):
             from hermes_agent.redact import redact_exception
 
             return {"status": "error", "message": f"工具执行异常: {redact_exception(e)}"}
+
+    # AGENT-05: 脚本经 RPC 批量调工具（零上下文成本轮次）
+    async def batch_execute_tools(
+        self,
+        tool_calls: List[Dict[str, Any]],
+        batch_id: str = "default",
+    ) -> Dict[str, Any]:
+        """
+        批量执行工具调用（不经过 LLM 上下文窗口）。
+
+        将 N 次带上下文的工具往返压成 1 轮批量执行，大幅节省 token 成本。
+        安全约束：白名单仅限只读数据工具，交易类工具被硬编码拒绝。
+
+        Args:
+            tool_calls: 工具调用列表 [{"tool_name": "...", "arguments": {...}}, ...]
+            batch_id: 批次标识（用于追踪和日志）
+
+        Returns:
+            批量执行报告 dict（含 summary + results）
+        """
+        executor = BatchToolExecutor(self.tool_registry)
+        report = await executor.execute_batch(
+            calls=[
+                BatchToolCall(
+                    tool_name=tc.get("tool_name", ""),
+                    arguments=tc.get("arguments", {}),
+                    call_id=tc.get("call_id"),
+                )
+                for tc in tool_calls
+            ],
+            batch_id=batch_id,
+        )
+        return report.to_dict()
 
     # A-3.2: 抽 _call_llm 统一 LLM 调用逻辑（AGENT-04）
     async def _call_llm(self, request_kwargs: dict) -> LLMResult:

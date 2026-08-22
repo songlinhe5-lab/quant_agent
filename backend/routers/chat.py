@@ -381,3 +381,63 @@ async def delete_session(session_id: str, username: str = Depends(get_current_us
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
+# --- AGENT-05: 批量工具执行 RPC 端点 ---
+# ==========================================
+
+
+class BatchToolCallRequest(BaseModel):
+    """批量工具调用请求体"""
+
+    tool_name: str
+    arguments: dict = {}
+    call_id: Optional[str] = None
+
+
+class BatchExecuteRequest(BaseModel):
+    """批量执行请求"""
+
+    tool_calls: list[BatchToolCallRequest]
+    batch_id: str = "default"
+
+
+@router.post("/agent/batch-execute")
+async def batch_execute_tools(
+    request: BatchExecuteRequest,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-05: 脚本经 RPC 批量调工具（零上下文成本轮次）。
+
+    将 N 次带上下文的工具往返压成 1 轮批量执行，大幅节省 token 成本。
+    安全约束：白名单仅限只读数据工具，交易类工具被硬编码拒绝。
+    """
+    from hermes_agent.agent import HermesAgent
+    from hermes_agent.tool_registry import ToolRegistry
+
+    try:
+        # 创建临时 agent 实例（仅用于批量执行，不走 LLM）
+        registry = ToolRegistry()
+        agent = HermesAgent(tool_registry=registry)
+
+        # 转换请求格式
+        tool_calls = [
+            {
+                "tool_name": tc.tool_name,
+                "arguments": tc.arguments,
+                "call_id": tc.call_id,
+            }
+            for tc in request.tool_calls
+        ]
+
+        # 执行批量调用
+        report = await agent.batch_execute_tools(
+            tool_calls=tool_calls,
+            batch_id=request.batch_id,
+        )
+
+        return {"status": "success", "data": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量执行失败: {str(e)}")
