@@ -110,16 +110,12 @@ class TokenUsageStore:
             "total_tokens": 0,
             "calls": 0,
         }
-        # 启动时 best-effort 清理旧镜像残留的脏 key（不阻塞业务构造）
-        # 持有强引用，避免 fire-and-forget 任务在事件循环关闭时被 GC 强制销毁
-        # 触发 "Task was destroyed but it is pending" / canceled 告警
+        # best-effort 清理旧镜像残留脏 key 的后台任务引用（懒触发，见 record()）。
+        # 注意：不在 __init__ 里创建任务——单例常在模块导入期（尚无 running loop）
+        # 被实例化，过早创建的任务会绑定到错误的事件循环，在 pytest 关闭 loop 时
+        # 悬挂并触发 "Task was destroyed but it is pending" / canceled。
         self._cleanup_task: Optional[asyncio.Future] = None
-        if self._enabled:
-            try:
-                self._cleanup_task = asyncio.ensure_future(self._cleanup_legacy_keys())
-            except RuntimeError:
-                # 无 running event loop（如 import 期）时跳过，下次调用自然走干净逻辑
-                pass
+        self._cleanup_triggered = False
 
     @staticmethod
     async def _cleanup_legacy_keys() -> None:
@@ -174,6 +170,15 @@ class TokenUsageStore:
         """
         if not self._enabled:
             return
+        # 首次 record 时懒触发一次后台脏 key 清理（此时已有稳定 running loop，
+        # 任务不会绑定到错误的事件循环；持有强引用且内部超时+捕获 CancelledError）
+        if not self._cleanup_triggered:
+            self._cleanup_triggered = True
+            try:
+                self._cleanup_task = asyncio.ensure_future(self._cleanup_legacy_keys())
+            except RuntimeError:
+                # 仍无 running loop 时跳过，下次 record 再尝试
+                self._cleanup_triggered = False
         prompt_tokens = int(prompt_tokens or 0)
         completion_tokens = int(completion_tokens or 0)
         if total_tokens <= 0:

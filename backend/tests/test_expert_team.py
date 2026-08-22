@@ -491,11 +491,28 @@ class TestExpertTeamRouter:
 
     @pytest.fixture
     def client(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         from fastapi.testclient import TestClient
 
         from backend.main import app
 
-        return TestClient(app)
+        # 隔离外部依赖：Redis + PG 均不可用 → 端点走内存兜底（符合测试意图）。
+        # 否则模块级全局 redis_client 在 TestClient 的多个独立事件循环间复用时会
+        # 出现跨 loop 连接错乱，导致 scan 永久挂起（test_list_sessions_endpoint 卡死）。
+        redis_mock = MagicMock()
+        redis_mock.scan = AsyncMock(return_value=(0, []))
+        redis_mock.get = AsyncMock(return_value=None)
+        redis_mock.set = AsyncMock(return_value="OK")
+
+        with (
+            patch("backend.core.redis_client.redis_client", redis_mock),
+            patch(
+                "backend.core.database.SessionLocal",
+                side_effect=RuntimeError("PG unavailable in test"),
+            ),
+        ):
+            yield TestClient(app)
 
     @pytest.fixture
     def auth_headers(self):

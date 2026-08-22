@@ -72,14 +72,19 @@ class ExpertTeamService:
         sessions: list[DebateSession] = []
 
         # ─── Layer 1: Redis SCAN ───
+        # 外层 wait_for 超时保护：Redis 不可达时连接可能无限挂起，
+        # 必须有超时才能快速降级，否则会阻塞事件循环（测试/生产均受影响）
         try:
             from backend.core.redis_client import redis_client
 
             cursor = 0
             while True:
-                cursor, keys = await redis_client.scan(cursor=cursor, match=f"{REDIS_KEY_PREFIX}*", count=100)
+                cursor, keys = await asyncio.wait_for(
+                    redis_client.scan(cursor=cursor, match=f"{REDIS_KEY_PREFIX}*", count=100),
+                    timeout=2.0,
+                )
                 for key in keys:
-                    raw = await redis_client.get(key)
+                    raw = await asyncio.wait_for(redis_client.get(key), timeout=2.0)
                     if raw:
                         sessions.append(DebateSession(**json.loads(raw)))
                 if cursor == 0:
@@ -101,7 +106,7 @@ class ExpertTeamService:
                     rows = db.query(ExpertTeamSession).order_by(ExpertTeamSession.created_at.desc()).limit(limit).all()
                     return [r.session_data for r in rows]
 
-            pg_data = await asyncio.to_thread(fetch_pg)
+            pg_data = await asyncio.wait_for(asyncio.to_thread(fetch_pg), timeout=2.0)
             for data in pg_data:
                 sessions.append(DebateSession(**data))
             if sessions:
@@ -118,7 +123,10 @@ class ExpertTeamService:
         try:
             from backend.core.redis_client import redis_client
 
-            raw = await redis_client.get(f"{REDIS_KEY_PREFIX}{session_id}")
+            raw = await asyncio.wait_for(
+                redis_client.get(f"{REDIS_KEY_PREFIX}{session_id}"),
+                timeout=2.0,
+            )
             if raw:
                 return DebateSession(**json.loads(raw))
         except Exception as e:
@@ -135,7 +143,7 @@ class ExpertTeamService:
                     row = db.query(ExpertTeamSession).filter(ExpertTeamSession.session_id == session_id).first()
                     return row.session_data if row else None
 
-            pg_data = await asyncio.to_thread(fetch_pg)
+            pg_data = await asyncio.wait_for(asyncio.to_thread(fetch_pg), timeout=2.0)
             if pg_data:
                 session = DebateSession(**pg_data)
                 # 回温至 Redis
@@ -167,10 +175,13 @@ class ExpertTeamService:
         try:
             from backend.core.redis_client import redis_client
 
-            await redis_client.set(
-                f"{REDIS_KEY_PREFIX}{session.session_id}",
-                session.model_dump_json(),
-                ex=REDIS_TTL,
+            await asyncio.wait_for(
+                redis_client.set(
+                    f"{REDIS_KEY_PREFIX}{session.session_id}",
+                    session.model_dump_json(),
+                    ex=REDIS_TTL,
+                ),
+                timeout=2.0,
             )
         except Exception as e:
             logger.warning(f"[ExpertTeam] Redis 写入失败: {e}")
