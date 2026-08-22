@@ -399,12 +399,12 @@
 
 ##### 社区与协作（数据治理层）
 
-- [ ] **[COMM-01]** 数据源健康度统一看板（P2）：
-  - 前端：`DataSourceHealthDashboard` — 卡片矩阵（每个数据源一个卡片：名称 / 状态 / 延迟 / 今日调用量 / 成功率 / 限流次数）
-  - 实时数据来源：`/api/v1/datasource/{name}/health` + `rate_limit_registry` 状态
+- [x] **[COMM-01]** 数据源健康度统一看板（P2）：✅ 已落地（早于本批次）：前端组件为 `DataSourceHealthModule`（`features/data-center/datasource-health.tsx`，路由 `/datasource-health`），非 TODO 原写的 `DataSourceHealthDashboard`；卡片矩阵（名称/状态/延迟/今日调用量/成功率/限流次数）+ WS 实时推送 + STALE>5min 变红。后端 `GET /datasource/health-overview`(卡片矩阵) + `GET /datasource/{name}/health`(单源) + `WS /datasource/ws/health`，由 `_build_health_card` 聚合 `rate_limit_registry` 统计。覆盖测试：`test_datasource_router.py`、`test_datasource_health_monitor.py`
+  - 前端：卡片矩阵（每个数据源一个卡片：名称 / 状态 / 延迟 / 今日调用量 / 成功率 / 限流次数）
+  - 实时数据来源：`/datasource/health-overview` + `rate_limit_registry` 状态（单源 `/datasource/{name}/health`）
   - 报警：数据源 STALE > 5min → 卡片变红 + WebSocket 推送
   - 预期工时：FE 6h
-- [ ] **[COMM-02]** 数据源贡献投票与需求看板（P3）：
+- [x] **[COMM-02]** 数据源贡献投票与需求看板（P3）：✅ 已落地（早于本批次）：前端 `DataSourceHealthModule.renderSection` 渲染「已接入/开发中/社区投票中」三类 + `vote()`（1 票/天）；后端 `GET /datasource-vote/board` + `POST /datasource-vote/vote`（`routers/datasource_vote.py`，每用户每源每日一票，Redis 防刷）。覆盖测试：`test_datasource_vote.py`（16 passed）
   - 前端：展示「已接入 / 开发中 / 社区投票中」三类数据源
   - 用户可投票（1 票/天），影响下一个接入优先级
   - 后端：投票记录 + 计数器，防止刷票
@@ -412,7 +412,7 @@
 
 ##### 智能选股器产品化
 
-- [ ] **[SCREEN-01]** 选股条件保存与分享（P1）：
+- [x] **[SCREEN-01]** 选股条件保存与分享（P1）：✅ 已落地（早于本批次）：后端 `models.SavedScreen`(`saved_screens` 表) + `screener_app.py` 的 `save_screen/list_screens/get_screen/rename_screen/delete_screen` + `routers/screener.py` 的 `POST /screens`、`GET /screens`、`PUT /screens/{id}`、`DELETE /screens/{id}`（均带 user_id 归属校验）；前端 `screener-context.tsx` 实现 `loadSavedScreens/saveCurrentScreen/deleteSavedScreen/renameSavedScreen/applySavedScreen/shareCurrentScreen`，`screener-header.tsx` 渲染「💾 保存」「📂 我的筛选」「🔗 分享」UI + 挂载时解析 `?s=` 自动填充分享条件。覆盖测试：`test_router_screener_extra.py::TestScreenerSavedScreensRoutes`
   - 前端：筛选器面板「💾 保存条件」→ 命名 + 描述 → `saved_screens` 表
   - 「📂 我的筛选条件」下拉列表（加载 / 删除 / 重命名）
   - 「🔗 分享」→ 生成可分享 URL（编码筛选条件为 query params，对方打开自动填充）
