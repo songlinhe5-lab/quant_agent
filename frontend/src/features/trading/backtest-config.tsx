@@ -59,11 +59,22 @@ export function BacktestConfig(props: BacktestConfigProps) {
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">执行策略</p>
             <select value={selectedStrategy} onChange={e => handleStrategyChange(e.target.value)} disabled={running || done} className="bg-background border border-border/50 rounded px-2 py-1.5 text-xs outline-none focus:border-primary w-full cursor-pointer">
-              <option value="">内置底背离共振 (默认)</option>
-              {strategies.map((s, i) => (
-                <option key={i} value={s.name}>{s.name}</option>
-              ))}
-              <option value="__custom_expr__">自定义指标脚本 (Pine)</option>
+              {/* 内置引擎（前端常量集, 非用户草稿） */}
+              <optgroup label="内置引擎">
+                <option value="">内置底背离共振 (默认)</option>
+              </optgroup>
+              {/* 我的草稿（真实状态来自后端 status 字段） */}
+              <optgroup label="我的草稿">
+                {strategies.map((s, i) => (
+                  <option key={i} value={s.name}>
+                    {s.name}（{s.status === 'deployed' ? '已部署' : s.status === 'backtested' ? '已回测' : '草稿'}）
+                  </option>
+                ))}
+              </optgroup>
+              {/* 自定义指标脚本 (Pine) */}
+              <optgroup label="自定义">
+                <option value="__custom_expr__">自定义指标脚本 (Pine)</option>
+              </optgroup>
             </select>
           </div>
           <div>
