@@ -92,7 +92,7 @@ def test_new_indicators():
                 diff = (vwma_result - ma_20_value) / ma_20_value * 100
                 print(f"   ✓ SMA(20): ${ma_20_value:.2f}, Difference: {diff:+.2f}%")
             else:
-                print(f"   ✓ SMA(20): N/A")
+                print("   ✓ SMA(20): N/A")
 
         # 4. ATR%
         print("\n📊 Testing ATR%...")

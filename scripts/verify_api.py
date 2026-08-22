@@ -188,7 +188,7 @@ async def verify_all_endpoints():
                         err_detail = resp.text
                         try:
                             err_detail = resp.json().get("detail", resp.text)
-                        except:
+                        except Exception:
                             pass
                         print(f"  {Colors.WARNING}⚠️ [HTTP {status}] 请求拦截或客户端错误: {err_detail}{Colors.ENDC}")
                     else:

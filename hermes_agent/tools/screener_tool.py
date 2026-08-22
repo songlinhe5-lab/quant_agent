@@ -35,7 +35,7 @@ class ScreenerTool(BaseTool):
                 err_msg = trans_resp.text
                 try:
                     err_msg = trans_resp.json().get("detail", trans_resp.text)
-                except:
+                except Exception:
                     pass
                 return {"status": "error", "message": f"转译选股条件失败: {err_msg}"}
 
@@ -54,7 +54,7 @@ class ScreenerTool(BaseTool):
                 err_msg = resp.text
                 try:
                     err_msg = resp.json().get("detail", resp.text)
-                except:
+                except Exception:
                     pass
 
                 # 💡 抛出自定义异常，交由 @with_agent_self_correction 装饰器拦截并触发大模型重试

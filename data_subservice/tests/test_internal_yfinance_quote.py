@@ -54,7 +54,7 @@ class TestNormalizeOptionRow:
 
 class TestFetchBulkQuotes:
     def test_bulk(self):
-        with patch.object(qmod, "fetch_quote", side_effect=lambda t: {"symbol": t, "price": 1.0}) as m:
+        with patch.object(qmod, "fetch_quote", side_effect=lambda t: {"symbol": t, "price": 1.0}):
             out = qmod.fetch_bulk_quotes(["AAPL", "MSFT"])
         assert len(out) == 2
         assert out[0]["symbol"] == "AAPL"

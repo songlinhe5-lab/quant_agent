@@ -27,7 +27,6 @@ import json
 import time
 from typing import Optional
 
-import locust
 from locust import HttpUser, User, between, events, task
 
 
@@ -132,8 +131,16 @@ class QuotesWebSocketUser(User):
 
     # 热门标的池
     SYMBOLS = [
-        "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",
-        "NVDA", "META", "BABA", "00700", "09988",
+        "AAPL",
+        "MSFT",
+        "GOOGL",
+        "AMZN",
+        "TSLA",
+        "NVDA",
+        "META",
+        "BABA",
+        "00700",
+        "09988",
     ]
 
     def __init__(self, *args, **kwargs):
@@ -153,6 +160,7 @@ class QuotesWebSocketUser(User):
 
         # 随机订阅 1~3 个标的
         import random
+
         n_subs = random.randint(1, 3)
         for sym in random.sample(self.SYMBOLS, min(n_subs, len(self.SYMBOLS))):
             self.ws_client.subscribe(sym)
@@ -191,6 +199,7 @@ class QuotesWebSocketUser(User):
             try:
                 self.ws_client.connect("/ws/quotes")
                 import random
+
                 for sym in random.sample(self.SYMBOLS, random.randint(1, 3)):
                     self.ws_client.subscribe(sym)
                 self._session_start = time.time()
@@ -221,9 +230,10 @@ class RestApiUser(HttpUser):
     def get_quote(self):
         """GET /api/v1/market/quote?symbol=AAPL"""
         import random
+
         symbol = random.choice(QuotesWebSocketUser.SYMBOLS)
         with self.client.get(
-            f"/api/v1/market/quote",
+            "/api/v1/market/quote",
             params={"symbol": symbol},
             catch_response=True,
         ) as resp:
@@ -236,9 +246,10 @@ class RestApiUser(HttpUser):
     def get_kline(self):
         """GET /api/v1/market/kline?symbol=AAPL&period=K_DAY&count=100"""
         import random
+
         symbol = random.choice(QuotesWebSocketUser.SYMBOLS)
         with self.client.get(
-            f"/api/v1/market/kline",
+            "/api/v1/market/kline",
             params={"symbol": symbol, "period": "K_DAY", "count": 100},
             catch_response=True,
         ) as resp:

@@ -312,4 +312,3 @@ export const ScreenerQuoteRow = React.memo(({ r, onPreview, onSendToCopilot, onS
     </tr>
   )
 })
-

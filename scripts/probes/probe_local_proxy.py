@@ -21,8 +21,8 @@ try:
 except Exception as e:
     print("  ak.set_proxy failed:", e)
 
-import asyncio
-import time
+import asyncio  # noqa: E402
+import time  # noqa: E402
 
 
 async def main():

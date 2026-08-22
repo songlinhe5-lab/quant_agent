@@ -1,7 +1,7 @@
 # AGENT-04: ReAct 单驱动收口 - 最终完成报告 ✅
 
-**状态**: 🟢 **Production Ready (100% Complete)**  
-**最后更新**: 2026-08-22  
+**状态**: 🟢 **Production Ready (100% Complete)**
+**最后更新**: 2026-08-22
 **对标参考**: [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) `core/agent-loop` + hermes `turn_context.py`
 
 ---
@@ -44,22 +44,22 @@ async def chat_stream_async(self):  # 流式 (L778)
 async def _react_loop(self):
     """A-4: 统一 ReAct 驱动循环 — 唯一循环语义实现"""
     max_iterations = self._MAX_REACT_ITERATIONS  # 唯一常量 (L67)
-    
+
     for i in range(max_iterations):
         # 1. LLM 调用
         result = await self._call_llm(request_kwargs)
-        
+
         # 2. 工具执行
         if result.tool_calls:
             for tc in result.tool_calls:
                 yield {"type": "tool_start", ...}
                 res = await self._safe_execute_tool(tc)
                 yield {"type": "tool_result", ...}
-        
+
         # 3. 文本输出
         if result.content:
             yield {"type": "text_chunk", "content": result.content}
-        
+
         # 4. 终止条件
         if not result.tool_calls:
             yield {"type": "_done", "content": collected_content}
@@ -141,7 +141,7 @@ class LLMResult:
 async def _call_llm(self, request_kwargs: Dict) -> LLMResult:
     """A-3: 统一 LLM 调用策略，返回归一化结果"""
     response = await self.llm_client.chat.completions.create(**request_kwargs)
-    
+
     return LLMResult(
         content=response.choices[0].message.content,
         tool_calls=response.choices[0].message.tool_calls,
@@ -161,12 +161,12 @@ async def _call_llm(self, request_kwargs: Dict) -> LLMResult:
 async def _react_loop(self) -> AsyncGenerator[Dict[str, Any], None]:
     """
     A-4: 统一 ReAct 驱动循环 — 异步生成器
-    
+
     Yields:
         Dict[str, Any]: SSE 事件字典
         - type: 事件类型（text_chunk/tool_start/tool_result/...）
         - content/data: 事件负载数据
-    
+
     Control Events:
         {"type": "_done", "content": final_text}  # 内部终止信号
     """
@@ -245,26 +245,26 @@ graph TB
     Wrapper -->|非流式 | chat[chat]
     Wrapper -->|流式 | stream[chat_stream_async]
     Wrapper -->|CLI| run[run_cli]
-    
+
     chat --> Consumer[消费 _react_loop]
     stream --> Forward[转发 _react_loop 事件]
     run --> Consumer
-    
+
     Consumer --> React[_react_loop 异步生成器]
     Forward --> React
-    
+
     React --> LLM[LLM 调用 _call_llm]
     React --> Tool[工具执行 _safe_execute_tool]
     React --> Output[文本输出 text_chunk]
-    
+
     LLM --> Result[LLMResult 归一化]
     Tool --> Result
     Output --> Result
-    
+
     Result --> Next{继续？}
     Next -->|Yes| React
     Next -->|No| Done[yield _done]
-    
+
     style User fill:#e4f0fe
     style React fill:#ffe4e4
     style Done fill:#e4ffe4
@@ -311,9 +311,9 @@ agent.chat_stream_async()  # ✅ 流式 wrapper
 
 ## ✍️ 七、贡献者签名
 
-**Author**: Qoder AI Agent  
-**Reviewers**: @stephenhe  
-**Date**: 2026-08-22  
+**Author**: Qoder AI Agent
+**Reviewers**: @stephenhe
+**Date**: 2026-08-22
 **Status**: 🟢 **Production Ready (100%)**
 
 ---

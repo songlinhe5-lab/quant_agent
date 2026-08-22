@@ -36,7 +36,7 @@ except Exception:
 
 # 2) 走 service 封装层，确认 message/category 透传正确
 print("\n=== 2. service 封装层 ===")
-from backend.services.tushare.service import tushare_service as t
+from backend.services.tushare.service import tushare_service as t  # noqa: E402
 
 for name, fn in [
     ("list", lambda: t.get_stock_basic(fields="ts_code,name")),

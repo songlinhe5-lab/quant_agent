@@ -11,9 +11,8 @@ from unittest.mock import MagicMock
 # 将项目根目录加入 sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from futu import RET_OK
-
 from backend.services.futu.screener_handler import ScreenerHandler
+from futu import RET_OK
 
 
 class TestScreenerHallucinationDefense(unittest.IsolatedAsyncioTestCase):

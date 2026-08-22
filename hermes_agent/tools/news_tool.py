@@ -33,7 +33,7 @@ class GetCompanyNewsTool(BaseTool):
                     err_msg = resp.text
                     try:
                         err_msg = resp.json().get("detail", resp.text)
-                    except:
+                    except Exception:
                         pass
                     return {"status": "error", "message": f"网关接口返回错误 (HTTP {resp.status_code}): {err_msg}"}
 

@@ -65,7 +65,7 @@ def test_real_world_strategy():
     # MACD
     if "macd" in result:
         macd = result["macd"]
-        print(f"  ├─ MACD(12,26,9):")
+        print("  ├─ MACD(12,26,9):")
         print(f"  │  ├─ DIF: {macd.get('dif', 'N/A'):.3f}")
         print(f"  │  ├─ DEA: {macd.get('dea', 'N/A'):.3f}")
         print(f"  │  └─ Histogram: {macd.get('macd_hist', 'N/A'):.3f}")
@@ -80,7 +80,7 @@ def test_real_world_strategy():
     # Stochastic
     if "stochastic" in result:
         stoch = result["stochastic"]
-        print(f"  ├─ Stochastic(14,3,3):")
+        print("  ├─ Stochastic(14,3,3):")
         print(f"  │  ├─ %K: {stoch.get('k_val', 'N/A'):.2f}")
         print(f"  │  ├─ %D: {stoch.get('d_val', 'N/A'):.2f}")
         if "signal" in stoch:
@@ -89,7 +89,7 @@ def test_real_world_strategy():
     # Bollinger
     if "bollinger" in result:
         bb = result["bollinger"]
-        print(f"  ├─ Bollinger(20,2σ):")
+        print("  ├─ Bollinger(20,2σ):")
         print(f"  │  ├─ Upper: ${bb.get('upper', 'N/A'):.2f}")
         print(f"  │  ├─ Middle: ${bb.get('middle', 'N/A'):.2f}")
         print(f"  │  └─ Lower: ${bb.get('lower', 'N/A'):.2f}")
@@ -122,7 +122,7 @@ def test_real_world_strategy():
     if "rsi" in result:
         rsi_value = result["rsi"].get("rsi")
         if rsi_value is not None and 0 <= rsi_value <= 100:
-            print(f"  ✓ RSI within bounds [0, 100]")
+            print("  ✓ RSI within bounds [0, 100]")
             validations.append(True)
         else:
             print(f"  ✗ RSI out of bounds: {rsi_value}")
@@ -155,10 +155,10 @@ def test_real_world_strategy():
         for v in sublist.values()
     )
     if not has_nan:
-        print(f"  ✓ No NaN/Inf values detected")
+        print("  ✓ No NaN/Inf values detected")
         validations.append(True)
     else:
-        print(f"  ✗ Found NaN/Inf values!")
+        print("  ✗ Found NaN/Inf values!")
         validations.append(False)
 
     # Final verdict

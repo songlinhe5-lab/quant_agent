@@ -9,8 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 load_dotenv()
 
-from backend.core.redis_client import redis_client
-from backend.services.akshare import akshare_service
+from backend.core.redis_client import redis_client  # noqa: E402
+from backend.services.akshare import akshare_service  # noqa: E402
 
 
 async def test_akshare_company_news():

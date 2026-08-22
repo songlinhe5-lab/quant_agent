@@ -1,7 +1,6 @@
 """AKShare 宏观日历单元测试 — mock 网络与 akshare, 覆盖三级容灾与解析逻辑。"""
 
 import pandas as pd
-import pytest
 
 import data_subservice._internal.akshare.calendar as cal_mod
 
@@ -88,8 +87,24 @@ class TestGetEconomicCalendar:
     def test_builds_events_and_sorts(self, monkeypatch):
         """mock _fetch_date 返回多条, 验证解析 + 排序 + impact 映射。"""
         recs = [
-            {"地区": "美国", "事件": "FOMC", "公布时间": "02:00", "重要性": "高", "前值": "5.0", "预测值": "5.1", "公布值": "5.2"},
-            {"country": "CN", "event": "PM I", "time": "09:30", "importance": "2", "previous": "50", "consensus": "51", "actual": "52"},
+            {
+                "地区": "美国",
+                "事件": "FOMC",
+                "公布时间": "02:00",
+                "重要性": "高",
+                "前值": "5.0",
+                "预测值": "5.1",
+                "公布值": "5.2",
+            },
+            {
+                "country": "CN",
+                "event": "PM I",
+                "time": "09:30",
+                "importance": "2",
+                "previous": "50",
+                "consensus": "51",
+                "actual": "52",
+            },
         ]
         monkeypatch.setattr(cal_mod, "_fetch_date", lambda *a: recs)
         out = cal_mod.get_economic_calendar(days_ahead=0, days_back=0)
@@ -116,6 +131,7 @@ class TestGetEconomicCalendar:
     def test_exception_returns_error(self, monkeypatch):
         def boom(*a):
             raise RuntimeError("boom")
+
         monkeypatch.setattr(cal_mod, "_fetch_date", boom)
         out = cal_mod.get_economic_calendar(days_ahead=0, days_back=0)
         assert out["status"] == "error"

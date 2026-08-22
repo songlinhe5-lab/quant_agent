@@ -46,7 +46,7 @@ async def test_latency_stats(test_source: str):
 
     stats = await call_metrics.get_latency_stats(test_source)
 
-    print(f"\n延迟统计结果:")
+    print("\n延迟统计结果:")
     print(f"  样本数量：{stats['samples']}")
     print(f"  平均延迟：{stats['avg_ms']:.2f} ms" if stats["avg_ms"] else "  平均延迟：N/A")
     print(f"  P50 延迟：{stats['p50_ms']:.2f} ms" if stats["p50_ms"] else "  P50 延迟：N/A")

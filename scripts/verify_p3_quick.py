@@ -38,7 +38,7 @@ def main():
     # Check 2: YFinanceRouter 无法导入
     checks_total += 1
     try:
-        from backend.core.yfinance_router import YFinanceRouter
+        from backend.core.yfinance_router import YFinanceRouter  # noqa: F401  (availability probe)
 
         print("❌ 2. YFinanceRouter 仍可导入")
     except ImportError:

@@ -446,4 +446,3 @@
   - 新增 `backend/domain/entities.py` 统一 re-export `Strategy` / `OrderIntent` / `OrderUpdate` / `AlertRule` / `AlertRuleType`；`backend/domain/__init__` 同步暴露
   - 在 `docs/03` §2.1 标注 Domain 层实体状态（遵循「避免过早复制 DTO」：定义仍留原模块，仅做稳定聚合门面）
 - [x] **[ARCH-11]** 启动阶段 print() 全面替换为 structlog（lifecycle.py lifespan 38 处 print + 8 处标准 logger，main.py 2 处 import 期 print）
-

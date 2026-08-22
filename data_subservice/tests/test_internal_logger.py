@@ -72,9 +72,7 @@ class TestWebhookAlertHandler:
                 return False
 
         with patch("urllib.request.urlopen", return_value=FakeResp()) as mock_url:
-            with patch(
-                "urllib.request.Request", side_effect=lambda *a, **k: captured.update(k) or MagicMock()
-            ) as mock_req:
+            with patch("urllib.request.Request", side_effect=lambda *a, **k: captured.update(k) or MagicMock()):
                 handler.emit(rec)
         assert mock_url.called
         assert "data" in captured

@@ -14,7 +14,7 @@ async def check_finnhub_metrics():
     bucket = _bucket_key("finnhub", date_key)
 
     print("\n" + "=" * 70)
-    print(f"🔍 Finnhub 调用指标详情")
+    print("🔍 Finnhub 调用指标详情")
     print(f"⏰ 日期：{date_key}")
     print(f"📍 Redis Key: {bucket}")
     print("=" * 70)
@@ -57,14 +57,14 @@ async def check_finnhub_metrics():
         analyzer = rate_limit_registry.get_analyzer("finnhub")
 
         if analyzer:
-            print(f"\n✅ Analyzer 存在")
+            print("\n✅ Analyzer 存在")
             print(f"   总请求数：{analyzer.total_requests}")
             print(f"   错误请求：{analyzer.error_requests}")
             print(f"   延迟样本数：{len(analyzer.latency_samples)}")
 
             if analyzer.latency_samples:
                 samples = analyzer.latency_samples
-                print(f"\n   延迟统计:")
+                print("\n   延迟统计:")
                 print(f"     最小值：{min(samples):.2f}ms")
                 print(f"     最大值：{max(samples):.2f}ms")
                 print(f"     平均值：{sum(samples) / len(samples):.2f}ms")
@@ -75,11 +75,11 @@ async def check_finnhub_metrics():
                 p95 = sorted_samples[p95_idx] if p95_idx < len(sorted_samples) else 0
                 print(f"     P95:    {p95:.2f}ms")
             else:
-                print(f"\n   ❌ 无延迟样本！")
-                print(f"      可能原因:")
-                print(f"      1. 探针调用未记录延迟")
-                print(f"      2. 业务调用未记录延迟")
-                print(f"      3. 延迟记录逻辑有问题")
+                print("\n   ❌ 无延迟样本！")
+                print("      可能原因:")
+                print("      1. 探针调用未记录延迟")
+                print("      2. 业务调用未记录延迟")
+                print("      3. 延迟记录逻辑有问题")
         else:
             print("\n❌ Analyzer 不存在")
 

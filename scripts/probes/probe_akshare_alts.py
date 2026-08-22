@@ -5,7 +5,7 @@ import sys
 import time
 
 print("python:", sys.executable, sys.version.split()[0])
-import akshare as ak
+import akshare as ak  # noqa: E402
 
 print("akshare:", getattr(ak, "__version__", "?"))
 

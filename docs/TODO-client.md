@@ -45,4 +45,3 @@
 - [ ] **[CLI-P4-01]** Apple Watch / Android Wear 价格预警极简卡片
 - [ ] **[CLI-P4-02]** 语音指令模式（Whisper 语音转文字 → Hermes Agent）
 - [ ] **[CLI-P4-03]** Flutter Web 低成本替代移动端 H5 嵌入场景
-

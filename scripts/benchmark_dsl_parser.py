@@ -33,7 +33,7 @@ def run_benchmark():
     )
 
     iterations = 100000
-    print(f"📦 测试负载: 单个 DSL 包含 6 个过滤条件 + 3 个技术形态")
+    print("📦 测试负载: 单个 DSL 包含 6 个过滤条件 + 3 个技术形态")
     print(f"🔄 循环次数: {iterations:,} 次")
 
     # 预热 (Warm-up)，让底层的 Pydantic 核心和 Python 解释器完成必要的缓存初始化

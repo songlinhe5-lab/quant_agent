@@ -99,4 +99,3 @@
       - **D. 端到端降级编排**：`test_futu_total_outage_no_local_fallback`（Futu 全失联 → 返回错误且无本地兜底）。
       - **E. 隔离性**：`test_parallel_circuit_breaker_isolation`（独立服务熔断状态互不干扰）。
     - 全绿。验证重点：日志实测触发「节点 yf_a 触发熔断」「无健康子服务节点可用（后端已移除本地兜底）」「Futu 远程节点不可用（后端已移除本地兜底）」，证明降级/熔断/切换链路真实生效，而非 mock 假结果。
-

@@ -81,7 +81,7 @@ async def test_run_screener():
             # 4. 测试自定义词库管理 (/screener/dictionary)
             # ==========================================
             url_dict = f"{base_url}/screener/dictionary"
-            print(f"\n📡 [4] RAG 词库管理测试")
+            print("\n📡 [4] RAG 词库管理测试")
             if token:
                 print(f"   -> POST {url_dict}")
                 dict_payload = {
@@ -113,14 +113,14 @@ async def test_run_screener():
                     {"desc": "测试批量因子B", "rule": "B -> B"},
                 ]:
                     await client.request("DELETE", url_dict, json=d, headers=headers)
-                print(f"      ✅ 测试词条已清理")
+                print("      ✅ 测试词条已清理")
             else:
                 print("   ⚠️ 缺少 Token，跳过需鉴权的词库测试")
 
             # ==========================================
             # 5. 测试订阅任务管理 (/screener/subscribe)
             # ==========================================
-            print(f"\n📡 [5] 定时订阅任务管理测试")
+            print("\n📡 [5] 定时订阅任务管理测试")
             if token:
                 url_sub = f"{base_url}/screener/subscribe"
                 print(f"   -> POST {url_sub}")

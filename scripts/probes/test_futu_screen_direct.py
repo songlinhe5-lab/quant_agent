@@ -43,7 +43,7 @@ def test_direct_futu_screen():
         ]
 
         for mkt_name, mkt_enum, term_name, term_enum in test_cases:
-            print(f"\n" + "-" * 60)
+            print("\n" + "-" * 60)
             print(f"🧪 测试用例: 市场=[{mkt_name}] | 周期=[{term_name}] | ROE > {min_val}%")
             print("-" * 60)
 
@@ -58,17 +58,17 @@ def test_direct_futu_screen():
             ret, data = quote_ctx.get_stock_screen(req)
 
             if ret == RET_OK:
-                is_last_page, all_count, items = data[0], data[1], data[2]  # type: ignore
+                _is_last_page, all_count, items = data[0], data[1], data[2]  # type: ignore
                 if int(all_count) > 3000:
                     print(
                         f"❌ 被静默丢弃 (Silent Drop)! 返回了 {all_count} 只股票，说明 {mkt_name} 市场不支持 {term_name} 周期的 ROE 过滤。"
                     )
                 elif all_count == 0:
-                    print(f"⚠️ 过滤生效，但返回 0 只！说明富途可能有该字段，但暂无符合条件数据。")
+                    print("⚠️ 过滤生效，但返回 0 只！说明富途可能有该字段，但暂无符合条件数据。")
                 else:
                     print(f"✅ 过滤完美生效！匹配到 {all_count} 只标的。")
                     if items:
-                        print(f"\n   📄 数据逐行解析打印 (前 3 条):")
+                        print("\n   📄 数据逐行解析打印 (前 3 条):")
                         for idx, item in enumerate(items[:3]):
                             # 💡 增加类型守卫：向 Pylance 证明这是一个字典，消除 "str 没有 get 属性" 的警告
                             if not isinstance(item, dict):

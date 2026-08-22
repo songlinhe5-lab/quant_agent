@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.core.redis_client import redis_client
-from backend.services.akshare import akshare_service
-from backend.services.macro.fred_service import fred_service
+from backend.core.redis_client import redis_client  # noqa: E402
+from backend.services.akshare import akshare_service  # noqa: E402
+from backend.services.macro.fred_service import fred_service  # noqa: E402
 
 
 async def verify_calendar():

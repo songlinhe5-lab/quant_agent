@@ -12,7 +12,7 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from backend.services.futu import futu_service
+from backend.services.futu import futu_service  # noqa: E402
 
 
 async def test_fixed_filters():
@@ -29,9 +29,9 @@ async def test_fixed_filters():
         {"field": "PROPERTY_RATIO", "type": "financial", "term": "ANNUAL", "max": 100.0},
     ]
 
-    print(f"\n📋 测试配置:")
+    print("\n📋 测试配置:")
     print(f"   市场: {market}")
-    print(f"   过滤条件:")
+    print("   过滤条件:")
     for i, f in enumerate(filters, 1):
         print(f"      [{i}] {f}")
 
@@ -80,7 +80,7 @@ async def test_fixed_filters():
                     print(f"   PE历史百分位: {pe_percentile}", end="")
                     if pe_percentile is not None:
                         if 0 <= pe_percentile <= 100:
-                            print(f" ✅ (拦截生效: 转换为了合理百分比)")
+                            print(" ✅ (拦截生效: 转换为了合理百分比)")
                         else:
                             print(f" ⚠️ 异常值 ({pe_percentile}%)，防御未生效")
                             all_correct = False
@@ -91,7 +91,7 @@ async def test_fixed_filters():
                     print(f"   流动比率: {current_ratio}", end="")
                     if current_ratio is not None:
                         if 0 <= current_ratio <= 100:
-                            print(f" ✅ (拦截生效: 转换为了合理比值)")
+                            print(" ✅ (拦截生效: 转换为了合理比值)")
                         else:
                             print(f" ⚠️ 异常值 ({current_ratio})，防御未生效")
                             all_correct = False
@@ -102,7 +102,7 @@ async def test_fixed_filters():
                     print(f"   产权比率: {prop_ratio_val}", end="")
                     if prop_ratio_val is not None:
                         if 0 <= prop_ratio_val <= 500:
-                            print(f" ✅ (合理的比率范围)")
+                            print(" ✅ (合理的比率范围)")
                         else:
                             print(f" ⚠️ 异常值 ({prop_ratio_val})，防御未生效")
                             all_correct = False

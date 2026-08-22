@@ -51,7 +51,6 @@ class TestDfToRecords:
 
     def test_multindex_columns_flattened(self):
         svc = _svc()
-        arrays = [["Close", "Open"], ["AAPL", "AAPL"]]
         df = pd.DataFrame({("Close", "AAPL"): [105.0], ("Open", "AAPL"): [100.0]})
         df.columns = pd.MultiIndex.from_tuples([("Close", "AAPL"), ("Open", "AAPL")])
         df["Date"] = ["2026-01-01"]
@@ -104,35 +103,35 @@ class TestFetchYfDataRouting:
     async def test_flow_route(self):
         svc = _svc()
         with patch.object(svc, "get_fund_flow", new=AsyncMock(return_value={"ok": 1})) as m:
-            result = await svc.fetch_yf_data("FLOW", "AAPL")
+            await svc.fetch_yf_data("FLOW", "AAPL")
         m.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_option_chain_route(self):
         svc = _svc()
         with patch.object(svc, "get_option_chain", new=AsyncMock(return_value={"ok": 1})) as m:
-            result = await svc.fetch_yf_data("option_chain", "AAPL")
+            await svc.fetch_yf_data("option_chain", "AAPL")
         m.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_search_route(self):
         svc = _svc()
         with patch.object(svc, "search", new=AsyncMock(return_value=[{"s": "AAPL"}])) as m:
-            result = await svc.fetch_yf_data("search", "apple")
+            await svc.fetch_yf_data("search", "apple")
         m.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_technical_route(self):
         svc = _svc()
         with patch.object(svc, "get_tech_indicators", new=AsyncMock(return_value={"ok": 1})) as m:
-            result = await svc.fetch_yf_data("technical", "AAPL")
+            await svc.fetch_yf_data("technical", "AAPL")
         m.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_financials_route(self):
         svc = _svc()
         with patch.object(svc, "get_financials", new=AsyncMock(return_value={"ok": 1})) as m:
-            result = await svc.fetch_yf_data("financials", "AAPL")
+            await svc.fetch_yf_data("financials", "AAPL")
         m.assert_awaited_once()
 
 

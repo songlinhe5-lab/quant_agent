@@ -75,7 +75,7 @@ def generate_synthetic_market_data():
         }
     )
 
-    print(f"\n📊 Generated realistic market data:")
+    print("\n📊 Generated realistic market data:")
     print(f"   • Bars: {len(df)}")
     print(f"   • Date range: {df['datetime'].min().date()} ~ {df['datetime'].max().date()}")
     print(f"   • Price range: ${prices.min():.2f} ~ ${prices.max():.2f}")
@@ -138,11 +138,11 @@ def test_indicator_accuracy_vs_tradingview(sample_klines):
 
         if upper and middle and lower:
             if upper > middle > lower:
-                print(f"   ✓ Bollinger bands ordered correctly")
+                print("   ✓ Bollinger bands ordered correctly")
                 print(f"      Upper=${upper:.2f}, Middle=${middle:.2f}, Lower=${lower:.2f}")
                 validations_passed.append(("Bollinger Order", True))
             else:
-                print(f"   ✗ Bollinger bands incorrect order")
+                print("   ✗ Bollinger bands incorrect order")
                 validations_passed.append(("Bollinger Order", False))
 
     # 4. Validate ATR (should be positive)
@@ -207,7 +207,7 @@ def test_indicator_accuracy_vs_tradingview(sample_klines):
             print(f"   ✓ Elder-Ray calculated (Bull: {bull:.2f}, Bear: {bear:.2f})")
             validations_passed.append(("Elder-Ray Calculated", True))
         else:
-            print(f"   ✗ Elder-Ray missing values")
+            print("   ✗ Elder-Ray missing values")
             validations_passed.append(("Elder-Ray Calculated", False))
 
     return validations_passed
@@ -231,17 +231,17 @@ def test_concurrent_performance(sample_klines):
             IndicatorConfig(name="rsi", indicator_type="momentum", params={}),
             IndicatorConfig(name="macd", indicator_type="trend", params={}),
         ]
-        result = engine.calculate(sample_klines, indicators=configs[:2], return_history=False)
+        engine.calculate(sample_klines, indicators=configs[:2], return_history=False)
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         results[ticker] = elapsed_ms
         total_time += elapsed_ms
-        avg_time = total_time / len(results)
+        total_time / len(results)
 
-    print(f"\n📊 Performance Results (10 tickers, 6 indicators each):")
-    print(f"   ┌─────────────────────────────────────┐")
-    print(f"   │ Ticker    │ Time (ms)  │ Status    │")
-    print(f"   ├─────────────────────────────────────┤")
+    print("\n📊 Performance Results (10 tickers, 6 indicators each):")
+    print("   ┌─────────────────────────────────────┐")
+    print("   │ Ticker    │ Time (ms)  │ Status    │")
+    print("   ├─────────────────────────────────────┤")
 
     max_time = 0
     min_time = float("inf")
@@ -252,8 +252,8 @@ def test_concurrent_performance(sample_klines):
         min_time = min(min_time, ms)
         print(f"   │ {ticker:<10} │ {ms:>9.2f} │ {status:<8} │")
 
-    print(f"   └─────────────────────────────────────┘")
-    print(f"\n📈 Statistics:")
+    print("   └─────────────────────────────────────┘")
+    print("\n📈 Statistics:")
     print(f"   • Average: {total_time / len(tickers):.2f}ms")
     print(f"   • Min: {min_time:.2f}ms")
     print(f"   • Max: {max_time:.2f}ms")
@@ -261,10 +261,10 @@ def test_concurrent_performance(sample_klines):
 
     # Validation
     if total_time / len(tickers) < 15:
-        print(f"\n✅ PASS: Concurrent performance excellent!")
+        print("\n✅ PASS: Concurrent performance excellent!")
         return True
     else:
-        print(f"\n⚠️ WARN: Performance below optimal threshold")
+        print("\n⚠️ WARN: Performance below optimal threshold")
         return False
 
 
@@ -292,7 +292,7 @@ def test_realtime_simulation(sample_klines):
         ]
 
         start = time.perf_counter()
-        result = engine.calculate(current_klines, indicators=configs, return_history=False)
+        engine.calculate(current_klines, indicators=configs, return_history=False)
         elapsed_ms = (time.perf_counter() - start) * 1000
         update_times.append(elapsed_ms)
 
@@ -303,17 +303,17 @@ def test_realtime_simulation(sample_klines):
     final_avg = np.mean(update_times)
     std_dev = np.std(update_times)
 
-    print(f"\n📊 Real-time Performance Summary:")
+    print("\n📊 Real-time Performance Summary:")
     print(f"   • Avg latency: {final_avg:.2f}ms")
     print(f"   • Std dev: {std_dev:.2f}ms (stability)")
     print(f"   • P95: {np.percentile(update_times, 95):.2f}ms")
 
     # Validation
     if final_avg < 10 and std_dev < 2:
-        print(f"\n✅ PASS: Real-time streaming stable!")
+        print("\n✅ PASS: Real-time streaming stable!")
         return True
     else:
-        print(f"\n⚠️ WARN: Latency or stability concerns")
+        print("\n⚠️ WARN: Latency or stability concerns")
         return False
 
 

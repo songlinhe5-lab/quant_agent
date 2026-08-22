@@ -14,7 +14,7 @@ last_tested: 2026-08-22
 eval_score: TBD
 changelog: |
   2026-08-22: 初始版本，从 HERMES.md 提取核心摘要逻辑
-  
+
 ---
 
 # Role Definition
@@ -109,7 +109,7 @@ changelog: |
 # Few-Shot Examples
 
 ## Example 1: Market Commentary
-**Input**: 
+**Input**:
 > "我觉得目前市场对人工智能的关注有点过度了，虽然 NVIDIA 的股价确实涨得不错，但是我觉得估值已经很高了。不过另一方面，AI 基础设施的建设还是必要的，所以长期来看这个行业还是有机会的。关键是短期可能会有一些调整，特别是那些没有实际收入的公司。"
 
 **Output**:

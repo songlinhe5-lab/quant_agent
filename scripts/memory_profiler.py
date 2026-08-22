@@ -19,7 +19,7 @@ def start_profiling():
     tracemalloc.start(25)  # 保留 25 层调用栈
     print("✅ Memory profiling started")
     print(f"   PID: {os.getpid()}")
-    print(f"   Tracemalloc snapshot interval: 25 frames\n")
+    print("   Tracemalloc snapshot interval: 25 frames\n")
 
 
 def take_snapshot(label: str = ""):
@@ -85,7 +85,7 @@ def analyze_imports():
     print("📦 Module Import Memory Analysis")
     print("=" * 80 + "\n")
 
-    snapshot_before = take_snapshot()
+    take_snapshot()
 
     # 逐个导入主要模块，测量内存增长
     modules_to_test = [

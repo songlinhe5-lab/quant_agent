@@ -72,7 +72,7 @@ def verify_finnhub_endpoints(api_key: str):
                 result = "❌ 密钥无效"
                 preview = "401 Unauthorized"
             else:
-                result = f"❓ 未知状态"
+                result = "❓ 未知状态"
                 preview = f"HTTP {status}"
 
             print(f"{name:<30} | {result:<15} | {preview}")

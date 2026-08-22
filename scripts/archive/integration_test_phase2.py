@@ -64,11 +64,11 @@ def test_rsi_macd_strategy():
     print(f"📊 Result structure: {json.dumps(result, indent=2, default=str)[:500]}")
 
     # Debug: Check actual key names in result
-    rsi_data = result.get("rsi", {})
-    macd_data = result.get("macd", {})
+    result.get("rsi", {})
+    result.get("macd", {})
     print(f"  │  ├─ Signal: {result['rsi']['signal']}")
     print(f"  │  └─ Trend: {result['rsi']['trend']}")
-    print(f"  ├─ MACD(12,26,9):")
+    print("  ├─ MACD(12,26,9):")
     print(f"  │  ├─ DIF: {result['macd']['dif']:.2f}")
     print(f"  │  ├─ DEA: {result['macd']['dea']:.2f}")
     print(f"  │  └─ Histogram: {result['macd']['macd_hist']:.2f}")
@@ -103,7 +103,7 @@ def test_stochastic_obv_vwap():
     print("=" * 60)
 
     # Fetch real data via Futu API (if available)
-    futu = FutuService()
+    futu = FutuService()  # noqa: F821  (optional Futu SDK dependency; import disabled at line 13)
     ticker = "NVDA"
 
     try:
@@ -144,7 +144,7 @@ def test_stochastic_obv_vwap():
     # Stochastic
     if "stochastic" in result:
         stoch = result["stochastic"]
-        print(f"  ├─ Stochastic(14,3,3):")
+        print("  ├─ Stochastic(14,3,3):")
         print(f"  │  ├─ %K: {stoch['k_val']:.2f}")
         print(f"  │  ├─ %D: {stoch['d_val']:.2f}")
         print(f"  │  └─ Signal: {stoch['signal']}")
@@ -219,7 +219,7 @@ def test_bollinger_atr_volatility():
 
     # Configure Bollinger + ATR
     vol_config = [
-        IndicatorConfig(name="bollinger", indicator_type="volatility", params={"period": 20, std_devs: 2.0}),
+        IndicatorConfig(name="bollinger", indicator_type="volatility", params={"period": 20, "std_devs": 2.0}),
         IndicatorConfig(name="atr", indicator_type="volatility", params={"period": 14}),
     ]
 
@@ -236,7 +236,7 @@ def test_bollinger_atr_volatility():
     band_width = (upper - lower) / middle * 100
     price_pos = (bb["price"] - lower) / (upper - lower) * 100
 
-    print(f"  ├─ Bollinger(20,2.0σ):")
+    print("  ├─ Bollinger(20,2.0σ):")
     print(f"  │  ├─ Upper: {upper:.2f}")
     print(f"  │  ├─ Middle (SMA): {middle:.2f}")
     print(f"  │  ├─ Lower: {lower:.2f}")
@@ -265,7 +265,7 @@ def test_bollinger_atr_volatility():
     suggested_stop_loss = current_price - (2 * atr["value"])
     suggested_take_profit = current_price + (3 * atr["value"])
 
-    print(f"\n💡 Risk Management Suggestions:")
+    print("\n💡 Risk Management Suggestions:")
     print(
         f"  ├─ Stop Loss: ${suggested_stop_loss:.2f} (-{((current_price - suggested_stop_loss) / current_price) * 100:.1f}%)"
     )

@@ -15,7 +15,7 @@ try:
     from backend.services.prompt.approval_service import (
         ApprovalRequest,
         DeploymentEnvironment,
-        PromptApprovalService,
+        PromptApprovalService,  # noqa: F401  (availability probe; used indirectly via get_prompt_approval_service)
         RollbackRequest,
         get_prompt_approval_service,
     )

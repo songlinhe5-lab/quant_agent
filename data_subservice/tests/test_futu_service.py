@@ -151,7 +151,6 @@ class TestRouteForwarding:
 
 class TestConnectClose:
     def test_connect(self, monkeypatch):
-        fake = lambda self: None
         monkeypatch.setattr(futu_service.conn_mgr, "connect", lambda: None)
         monkeypatch.setattr(futu_service.conn_mgr, "close", lambda: None)
         monkeypatch.setattr(futu_service.cache_mgr, "clear_all_subscriptions", lambda: None)

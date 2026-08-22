@@ -1,9 +1,9 @@
 # AGENT-12: 重复/停滞守卫 - 最终完成报告
 
-**状态**: 🟢 **Production Ready (100%)**  
-**完成日期**: 2026-08-22  
-**测试覆盖**: ✅ 13/13 tests passed  
-**代码行数**: 466 lines (1 module)  
+**状态**: 🟢 **Production Ready (100%)**
+**完成日期**: 2026-08-22
+**测试覆盖**: ✅ 13/13 tests passed
+**代码行数**: 466 lines (1 module)
 **Breaking Changes**: ✅ None | Backward Compatible
 
 ---
@@ -38,7 +38,7 @@
 class StuckDetectionResult:
     """
     停滞检测结果
-    
+
     - is_stuck: 是否检测到停滞
     - reason: 停滞原因（如 "identical_tool_calls", "no_progress", "loop_pattern"）
     - details: 详细信息（如重复的工具名称、参数、输出等）
@@ -73,7 +73,7 @@ class ToolCallRecord:
 def check_stuck(self, current_iteration: int, max_iterations: int) -> StuckDetectionResult:
     """
     检测是否停滞
-    
+
     检测维度（按优先级）：
     1. 同参数重复调用
     2. 同结论重复输出
@@ -82,13 +82,13 @@ def check_stuck(self, current_iteration: int, max_iterations: int) -> StuckDetec
     """
     # 计算节省的迭代轮数
     iterations_saved = max_iterations - current_iteration
-    
+
     # 检测维度 1: 同参数重复调用
     identical_calls_result = self._check_identical_tool_calls()
     if identical_calls_result.is_stuck:
         identical_calls_result.iterations_saved = iterations_saved
         return identical_calls_result
-    
+
     # ... 其他维度检测
 ```
 
@@ -112,10 +112,10 @@ def _calculate_text_similarity(text1: str, text2: str) -> float:
     """计算两段文本的 Jaccard 相似度"""
     words1 = set(text1.lower().split())
     words2 = set(text2.lower().split())
-    
+
     intersection = len(words1 & words2)
     union = len(words1 | words2)
-    
+
     return intersection / union if union > 0 else 0.0
 ```
 
@@ -144,7 +144,7 @@ async def _safe_execute_tool(self, tool_name: str, arguments_str: str):
     try:
         args = json.loads(arguments_str)
         result = await self.tool_registry.execute(tool_name, **args)
-        
+
         # AGENT-12: 记录工具调用到重复守卫（用于停滞检测）
         await repetition_guard.record_tool_call(
             tool_name=tool_name,
@@ -152,7 +152,7 @@ async def _safe_execute_tool(self, tool_name: str, arguments_str: str):
             result=result,
             output_summary=str(result)[:200],  # 取前 200 字符作为摘要
         )
-        
+
         return result
     except Exception as e:
         # ... 异常处理
@@ -180,7 +180,7 @@ for i in range(max_iterations):
             "details": stuck_result.details,
         }
         return  # 提前退出循环
-    
+
     # ... 正常循环逻辑
 ```
 
@@ -335,8 +335,8 @@ graph TD
 - **成本节省**：平均节省 5 轮迭代，降低 62.5% token 消耗
 - **向后兼容**：无破坏性变更， seamlessly 集成到现有架构
 
-**状态**: 🟢 **Production Ready (100%)**  
-**测试覆盖**: ✅ 13/13 tests passed  
+**状态**: 🟢 **Production Ready (100%)**
+**测试覆盖**: ✅ 13/13 tests passed
 **Breaking Changes**: ✅ None | Backward Compatible
 
 ---

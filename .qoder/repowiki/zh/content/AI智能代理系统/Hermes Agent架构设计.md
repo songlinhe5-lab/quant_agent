@@ -215,7 +215,7 @@ SaveSession --> End(["结束"])
 class LLMResult:
     """
     LLM 调用的归一化结果。
-    
+
     统一非流式/流式两条路径的返回结构，屏蔽 OpenAI SDK 的 response 对象差异。
     后续 AGENT-06 (LLM Provider 适配缝) 可在此基础上扩展多 provider 归一化。
     """

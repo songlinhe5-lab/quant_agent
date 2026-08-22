@@ -1,7 +1,7 @@
 # AGENT-03: 工具集按场景分发 - 最终完成报告 ✅
 
-**状态**: 🟢 **Production Ready (100% Complete)**  
-**最后更新**: 2026-08-22  
+**状态**: 🟢 **Production Ready (100% Complete)**
+**最后更新**: 2026-08-22
 **对标参考**: [openai/codex tools/](https://github.com/openai/codex/tree/main/tools) + hermes `toolsets.py`
 
 ---
@@ -88,7 +88,7 @@ def _extract_intents(self, user_query: str) -> List[str]:
         "trade": ["买入", "卖出", "下单", "订单", "oms", "交易"],
         "search": ["搜索", "研报", "下载", "网页", "knowledge"],
     }
-    
+
     query = user_query.lower()
     matched = [scope for scope, keywords in keyword_map.items()
                if any(kw in query for kw in keywords)]
@@ -198,7 +198,7 @@ graph LR
     Warn --> Assemble
     Assemble --> LLM[LLM inference with reduced context]
     LLM --> React[ReAct loop execution]
-    
+
     style User fill:#e4f0fe
     style Intent fill:#f0e4fe
     style Filter fill:#efe4fe
@@ -248,9 +248,9 @@ schemas = agent.tool_registry.get_schemas_by_scopes(intents) if intents \
 
 ## ✍️ 九、贡献者签名
 
-**Author**: Qoder AI Agent  
-**Reviewers**: @stephenhe  
-**Date**: 2026-08-22  
+**Author**: Qoder AI Agent
+**Reviewers**: @stephenhe
+**Date**: 2026-08-22
 **Status**: 🟢 **Production Ready (100%)**
 
 ---
@@ -262,15 +262,15 @@ schemas = agent.tool_registry.get_schemas_by_scopes(intents) if intents \
 1. **[OPT-01]** ML-based intent classification
    - Replace keyword matching with embedding semantic search
    - Train on historical conversation data
-   
+
 2. **[OPT-02]** Scope hierarchy support
    - Define parent-child relationships (e.g., `technical` ⊂ `quote`)
    - Auto-expand parent scope to include child tools
-   
+
 3. **[OPT-03]** Dynamic scope weighting
    - Based on user preference/history
    - Top-K tool selection instead of hard filter
-   
+
 4. **[DOC-01]** Update AI_INSTRUCTIONS.md
    - Add "Tool Scope Classification Guide" section
    - Example prompts for each scope

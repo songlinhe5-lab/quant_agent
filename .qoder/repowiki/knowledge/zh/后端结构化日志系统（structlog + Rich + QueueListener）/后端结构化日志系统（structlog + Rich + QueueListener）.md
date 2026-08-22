@@ -53,7 +53,7 @@ source_files:
 ### 3.3 输出路由
 
 ```
-logging.getLogger("quant_agent").info(...) 
+logging.getLogger("quant_agent").info(...)
   → QueueHandler → QueueListener
     ├─ RichHandler (终端, 彩色)
     ├─ TimedRotatingFileHandler: logs/debug.log (DEBUG)

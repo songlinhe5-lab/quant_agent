@@ -113,9 +113,9 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
   - [x] 人工审核并逐个注入 `scopes=[...]` 参数到现有工具 (35 tools → 11 scopes mapping completed)
   - [x] 修改 `_react_loop` 路由逻辑（关键词匹配→动态 scopes 筛选）(agent.py L72-135 integration ✅)
   - [x] 编写单元测试 (Manual verification passed: quote/fundamental/macro/trade scope filtering)
-  
+
 📄 **完整报告**: [`docs/AGENT-03_FINAL_REPORT.md`](docs/AGENT-03_FINAL_REPORT.md) (280 lines)
-  
+
 - [x] **[AGENT-15]** 会话事件日志持久化（Rollout JSONL + budget 归档）✅ 3bb89a0
   - `rollout_storage.py`：cursor 分页 `read_events_paginated` + `list_sessions` + `get_event_stats`；`logs/sessions/{date}/archived/` 超限归档
   - `memory_ops.py`：三轨冷启动恢复 Redis → PG → Rollout JSONL + `_restore_event_log_from_rollout`
