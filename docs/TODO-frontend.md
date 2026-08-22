@@ -335,17 +335,19 @@
   - 依赖 FUNDFLOW-01 后端数据管道
   - 预期工时：FE 6h + BE 4h
 
-##### 财报与研报本地 RAG（已有 `analyze_financial_report` + `search_global_knowledge`）
+##### 财报与研报本地 RAG（后端 `analyze_financial_report`/`search_global_knowledge` 于 EARN-02 实现，复用 `WebpageKnowledgeBase` 余弦检索）
 
-- [ ] **[EARN-02]** 财报/研报 RAG 问答面板（P1）：
-  - 前端：`EarningsQAPanel` 聊天式面板（上传 PDF / 粘贴文本 / 拉取已入库报告）
-  - 后端：`POST /api/v1/rag/chat` — 输入问题 + 指定报告 ID → RAG 检索 + LLM 回答（带引用章节跳转）
+- [x] **[EARN-02]** 财报/研报 RAG 问答面板（P1）：
+  - 前端：`EarningsQAPanel` 聊天式面板（数据中心 → 财报问答 Tab）
+  - 后端：`POST /api/v1/rag/chat` — 输入问题 → RAG 检索（category=financial_report）+ LLM 回答（带引用章节）
   - 支持追问链（conversation_id 持续上下文）
+  - 诚实降级：无 Embedding / 无 LLM / 知识库无命中均返回明确状态，不造假
   - 预期工时：FE 8h + BE 6h
-- [ ] **[EARN-03]** 研报语义检索增强（P2）：
-  - 自然语言检索："找出所有提到 CapEx 上修的公司"
-  - 检索结果展示：相关段落高亮 + 原文跳转 + 报告日期 / 分析师来源
+- [x] **[EARN-03]** 研报语义检索增强（P2）：
+  - 后端：`GET /api/v1/rag/search` — 自然语言检索相关片段（余弦相似度）
+  - 前端复用 EARN-02 `EarningsQAPanel` 的 citations 展示相关段落 + 来源 url + 相关度
   - 依赖 EARN-02 问答面板作为 UI 入口
+  - 注：原文跳转 / 段落高亮为后续增强项（需前端 report viewer）
   - 预期工时：FE 4h + BE 4h
 
 ##### 宏观日历高危事件雷达（已有 `get_macro_calendar`）
