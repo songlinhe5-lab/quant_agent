@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend/datasource_market_data/market_quote_sources
+title: 市场报价数据源适配层（AKShare / Finnhub / FMP / Tushare）
+scope:
+    - backend/services/akshare/
+    - backend/services/finnhub/
+    - backend/services/fmp/
+    - backend/services/tushare/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/datasource_market_data/fundamental_macro_search
+    - path: backend/tests

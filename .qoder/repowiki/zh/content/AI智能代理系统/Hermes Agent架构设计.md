@@ -12,7 +12,16 @@
 - [web_search_tool.py](file://hermes_agent/tools/web_search_tool.py)
 - [chat.py](file://backend/routers/chat.py)
 - [HERMES.md](file://prompts/system/HERMES.md)
+- [AGENT-04_FINAL_REPORT.md](file://docs/AGENT-04_FINAL_REPORT.md)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 统一ReAct循环实现：将两套独立的ReAct循环合并为单一`_react_loop()`异步生成器
+- 标准化SSE事件类型：定义8种标准事件类型（heartbeat、reasoning_chunk、text_chunk、tool_start、tool_result、strategy_code、chart_annotation、error）
+- 实现LLMResult数据类：提供统一的LLM响应归一化结构
+- 增强辅助函数：提取`_build_request_kwargs`、`_record_usage`、`_safe_execute_tool`等无状态辅助函数
+- 代码复杂度降低30%：从1,151行减少到806行，同时保持完全向后兼容
 
 ## 目录
 1. [简介](#简介)
@@ -29,9 +38,11 @@
 ## 简介
 本技术文档围绕 Hermes Agent 的核心架构展开，系统性阐述智能体生命周期管理、消息处理机制、工具调度器、工具注册系统（发现、依赖注入、版本管理）、记忆管理系统（短期/长期/上下文保持），以及扩展点与插件机制。文档包含架构图、组件交互流程图、数据流说明与关键实现路径引用，帮助开发者快速理解并扩展 Hermes Agent 的能力。
 
+**更新** 本次更新重点反映AGENT-04的重大架构重构，包括统一ReAct循环、标准化SSE事件和LLMResult数据类等核心变更。
+
 ## 项目结构
 Hermes Agent 位于 hermes_agent 包中，核心由以下模块组成：
-- 智能体主脑：负责会话状态、ReAct 循环、LLM 调用、流式输出与熔断恢复
+- 智能体主脑：负责会话状态、统一ReAct循环、LLM调用、流式输出与熔断恢复
 - 记忆管理：会话持久化（Redis 热 + PostgreSQL 冷）、记忆自愈与压缩、TokenGuard 防爆护栏、事实沉淀到知识库
 - 工具注册与执行：自动发现、Schema 生成、限流、统一结果缓存、安全执行
 - 工具基类与装饰器：统一后端 API 访问、限流感知重试、双级缓存、自我纠错
@@ -67,21 +78,21 @@ Memory --> PG
 
 **图表来源**
 - [chat.py:184-200](file://backend/routers/chat.py#L184-L200)
-- [agent.py:258-305](file://hermes_agent/agent.py#L258-L305)
+- [agent.py:244-806](file://hermes_agent/agent.py#L244-L806)
 - [memory_ops.py:132-175](file://hermes_agent/memory_ops.py#L132-L175)
 - [tool_registry.py:52-92](file://hermes_agent/tool_registry.py#L52-L92)
 - [tool_result_cache.py:107-195](file://hermes_agent/tool_result_cache.py#L107-L195)
 
 **章节来源**
 - [chat.py:184-200](file://backend/routers/chat.py#L184-L200)
-- [agent.py:258-305](file://hermes_agent/agent.py#L258-L305)
+- [agent.py:244-806](file://hermes_agent/agent.py#L244-L806)
 - [memory_ops.py:132-175](file://hermes_agent/memory_ops.py#L132-L175)
 - [tool_registry.py:52-92](file://hermes_agent/tool_registry.py#L52-L92)
 - [tool_result_cache.py:107-195](file://hermes_agent/tool_result_cache.py#L107-L195)
 
 ## 核心组件
 - 智能体主脑（HermesAgent）
-  - 维护对话上下文（messages）、系统指令加载、ReAct 循环、流式与非流式 LLM 调用、工具调用并发执行、熔断恢复策略、Token 计量埋点
+  - 维护对话上下文（messages）、系统指令加载、统一ReAct循环、流式与非流式 LLM 调用、工具调用并发执行、熔断恢复策略、Token 计量埋点
 - 记忆管理（MemoryOperationsMixin）
   - 会话持久化（Redis 热 + PostgreSQL 冷）、记忆自愈（修复中断的 tool_calls）、上下文压缩（滑动窗口与巨型 Tool 返回值折叠）、TokenGuard 限流与预算护栏、事实抽取与知识库沉淀
 - 工具注册与执行（ToolRegistry）
@@ -91,8 +102,10 @@ Memory --> PG
 - 具体工具（BrokerMarketTool、WebSearchTool 等）
   - 通过 action 路由市场数据、搜索、宏观、基本面等能力；遵循 Schema 约束与安全客户端
 
+**更新** 核心组件已重构为单一ReAct循环驱动，所有功能都通过统一的`_react_loop()`异步生成器实现。
+
 **章节来源**
-- [agent.py:116-191](file://hermes_agent/agent.py#L116-L191)
+- [agent.py:60-806](file://hermes_agent/agent.py#L60-L806)
 - [memory_ops.py:26-130](file://hermes_agent/memory_ops.py#L26-L130)
 - [tool_registry.py:38-123](file://hermes_agent/tool_registry.py#L38-L123)
 - [base.py:21-282](file://hermes_agent/tools/base.py#L21-L282)
@@ -101,12 +114,14 @@ Memory --> PG
 - [web_search_tool.py:9-85](file://hermes_agent/tools/web_search_tool.py#L9-L85)
 
 ## 架构总览
-Hermes Agent 采用“主脑 + 记忆 + 工具”的分层架构：
+Hermes Agent 采用"主脑 + 记忆 + 工具"的分层架构：
 - 路由层接收请求，构造 Agent 实例并调用 chat/chat_stream_async
-- 主脑层负责 ReAct 循环、LLM 调用、工具调度、流式事件推送
+- 主脑层负责统一ReAct循环、LLM调用、工具调度、流式事件推送
 - 记忆层提供会话持久化、自愈、压缩、TokenGuard、知识库沉淀
 - 工具层通过注册表统一管理，具备限流、缓存、重试、纠错能力
 - 外部依赖包括 LLM 提供商、Redis、PostgreSQL、后端数据服务
+
+**更新** 架构已简化为单一ReAct循环驱动，消除了之前的两套独立实现。
 
 ```mermaid
 sequenceDiagram
@@ -127,9 +142,9 @@ Redis-->>Memory : 历史消息
 Memory->>DB : 未命中时唤醒冷数据
 DB-->>Memory : 历史消息
 Memory-->>Agent : 恢复 messages
-Agent->>Agent : _step_loop() (ReAct)
+Agent->>Agent : _react_loop() (统一ReAct循环)
 Agent->>LLM : 构建请求并调用
-LLM-->>Agent : 文本或 tool_calls
+LLM-->>Agent : LLMResult(文本或tool_calls)
 alt 需要工具
 Agent->>Registry : execute(tool_name, **kwargs)
 Registry->>Tools : run(**kwargs)
@@ -146,33 +161,25 @@ Router-->>Client : SSE/NDJSON 推送
 
 **图表来源**
 - [chat.py:184-200](file://backend/routers/chat.py#L184-L200)
-- [agent.py:366-499](file://hermes_agent/agent.py#L366-L499)
+- [agent.py:244-806](file://hermes_agent/agent.py#L244-L806)
 - [memory_ops.py:132-175](file://hermes_agent/memory_ops.py#L132-L175)
 - [tool_registry.py:94-123](file://hermes_agent/tool_registry.py#L94-L123)
 - [tool_result_cache.py:122-187](file://hermes_agent/tool_result_cache.py#L122-L187)
 
 ## 详细组件分析
 
-### 智能体主脑（HermesAgent）
-- 生命周期管理
-  - 初始化：加载系统指令、初始化 LLM 客户端、Redis 客户端、会话 ID、调试模式
-  - 启动交互：CLI 与 HTTP 接口均支持，CLI 提供 /clear 快捷指令重置记忆
-  - 会话恢复：initialize() 从 Redis/PG 恢复历史消息
-- 消息处理机制
-  - 非流式 chat()：单轮对话，自动沉淀事实到知识库
-  - 流式 chat_stream_async()：SSE/NDJSON 推送 text_chunk、reasoning_chunk、tool_start、tool_result、heartbeat、error、iteration_limit_reached
-  - ReAct 循环：最大迭代次数限制，动态模型覆盖（pro 模型用于强制总结），TokenGuard 防护
-- 工具调度器
-  - 统一执行入口 _safe_execute_tool()：解析参数、并发执行工具、异常捕获、结果回写上下文
-  - 工具 Schema 注入：_build_request_kwargs() 将工具函数描述与参数 schema 下发给 LLM
-- 错误处理与自愈
-  - 参考文献完整性校验装饰器 with_reference_check()：检测正文引用与文末列表一致性，触发自愈补充
-  - 流式自愈：在流式路径中检测遗漏参考文献并追加提示，继续下一轮
-  - 熔断恢复：达到最大迭代后注入强制指令，剥夺工具使用权，使用 pro 模型输出总结
+### 统一ReAct循环驱动（_react_loop）
+**新增** AGENT-04引入的统一ReAct循环驱动，替代了之前两套独立的实现。
+
+- 单一循环语义：唯一的ReAct循环实现，消除代码重复和维护成本
+- 异步生成器：yield事件给流式消费者，非流式消费者忽略中间事件
+- 标准化SSE事件：定义8种标准事件类型（heartbeat、reasoning_chunk、text_chunk、tool_start、tool_result、strategy_code、chart_annotation、error）
+- 统一逻辑：参考文献自愈、熔断恢复、策略代码/图表标注检测都在单一实现中
+- 最大迭代限制：通过类常量`_MAX_REACT_ITERATIONS = 8`统一管理
 
 ```mermaid
 flowchart TD
-Start(["进入 _step_loop"]) --> BuildKwargs["构建 LLM 请求参数"]
+Start(["进入 _react_loop"]) --> BuildKwargs["构建 LLM 请求参数"]
 BuildKwargs --> Guard["TokenGuard 限流与预算检查"]
 Guard --> CallLLM["_call_llm() 调用大模型"]
 CallLLM --> HasTools{"是否返回 tool_calls?"}
@@ -187,15 +194,52 @@ SaveSession --> End(["结束"])
 ```
 
 **图表来源**
-- [agent.py:400-499](file://hermes_agent/agent.py#L400-L499)
+- [agent.py:244-602](file://hermes_agent/agent.py#L244-L602)
 - [agent.py:192-238](file://hermes_agent/agent.py#L192-L238)
 - [agent.py:170-191](file://hermes_agent/agent.py#L170-L191)
 
 **章节来源**
-- [agent.py:258-305](file://hermes_agent/agent.py#L258-L305)
-- [agent.py:366-499](file://hermes_agent/agent.py#L366-L499)
-- [agent.py:500-800](file://hermes_agent/agent.py#L500-L800)
-- [agent.py:61-113](file://hermes_agent/agent.py#L61-L113)
+- [agent.py:244-602](file://hermes_agent/agent.py#L244-L602)
+- [agent.py:607-806](file://hermes_agent/agent.py#L607-L806)
+
+### LLMResult数据类
+**新增** AGENT-04引入的LLMResult数据类，用于统一LLM调用的归一化结果。
+
+- 统一非流式/流式两条路径的返回结构
+- 屏蔽 OpenAI SDK 的 response 对象差异
+- 支持多provider扩展（为AGENT-06预留接口）
+- 包含content、tool_calls、usage、reasoning_content等字段
+
+```python
+@dataclass
+class LLMResult:
+    """
+    LLM 调用的归一化结果。
+    
+    统一非流式/流式两条路径的返回结构，屏蔽 OpenAI SDK 的 response 对象差异。
+    后续 AGENT-06 (LLM Provider 适配缝) 可在此基础上扩展多 provider 归一化。
+    """
+    content: Optional[str]  # 文本内容
+    tool_calls: Optional[List[Dict[str, Any]]]  # 工具调用列表（已归一化为 dict 格式）
+    usage: Any  # token 使用量对象（可传给 _record_usage）
+    reasoning_content: Optional[str] = None  # CoT 推理内容（DeepSeek 等模型的深度思考字段）
+```
+
+**章节来源**
+- [agent.py:22-36](file://hermes_agent/agent.py#L22-L36)
+- [agent.py:194-238](file://hermes_agent/agent.py#L194-L238)
+
+### 辅助函数增强
+**新增** AGENT-04提取的三个无状态辅助函数，提升代码复用性和可测试性。
+
+- `_build_request_kwargs()`：统一schema/model/temperature/tools构造
+- `_record_usage()`：统一的token计量埋点逻辑
+- `_safe_execute_tool()`：统一工具执行逻辑，异常捕获+结果转换
+
+**章节来源**
+- [agent.py:111-151](file://hermes_agent/agent.py#L111-L151)
+- [agent.py:154-167](file://hermes_agent/agent.py#L154-L167)
+- [agent.py:172-191](file://hermes_agent/agent.py#L172-L191)
 
 ### 记忆管理系统
 - 短期记忆（上下文窗口）
@@ -227,8 +271,8 @@ class MemoryOperationsMixin {
 +_save_session() async void
 +_load_session() async void
 +_async_db_upsert(session_id, messages) async void
-+_guard_before_llm(window_sec, max_calls, max_input_tokens) async void
-+_sink_to_kb(final_content) async int
+-_guard_before_llm(window_sec, max_calls, max_input_tokens) async void
+-_sink_to_kb(final_content) async int
 }
 ```
 
@@ -343,13 +387,13 @@ Agent --> LLM["大模型客户端"]
 ```
 
 **图表来源**
-- [agent.py:116-191](file://hermes_agent/agent.py#L116-L191)
+- [agent.py:60-806](file://hermes_agent/agent.py#L60-L806)
 - [tool_registry.py:52-123](file://hermes_agent/tool_registry.py#L52-L123)
 - [memory_ops.py:26-130](file://hermes_agent/memory_ops.py#L26-L130)
 - [base.py:21-282](file://hermes_agent/tools/base.py#L21-L282)
 
 **章节来源**
-- [agent.py:116-191](file://hermes_agent/agent.py#L116-L191)
+- [agent.py:60-806](file://hermes_agent/agent.py#L60-L806)
 - [tool_registry.py:52-123](file://hermes_agent/tool_registry.py#L52-L123)
 - [memory_ops.py:26-130](file://hermes_agent/memory_ops.py#L26-L130)
 - [base.py:21-282](file://hermes_agent/tools/base.py#L21-L282)
@@ -360,7 +404,7 @@ Agent --> LLM["大模型客户端"]
   - 工具执行期间定期发送心跳，避免长时间无响应导致连接中断
 - 并发工具执行
   - asyncio.gather() 并发执行多个工具调用，提升整体吞吐
-  - 竞态修复：使用“已接收结果计数”而非 task.done() 作为循环终止条件，确保所有工具结果正确写入
+  - 竞态修复：使用"已接收结果计数"而非 task.done() 作为循环终止条件，确保所有工具结果正确写入
 - 缓存策略
   - 工具结果缓存：Redis Hash 键 tool:cache:{tool_name}:{args_hash}，TTL 可配置，避免重复请求
   - 双级缓存：BaseTool 的 L1 内存 + L2 Redis，提升热点数据访问速度
@@ -368,8 +412,10 @@ Agent --> LLM["大模型客户端"]
   - TokenGuard 限制单位时间内 LLM 调用次数，估算上下文 token 超限时触发激进压缩
   - 流式 usage 记录：最后一个 chunk 携带 usage，统一通过 _record_usage() 埋点
 
+**更新** 统一ReAct循环减少了重复的心跳发送逻辑，提升了性能一致性。
+
 **章节来源**
-- [agent.py:500-800](file://hermes_agent/agent.py#L500-L800)
+- [agent.py:244-602](file://hermes_agent/agent.py#L244-L602)
 - [tool_result_cache.py:107-195](file://hermes_agent/tool_result_cache.py#L107-L195)
 - [base.py:240-282](file://hermes_agent/tools/base.py#L240-L282)
 - [memory_ops.py:260-289](file://hermes_agent/memory_ops.py#L260-L289)
@@ -386,19 +432,23 @@ Agent --> LLM["大模型客户端"]
   - 查看工具缓存命中率：ToolResultCache.stats() 可监控缓存效果
   - 监控限流与预算：TokenGuard 日志提示限流原因与压缩策略
 
+**更新** 统一ReAct循环提供了更一致的错误处理和调试体验。
+
 **章节来源**
 - [agent.py:170-191](file://hermes_agent/agent.py#L170-L191)
-- [agent.py:500-800](file://hermes_agent/agent.py#L500-L800)
+- [agent.py:244-602](file://hermes_agent/agent.py#L244-L602)
 - [memory_ops.py:78-130](file://hermes_agent/memory_ops.py#L78-L130)
 - [tool_result_cache.py:189-195](file://hermes_agent/tool_result_cache.py#L189-L195)
 
 ## 结论
 Hermes Agent 通过清晰的分层架构与模块化设计，实现了智能体生命周期管理、消息处理、工具调度、记忆管理与扩展能力的有机结合。其核心优势包括：
-- 健壮的 ReAct 循环与熔断恢复机制，确保对话稳定性
+- 健壮的统一ReAct循环与熔断恢复机制，确保对话稳定性
 - 完善的记忆管理，支持热/冷数据持久化与上下文自愈
 - 灵活的工具注册与执行框架，具备限流、缓存、重试与纠错能力
-- 流式输出与心跳保活，提升用户体验与连接可靠性
+- 标准化的SSE事件输出与心跳保活，提升用户体验与连接可靠性
 - 可扩展的插件机制，便于开发者快速集成新工具与新功能
+
+**更新** AGENT-04的重大重构显著降低了代码复杂度（30%减少），提高了可维护性和扩展性，同时保持了完全的向后兼容性。
 
 ## 附录：使用示例与扩展点
 
@@ -411,21 +461,21 @@ Hermes Agent 通过清晰的分层架构与模块化设计，实现了智能体�
   - 支持 session_id 隔离不同用户会话
 
 **章节来源**
-- [agent.py:258-305](file://hermes_agent/agent.py#L258-L305)
+- [agent.py:607-659](file://hermes_agent/agent.py#L607-L659)
 - [chat.py:184-200](file://backend/routers/chat.py#L184-L200)
 
 ### 处理对话流
 - 非流式对话
   - 调用 chat(user_input, attachments)，自动沉淀事实到知识库
 - 流式对话
-  - 调用 chat_stream_async(user_input, attachments)，推送 text_chunk、reasoning_chunk、tool_start、tool_result、heartbeat、error、iteration_limit_reached
+  - 调用 chat_stream_async(user_input, attachments)，推送标准化的SSE事件
 - CLI 交互
   - run_cli() 支持 /clear 快捷指令重置记忆
 
+**更新** 所有对话流现在都通过统一的_react_loop()驱动，提供更一致的行为。
+
 **章节来源**
-- [agent.py:366-499](file://hermes_agent/agent.py#L366-L499)
-- [agent.py:500-800](file://hermes_agent/agent.py#L500-L800)
-- [agent.py:330-365](file://hermes_agent/agent.py#L330-L365)
+- [agent.py:684-806](file://hermes_agent/agent.py#L684-L806)
 
 ### 扩展点与插件机制
 - 新增工具
@@ -439,6 +489,8 @@ Hermes Agent 通过清晰的分层架构与模块化设计，实现了智能体�
   - 重写 MemoryOperationsMixin 的方法，扩展自愈、压缩或知识库沉淀逻辑
 - 系统指令定制
   - 修改 prompts/system/HERMES.md，调整工具路由纪律、输出格式与风控规则
+
+**更新** 统一ReAct循环为扩展点提供了更清晰的插拔位置。
 
 **章节来源**
 - [tool_registry.py:38-67](file://hermes_agent/tool_registry.py#L38-L67)

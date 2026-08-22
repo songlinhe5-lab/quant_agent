@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/tests
+title: 后端测试套件（pytest + vcrpy 契约回放）
+scope:
+    - backend/tests/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/backtest_engine/event_engine
+    - path: backend/datasource_market_data/market_quote_sources

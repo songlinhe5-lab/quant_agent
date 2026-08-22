@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend
+title: Quant Agent 后端平台（HTTP 网关 + 后台 Worker 集群）
+scope:
+    - backend/
+source_files: []
+depends_on: []
+related_to: []

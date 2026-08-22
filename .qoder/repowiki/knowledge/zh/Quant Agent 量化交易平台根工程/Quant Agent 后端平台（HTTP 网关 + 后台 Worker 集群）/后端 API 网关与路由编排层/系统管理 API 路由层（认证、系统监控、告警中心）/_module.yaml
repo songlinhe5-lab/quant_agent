@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/api_routers/system_admin_routers
+title: 系统管理 API 路由层（认证、系统监控、告警中心）
+scope:
+    - backend/routers/auth.py
+    - backend/routers/system.py
+    - backend/routers/alert.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/alerting

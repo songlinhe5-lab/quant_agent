@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/risk_portfolio
+title: 投资组合风控与融资融券余额服务
+scope:
+    - backend/domain/
+    - backend/services/risk/
+    - backend/services/margin/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/oms_trading

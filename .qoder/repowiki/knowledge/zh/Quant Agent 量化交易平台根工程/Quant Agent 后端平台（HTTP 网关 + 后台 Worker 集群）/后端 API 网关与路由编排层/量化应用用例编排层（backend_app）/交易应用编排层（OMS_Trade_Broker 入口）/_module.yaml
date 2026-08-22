@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/api_routers/app_services/trading_apps
+title: 交易应用编排层（OMS/Trade/Broker 入口）
+scope:
+    - backend/app/oms_app.py
+    - backend/app/trade_app.py
+    - backend/app/broker.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/api_routers/app_services/analytics_apps

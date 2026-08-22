@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 from backend.services.ai_narrator.token_usage_store import token_usage_store
+from backend.services.ai_narrator.usage_pricing import usage_pricing_calculator
 from hermes_agent.memory_ops import MemoryOperationsMixin
 
 # 盘中主脑 prompt（与 IDE 编码宪法 AGENTS.md 分离）
@@ -151,19 +152,42 @@ class HermesAgent(MemoryOperationsMixin):
         return request_kwargs
 
     # A-2.2: 抽 _record_usage 辅助函数，统一 token 计量埋点逻辑（AGENT-04）
-    async def _record_usage(self, usage):
+    # AGENT-11: 扩展为成本计量 + 缓存边界管理 + reasoning_content 隔离的统一挂点
+    async def _record_usage(self, usage, model: str = "unknown", session_id: str = "default"):
         """
         统一的 token 使用量记录辅助函数。
 
         Args:
             usage: OpenAI API 返回的 usage 对象（包含 prompt_tokens/completion_tokens/total_tokens）
+            model: 模型名称（用于成本计算）
+            session_id: 会话 ID（用于成本统计）
         """
-        if usage is not None:
-            await token_usage_store.record(
-                prompt_tokens=getattr(usage, "prompt_tokens", 0),
-                completion_tokens=getattr(usage, "completion_tokens", 0),
-                total_tokens=getattr(usage, "total_tokens", 0),
-            )
+        if usage is None:
+            return
+
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
+        total_tokens = getattr(usage, "total_tokens", 0)
+
+        # 1. Token 使用量记录（原有逻辑）
+        await token_usage_store.record(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+
+        # 2. AGENT-11: 成本计量
+        await usage_pricing_calculator.record_session_cost(
+            session_id=session_id,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+
+        # 3. AGENT-11: 缓存边界管理（可选，需要 system_prompt 和 tool_schemas 上下文）
+        # TODO: 从 _react_loop 传入 system_prompt 和 tool_schemas，调用 split_messages()
+        # 当前仅记录缓存命中统计，实际拆分逻辑需要重构 _react_loop 的 messages 构建
+        # await prompt_cache_manager.record_cache_hit(session_id, is_hit=True)
 
     # A-2.3: 抽 _safe_execute_tool 辅助函数，统一工具执行逻辑（AGENT-04）
     # AGENT-02 middleware seam: 未来中间件管线（审批闸门 → 失败熔断 → 结果分类 → 脱敏 → 缓存 → 限流）

@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend/workers_daemons
+title: 后台 Worker 与守护进程集群（数据采集/告警/OMS/CEP/数据质量）
+scope:
+    - backend/workers/
+    - backend/services/cep/
+    - backend/services/data_quality/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend/alerting
+    - path: backend/datalake
+    - path: backend/oms_trading
