@@ -128,14 +128,10 @@ class TestScreenStocks:
     async def test_filter_types_dispatched_successfully(self, flt):
         handler, conn_mgr = _make_handler()
         conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok([])
-        # kline_shape/option 真实方法对 period 字符串做 int() 转换报错,需 mock
+        # 🔧 P2: kline_shape 的 period 现经 get_period() 转整数(Period.DAY=11)，真实 add_kline_shape
+        # 不再对 'K_DAY' 做 int() 报错，故无需 mock。option 仍保留 mock（服务器端 NN_ProtoRet_SvrFailed）。
         mocks = []
-        if flt.get("type") == "kline_shape":
-            mocks = [
-                patch.object(StockScreenRequest, "add_kline_shape", return_value=None),
-                patch.object(StockScreenRequest, "add_retrieve_kline_shape", return_value=None),
-            ]
-        elif flt.get("type") == "option":
+        if flt.get("type") == "option":
             mocks = [
                 patch.object(StockScreenRequest, "add_option", return_value=None),
                 patch.object(StockScreenRequest, "add_retrieve_option", return_value=None),
@@ -253,3 +249,46 @@ class TestGetStockBasicinfo:
             r = await handler.get_stock_basicinfo("HK", "STOCK")
         assert r["status"] == "success"
         assert r["data"][0]["code"] == "HK.00700"
+
+
+class TestKlineShapePeriodBug:
+    """P2: kline_shape 的 period 须传整数(Period.DAY=11)，修复对 'K_DAY' 做 int() 报错"""
+
+    @pytest.mark.asyncio
+    async def test_kline_shape_period_passed_as_int(self):
+        handler, conn_mgr = _make_handler()
+        conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok([])
+        called = {}
+
+        def fake_add_kline_shape(prop, period=None):
+            called["period"] = period
+            return None
+
+        with (
+            patch.object(StockScreenRequest, "add_kline_shape", side_effect=fake_add_kline_shape),
+            patch.object(StockScreenRequest, "add_retrieve_kline_shape", return_value=None),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
+            r = await handler.screen_stocks("HK", [{"field": "SHAPE_TYPE", "type": "kline_shape", "period": "K_DAY"}])
+        assert r["status"] == "success"
+        assert called.get("period") == 11, f"period 应为整数 11(Period.DAY), 实际 {called.get('period')}"
+
+    @pytest.mark.asyncio
+    async def test_kline_shape_default_period_is_int(self):
+        """未传 period 时默认也是整数 11，不抛 int('K_DAY') 错误"""
+        handler, conn_mgr = _make_handler()
+        conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok([])
+        called = {}
+
+        def fake_add_kline_shape(prop, period=None):
+            called["period"] = period
+            return None
+
+        with (
+            patch.object(StockScreenRequest, "add_kline_shape", side_effect=fake_add_kline_shape),
+            patch.object(StockScreenRequest, "add_retrieve_kline_shape", return_value=None),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
+            r = await handler.screen_stocks("HK", [{"field": "RISE_PROB", "type": "kline_shape", "min_value": 0.5}])
+        assert r["status"] == "success"
+        assert called.get("period") == 11, f"默认 period 应为 11, 实际 {called.get('period')}"

@@ -437,11 +437,11 @@ class ScreenerHandler:
 
                     # 8. K线形态
                     elif f_type == "kline_shape":
-                        from futu import KLType
-
                         prop = get_enum(KlineShapeProperty, field_name)
                         if prop:
-                            period = get_enum(KLType, f.get("period"), KLType.K_DAY)
+                            # 🔧 P2 修复: period 须为整数枚举(Period.DAY=11 等)，不能传 KLType 枚举对象
+                            # (原 get_enum(KLType,...) 返回 KLType.K_DAY，add_kline_shape 内部 int('K_DAY') 报错)。
+                            period = get_period(f.get("period"))
                             print(f"👉 [ScreenerHandler] add_kline_shape: {prop}, period={period}")  # noqa: E501
                             req.add_kline_shape(prop, period=period)
                             print(f"👉 [ScreenerHandler] add_retrieve_kline_shape: {prop}, period={period}")  # noqa: E501

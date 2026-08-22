@@ -103,15 +103,15 @@ company_name / trailing_PE / price_to_book / dividend_yield / market_cap
 
 ### 阶段 P2：选股因子补全（轻量）
 
-- [ ] **P2.1** 对照 §2.3 因子清单，检查 `screener_handler.py` 已覆盖哪些，标记缺失项。
-- [ ] **P2.2** 补缺失因子（重点：`HIST_PERCENTILE_PE` / `RISE_PROB` / `SHORT_POSITION` / `STOCK_IV_RANK`）。
-- [ ] **P2.3** 单测 + 提交 PR。
+- [x] **P2.1** 对照 §2.3 因子清单，检查 `screener_handler.py` 已覆盖哪些，标记缺失项：✅ 2026-08-22 完成。核心结论：`screener_handler.py` **无硬白名单**，因子可用性由 futu SDK 枚举决定（`get_enum()` 透传，`hasattr` 检查）。SDK 10.10 枚举零幻觉核查：`HIST_PERCENTILE_PE`(FeaturedProperty) / `RISE_PROB`(KlineShapeProperty) / `SHORT_POSITION` / `ANALYST_RATING` / `ANALYST_TARGET_PRICE`(FeaturedProperty) / `STOCK_IV_RANK` / `STOCK_HV`(OptionProperty) / `BROKER_NUM` / `CONCENTRATED_DISTRIBUTION` / `CENTRAL_HOLDINGS_RATIO`(BrokerProperty) **全部存在**。**已覆盖**：`HIST_PERCENTILE_PE`(前后端+测试已登记)。
+- [x] **P2.2** 补缺失因子：✅ 2026-08-22 完成。在 `backend/services/screener/constants.py` 登记：`_VALID_FIELDS` 加 `SHORT_POSITION`/`ANALYST_RATING`/`ANALYST_TARGET_PRICE`/`CASH_FLOW_MAIN_NET_IN`/`SHAPE_TYPE`/`RISE_PROB`/`STOCK_IV`/`STOCK_IV_RANK`/`STOCK_HV`/`BROKER_NUM`/`BROKER_RANK`/`CONCENTRATED_DISTRIBUTION`/`CENTRAL_HOLDINGS_RATIO`/`CENTRAL_HOLDINGS_CHANGE`/`HOLDINGS_RATIO`/`HOLDINGS_CHANGE`；`_TYPE_ENFORCEMENTS` 加 featured 新因子 + 新增 `kline_shape` 类。**实跑验证**：featured(SHORT_POSITION/ANALYST_RATING)/kline_shape(RISE_PROB/SHAPE_TYPE) 选股接口**成功**。⚠️ **option/broker 类（STOCK_IV_RANK/BROKER_NUM 等）实跑返回 `NN_ProtoRet_SvrFailed`（服务器端不支持）**，故**未**登记进 `_TYPE_ENFORCEMENTS`（避免强制纠偏引导走失败路径），仅登记 `_VALID_FIELDS` 允许透传。
+- [x] **P2.3** 单测 + 提交 PR：✅ 新增 `TestKlineShapePeriodBug` 2 例 + 去掉 kline_shape mock。**修复真实 bug**：kline_shape 的 `period` 原传 `KLType.K_DAY` 枚举 → `add_kline_shape` 内部 `int('K_DAY')` 报错；改为 `get_period()` 传整数 `Period.DAY=11`。`test_futu_screener_handler.py` 共 **28 例全过**；`backend/tests/test_screener_service.py` 48 例全过，无回归。
 
 ### 阶段 P3：文档与宣传对齐
 
-- [ ] **P3.1** 同步 `AGENTS.md` §2 `get_fundamental_data` 工具描述：区分「估值摘要（现状）」与「财务三大表（新增后）」，消除宣传与能力鸿沟。
-- [ ] **P3.2** `MEMORY.md` 沉淀：现有 `get_fundamental` 是「假基本面」（仅 5 个快照字段）的发现 + 该接口族清单。
-- [ ] **P3.3** `DEPLOYMENT_CHECKLIST.md` 或 `docs/14` 补 Futu 基本面接口接入说明。
+- [x] **P3.1** 同步 `AGENTS.md` §2 工具描述：✅ 2026-08-22 核查后**无需改动**——当前 `AGENTS.md` 与全库均无 `get_fundamental_data` 工具描述（文档所引描述为历史/过期版本），不存在「宣传与能力鸿沟」对象。相关能力说明已由 MEMORY.md §10 + 本文档承担。
+- [x] **P3.2** `MEMORY.md` 沉淀：✅ 2026-08-22 新增 §10：`get_fundamental` 是「假基本面」（仅 5 快照字段）的发现 + P1 接口族清单（含 SDK 10.10 命名修正）+ P2 选股因子要点（option/broker `NN_ProtoRet_SvrFailed`、kline_shape period 整数）。
+- [x] **P3.3** `DEPLOYMENT_CHECKLIST.md` 或 `docs/14` 补接入说明：✅ 2026-08-22 处理结论——`DEPLOYMENT_CHECKLIST.md` 为**环境变量部署表**，不宜塞接口说明；接口接入说明 SSOT 即本文档（§三/§四/§五）+ MEMORY.md §10。已在 P3.2 沉淀，未改动 DEPLOYMENT_CHECKLIST（避免污染部署清单）。
 
 ---
 

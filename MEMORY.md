@@ -59,3 +59,11 @@ futu / finnhub 的 `health()` **都是**看 `node.status`，不打上游、不�
 ## 9. 北京直连 GHCR 无效（2026-08-15）
 
 MTU=1450 **解决不了**北京拉 GHCR。TLS 握手正常，blob 0 字节（Azure CDN 跨境实质阻断）。北京必须走 S1 registry `100.102.223.44:5000/...:cn`。勿把 BJ 镜像源改回 `ghcr.io`。
+
+## 10. Futu 基本面接口族（2026-08-22）
+
+**真相**：`get_fundamental`（`option_fund_handler.py`）底层是 `get_market_snapshot` 快照，**只有 5 个估值字段**（company_name/trailing_PE/price_to_book/dividend_yield/market_cap）——是「假基本面」，ROE/做空比例等宣传字段底层拿不到。要真基本面走 `FINANCIALS`（财务三大表）+ `VALUATION`。
+
+**P1 接口族已接入**（`option_fund_handler.py`，零幻觉实跑验证）：`FINANCIALS`（get_financials_statements，statement_type 传整数 1~4 + financial_type 大写枚举）、`VALUATION`、`RATING_SUMMARY`（rating_dimension_type=INSTITUTION/ANALYST，rating 在 rating_item_list 内）、`REVENUE_BREAKDOWN`（financial_type 大写 ANNUAL）、`SHORT_INTEREST`（3 元组）、`SHAREHOLDERS_*`/`INSIDER_*`（6 方法）、`CORP_ACTIONS_*`（dividends/buybacks/stock_splits，buybacks 仅港股/A股）。**SDK 10.10 命名与文档不同**：`get_insider_trade_list`（非 transaction）、`get_corporate_actions_{dividends,buybacks,stock_splits}`（非通配 `_*`）。全链路 handler→service→worker→adapter→router。
+
+**选股因子 P2**：`screener_handler.py` 无硬白名单，因子可用性由 futu SDK 枚举决定（`get_enum` 透传）。官方特色因子 `SHORT_POSITION`/`ANALYST_RATING`/`ANALYST_TARGET_PRICE`/`RISE_PROB` 等已在 `backend/services/screener/constants.py` 登记（`_VALID_FIELDS` + `_TYPE_ENFORCEMENTS`）。⚠️ **option/broker 类因子选股实测 `NN_ProtoRet_SvrFailed`**（服务器端不支持，勿登记进 `_TYPE_ENFORCEMENTS` 强制纠偏）。⚠️ **kline_shape 的 period 须传整数**（Period.DAY=11），传 KLType 枚举会 `int('K_DAY')` 报错——已修复用 `get_period()`。

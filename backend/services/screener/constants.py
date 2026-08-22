@@ -140,11 +140,52 @@ _VALID_FIELDS = [
     "MACD_TOP_DIVERGE",
     "LONG_ARRANGEMENT",
     "SHORT_ARRANGEMENT",
+    # ── P2: 官方特色因子（补全 §2.3 清单，SDK 枚举已确认存在）─────────
+    "SHORT_POSITION",  # featured: 卖空占比
+    "ANALYST_RATING",  # featured: 分析师评级(1强买~5强卖)
+    "ANALYST_TARGET_PRICE",  # featured: 分析师目标价
+    "CASH_FLOW_MAIN_NET_IN",  # featured: 主力净流入
+    # ── P2: K线形态因子 ─────────────────────────────────────────
+    "SHAPE_TYPE",  # kline_shape: 形态类型
+    "RISE_PROB",  # kline_shape: 形态后上涨概率
+    # ── P2: 期权因子 ───────────────────────────────────────────
+    "STOCK_IV",  # option: 个股隐含波动率
+    "STOCK_IV_RANK",  # option: IV 历史百分位
+    "STOCK_HV",  # option: 个股历史波动率
+    # ── P2: 经纪商因子（仅港股）────────────────────────────────
+    "BROKER_NUM",  # broker: 券商家数
+    "BROKER_RANK",  # broker: 券商排名
+    "CONCENTRATED_DISTRIBUTION",  # broker: 集中度分布
+    "CENTRAL_HOLDINGS_RATIO",  # broker: 中央结算持股比例
+    "CENTRAL_HOLDINGS_CHANGE",  # broker: 中央结算持股变动
+    "HOLDINGS_RATIO",  # broker: 持股比例
+    "HOLDINGS_CHANGE",  # broker: 持股变动
 ]
 _VALID_FIELDS_SET = frozenset(_VALID_FIELDS)
 
 _TYPE_ENFORCEMENTS = {
-    "featured": frozenset(["HIST_PERCENTILE_PE", "HIST_PERCENTILE_PB", "HIST_PERCENTILE_PS"]),  # noqa: E501
+    "featured": frozenset(
+        [
+            "HIST_PERCENTILE_PE",
+            "HIST_PERCENTILE_PB",
+            "HIST_PERCENTILE_PS",
+            # P2: 官方特色因子（SDK 枚举已确认存在）
+            "SHORT_POSITION",
+            "ANALYST_RATING",
+            "ANALYST_TARGET_PRICE",
+            "CASH_FLOW_MAIN_NET_IN",
+        ]
+    ),
+    "kline_shape": frozenset(
+        [
+            "SHAPE_TYPE",
+            "RISE_PROB",
+        ]
+    ),
+    # ⚠️ option/broker 类因子不在 _TYPE_ENFORCEMENTS 强制纠偏：
+    # 实跑验证（2026-08-22, OpenD 在线）futu V2 选股对 STOCK_IV_RANK / BROKER_NUM 等
+    # 返回 NN_ProtoRet_SvrFailed（服务器端不支持），强制纠偏 type 会误导走失败路径。
+    # 字段名已登记 _VALID_FIELDS（可透传），由 handler→SDK 决定可用性。
     "financial": frozenset(
         [
             "ROE",
