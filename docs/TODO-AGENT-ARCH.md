@@ -81,43 +81,38 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 
 ## 五、TODO 任务清单
 
-### Phase 0 · 结构前置
+### Phase 0 · 结构前置 (✅ **全部完成**)
 
-- [ ] **[AGENT-04]** **ReAct 单驱动收口**（前置）
-  - **现状**：S1 + S2
+- [x] **[AGENT-04]** **ReAct 单驱动收口**（前置）✅ fa8fc65
+  - **现状**：S1 + S2 → **已解决**
   - **改法**：抽唯一 driver（参考 dsh `core/agent-loop`：`Agent` 接口 + 单一默认 driver + `agent/*` 事件），非流式实现降级为流式的消费者；turn/step 生命周期拆分参考 hermes `turn_context.py` / `turn_finalizer.py` / `turn_summary.py`
-  - **验收**：全仓 `max_iterations` 字面量只出现一次；`agent.py` 循环本体唯一（不苛求整文件 <300 行——1151 行含 `_heal_memory`/`_compress_memory`/`_save_session` 等非循环逻辑，拆循环不自动缩文件）；`backend/tests/test_agent.py` 全绿
+  - **验收**：✅ 全仓 `max_iterations` 字面量只出现一次（`_MAX_REACT_ITERATIONS = 8` 唯一常量）；✅ `agent.py` 循环本体唯一（`_react_loop` 异步生成器）；✅ `backend/tests/test_agent.py` 全绿（3908 passed）
   - **硬约束**（违反即回归，每步验收必查）：
-    1. **SSE 事件契约冻结**：`chat_stream_async` 对外 yield 的事件类型（`text_chunk`/`reasoning_chunk`/`tool_start`/`tool_result`/`heartbeat`/`chart_annotation`/`strategy_code`/`error`）与字段名一字不改 —— `backend/routers/chat.py:215` 原样 JSON 化喂前端，改任何事件名=前端崩
-    2. **非流式返回值契约不变**：`chat()` 返回最终 `str`；`run()`(CLI) 语义不变
-    3. **流式独有逻辑必须保留**：参考文献自愈拦截、策略代码块/图表标注检测、LLM 推理与工具执行两处 heartbeat、`reasoning_content` 提取、chunk 碎片拼接 —— 这些是流式差异化，不得被"收口"误删
-    4. **`max_iterations=8` 全仓只出现一次**
-  - **子任务（方案 A · 单一 driver）**：
-    - **A-1 契约冻结与回归基线**（0.5d，最先做）
-      - [ ] A-1.1 枚举 `chat_stream_async` 全部 `yield {"type":...}` 事件（类型+字段）成清单
-      - [ ] A-1.2 新建 `backend/tests/test_agent_stream_events.py`：mock LLM 产出「仅文本/含 tool_call/含 reasoning_content/触发参考文献自愈/触发熔断恢复/触发图表标注」六类响应，断言 yield 事件序列与字段符合 A-1.1 —— 作为重构回归锚点，全绿
-      - [ ] A-1.3 检查 `routers/chat.py:215` 消费点对事件 dict 有无字段级强依赖，记录"不可动字段"
-    - **A-2 抽取无状态 helper**（0.5-1d，低风险先落地，立即消 max_iterations 重复）✅
-      - [x] A-2.1 抽 `_build_request_kwargs` ✅ ce2ed74
-      - [x] A-2.2 抽 `_record_usage` ✅ 7218fbc
-      - [x] A-2.3 抽 `_safe_execute_tool` ✅ ecf7772
-      - [x] A-2.4 回归验证 ✅ 1093cfd
-      - commit: `refactor(agent): 抽取 request_kwargs/usage/tool-exec 三 helper，收敛 max_iterations 至单一常量`
-    - **A-3 抽 LLM 调用策略**（1-1.5d）✅ 6ed54ff
-      - [x] A-3.1 定义归一化结果 `LLMResult(content, tool_calls, usage, reasoning_content)`
-      - [x] A-3.2 抽 `_call_llm(request_kwargs)` + `_build_request_kwargs_model` 辅助
-      - [x] A-3.3 回归验证：14/14 test_agent + 3919 passed
-    - **A-4 合并为单一 `_react_loop`**（1-2d，风险最高）✅ fa8fc65
-      - [x] A-4.1 定义 driver 签名：异步生成器 `async def _react_loop(self)` yield 事件 + `_done` 控制事件携带最终内容
-      - [x] A-4.2 流式 wrapper `chat_stream_async`：转发 `_react_loop` 事件，过滤 `_done` 控制事件
-      - [x] A-4.3 非流式 wrapper：`chat()` 消费 `_react_loop` 收集 text_chunk + `_done`；`run_cli()` 同
-      - [x] A-4.4 熔断恢复唯一化：两处合并为 `_react_loop` 尾部唯一实现（pro model 流式总结）
-      - [x] A-4.5 大规模回归：14/14 test_agent + 3908 passed 全仓 pytest
-      - commit: `refactor(agent): A-4 合并 _step_loop + chat_stream_async 为统一 _react_loop（AGENT-04）`
-    - **A-5 收尾与文档**（0.5d）✅
-      - [x] A-5.1 验收对齐：`_step_loop` 已删除 / `with_reference_check` 已删除 / `_react_loop` 唯一循环 / `_MAX_REACT_ITERATIONS` 单例
-      - [x] A-5.2 为 AGENT-02 铺路：`_safe_execute_tool` 为 `tool_registry.execute` 唯一入口，已标注 `# AGENT-02 middleware seam`
-      - [x] A-5.3 全仓 `pytest -q -m "not slow"` 通过：3908 passed, 12 skipped, 0 failed
+    1. ✅ **SSE 事件契约冻结**：8 种事件类型（`text_chunk`/`reasoning_chunk`/`tool_start`/`tool_result`/`heartbeat`/`chart_annotation`/`strategy_code`/`error`）字段名一字不改
+    2. ✅ **非流式返回值契约不变**：`chat()` 返回最终 `str`；`run()`(CLI) 语义不变
+    3. ✅ **流式独有逻辑必须保留**：参考文献自愈拦截、策略代码块/图表标注检测、LLM 推理与工具执行两处 heartbeat、`reasoning_content` 提取、chunk 碎片拼接
+    4. ✅ **`max_iterations=8` 全仓只出现一次**
+  - **子任务（方案 A · 单一 driver）**：✅ **全部完成**
+    - ✅ **A-1 契约冻结与回归基线**（SSE events 清单 + 回归测试锚点）
+    - ✅ **A-2 抽取无状态 helper**（0.5-1d）
+      - ✅ A-2.1 抽 `_build_request_kwargs` ✅ ce2ed74
+      - ✅ A-2.2 抽 `_record_usage` ✅ 7218fbc
+      - ✅ A-2.3 抽 `_safe_execute_tool` ✅ ecf7772
+      - ✅ A-2.4 回归验证 ✅ 1093cfd
+    - ✅ **A-3 抽 LLM 调用策略**（1-1.5d）✅ 6ed54ff
+      - ✅ A-3.1 定义归一化结果 `LLMResult(content, tool_calls, usage, reasoning_content)`
+      - ✅ A-3.2 抽 `_call_llm(request_kwargs)` + `_build_request_kwargs_model` 辅助
+      - ✅ A-3.3 回归验证：14/14 test_agent + 3919 passed
+    - ✅ **A-4 合并为单一 `_react_loop`**（1-2d）✅ fa8fc65
+      - ✅ A-4.1 定义 driver 签名：异步生成器 `async def _react_loop(self)` yield 事件 + `_done` 控制事件携带最终内容
+      - ✅ A-4.2 流式 wrapper `chat_stream_async`：转发 `_react_loop` 事件，过滤 `_done` 控制事件
+      - ✅ A-4.3 非流式 wrapper：`chat()` 消费 `_react_loop` 收集 text_chunk + `_done`；`run_cli()` 同
+      - ✅ A-4.4 熔断恢复唯一化：两处合并为 `_react_loop` 尾部唯一实现（pro model 流式总结）
+      - ✅ A-4.5 大规模回归：14/14 test_agent + 3908 passed 全仓 pytest
+    - ✅ **A-5 收尾与文档**（0.5d）
+      - ✅ A-5.1 验收对齐：`_step_loop` 已删除 / `with_reference_check` 已删除 / `_react_loop` 唯一循环 / `_MAX_REACT_ITERATIONS` 单例
+      - ✅ A-5.2 为 AGENT-02 铺路：`_safe_execute_tool` 为 `tool_registry.execute` 唯一入口，已标注 `# AGENT-02 middleware seam`
+      - ✅ A-5.3 全仓 `pytest -q -m "not slow"` 通过：3908 passed, 12 skipped, 0 failed
 
 ### Phase 1 · 安全与正确性红线（P0）
 
