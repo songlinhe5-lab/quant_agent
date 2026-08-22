@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import { SCENE_MODES, SCENE_META, type SceneMode } from '@/features/scene/scene-mode-types'
-import { useLayoutStore } from '@/stores/useLayoutStore'
+import { SCENE_MODES, type SceneMode } from '@/features/scene/scene-mode-types'
 
 const STORAGE_KEY = 'quant_scene_mode'
 
@@ -39,11 +38,8 @@ export const useSceneModeStore = create<SceneModeState>((set, get) => ({
       /* ignore */
     }
     set({ mode })
-    // PROD-04 联动：切到需常驻 AI 抽屉的场景（研究/AI 分析）时自动弹出副驾
-    const aiRole = SCENE_META[mode]?.aiRole
-    if (aiRole === 'drawer' || aiRole === 'fullscreen') {
-      useLayoutStore.getState().openCopilot()
-    }
+    // PROD-04 联动：研究场景自动前往左侧「投研」分栏、AI 分析场景渲染全屏，
+    // 均由 DashboardLayout 的 useSceneAiBehavior / isAiFullscreen 分支处理，无需在此开抽屉。
   },
 
   cycleMode: () => {

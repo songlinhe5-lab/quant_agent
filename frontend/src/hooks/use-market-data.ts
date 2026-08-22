@@ -113,17 +113,53 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
     }
 
     fetchMarketData(true)
-    const iv = setInterval(() => fetchMarketData(false), 15000)
+    // PERF-01: 移除 15s 全量轮询（改为下方 30s 对账 + 5s 增量），减少主线程全量重建压力
+    const reconciliationIv = setInterval(() => fetchMarketData(false), 30000)
 
     const handleOnline = () => { fetchMarketData(false) }
     window.addEventListener('online', handleOnline)
 
     return () => {
       isMounted = false
-      clearInterval(iv)
+      clearInterval(reconciliationIv)
       window.removeEventListener('online', handleOnline)
     }
   }, [selectedSymbol, selectedPeriod, watchlist.length, updateTicker, toast])
+
+  // PERF-01: 轻量增量 —— 高频轮询 quant:kline 增量，新 K 线时由图表真正 append
+  // 替代原来的 15s 全量重拉，避免每次全量 setData(1000 根 + 14 series) 造成的卡顿。
+  useEffect(() => {
+    let isMounted = true
+    let inFlight = false
+
+    async function pollKlineIncremental() {
+      if (inFlight || watchlist.length === 0) return
+      const sym = selectedSymbol.replace('/', '')
+      if (!sym) return
+      inFlight = true
+      try {
+        const res = await apiClient.get(`/market/kline/${encodeURIComponent(sym)}`).catch(() => null)
+        if (!isMounted || !res?.data) return
+        const kline = res.data.kline
+        if (!kline || (typeof kline.time !== 'string' && typeof kline.time !== 'number')) return
+        // 事件携带最新一根 K 线（time/open/high/low/close/volume），图表按 time 判定更新 or 追加
+        window.dispatchEvent(new CustomEvent('kline_incremental', {
+          detail: { ticker: sym, kline },
+        }))
+      } catch (_e) {
+        /* 忽略：增量失败静默，下一轮对账兜底 */
+      } finally {
+        inFlight = false
+      }
+    }
+
+    pollKlineIncremental()
+    const iv = setInterval(pollKlineIncremental, 5000)
+    return () => {
+      isMounted = false
+      clearInterval(iv)
+    }
+  }, [selectedSymbol, watchlist.length])
 
   // 💡 3. 从 Redis 缓存批量获取自选列表行情（非聚焦 ticker 使用）
   useEffect(() => {

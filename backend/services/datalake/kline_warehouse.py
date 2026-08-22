@@ -112,6 +112,7 @@ class KlineWarehouse:
                     "K_60M": "60m",
                     "K_DAY": "1d",
                     "K_WEEK": "1wk",
+                    "K_MONTH": "1mo",
                 }
                 yf_interval = ktype_mapping.get(ktype, "1d")
 
@@ -199,7 +200,8 @@ class KlineWarehouse:
                         all_tickers = list(set(tickers + default_tickers))
 
                         # 💡 循环同步不同周期的 K 线
-                        for ktype_to_sync in ["K_DAY", "K_60M"]:
+                        # PERF-02: 覆盖前端全部周期（日/周/月/小时/分时）
+                        for ktype_to_sync in ["K_DAY", "K_WEEK", "K_MONTH", "K_60M", "K_30M", "K_15M", "K_5M", "K_1M"]:
                             for t in all_tickers:
                                 await self.update_ticker(t, ktype=ktype_to_sync)
                                 # 💡 错峰防限流，富途历史 K 线接口有强频控

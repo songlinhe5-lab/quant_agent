@@ -11,7 +11,7 @@ import type { SectorFundFlowData } from '@/features/data-center/sector-flow'
 
 export type HubTab = 'overview' | 'capital' | 'calendars' | 'earnings'
 
-export function useDashboardData() {
+export function useDashboardData(activeTab: HubTab = 'overview') {
   const setWsStatus = useSystemStore((state) => state.setWsStatus)
   const keepAliveActive = useKeepAliveActive()
   const { toast } = useToast()
@@ -78,15 +78,41 @@ export function useDashboardData() {
     if (document.hidden) return
     try {
       setFetching(true)
-      const [dashRes, flowRes, newsRes, flowDashRes, lhbRes, brokerRes, sentHistRes] = await Promise.allSettled([
-        apiClient.get('/macro/dashboard'),
-        apiClient.get('/macro/capital-flow'),
-        apiClient.get('/macro/news?limit=50'),
-        apiClient.get('/macro/capital-flow-dashboard'),
-        apiClient.get('/macro/a-share-lhb'),
-        apiClient.get('/macro/hk-broker-queue?symbol=HK.00700'),
-        apiClient.get('/macro/sentiment-history?limit=120'),
-      ])
+      // PERF: 阶梯拉取 —— 仅拉当前 tab 需要的数据集，避免每次进页面/轮询都拉全量 7 接口。
+      // 概览：dashboard + capital-flow + news + sentiment-history
+      // 资金流：dashboard(margin/sector) + capital-flow + capital-flow-dashboard + a-share-lhb + hk-broker-queue
+      const needsOverview = activeTab === 'overview'
+      const needsCapital = activeTab === 'capital'
+      const skipped = { status: 'rejected', reason: 'skip' } as const
+      const want: Record<string, boolean> = {
+        dashboard: needsOverview || needsCapital,
+        capitalFlow: needsOverview || needsCapital,
+        news: needsOverview,
+        sentimentHistory: needsOverview,
+        flowDashboard: needsCapital,
+        lhb: needsCapital,
+        broker: needsCapital,
+      }
+      const urlFor: Record<string, string> = {
+        dashboard: '/macro/dashboard',
+        capitalFlow: '/macro/capital-flow',
+        news: '/macro/news?limit=50',
+        sentimentHistory: '/macro/sentiment-history?limit=120',
+        flowDashboard: '/macro/capital-flow-dashboard',
+        lhb: '/macro/a-share-lhb',
+        broker: '/macro/hk-broker-queue?symbol=HK.00700',
+      }
+      const settled = await Promise.allSettled(
+        Object.keys(urlFor).filter((k) => want[k]).map((k) => apiClient.get(urlFor[k])),
+      )
+      const byKey: Record<string, any> = {}
+      let idx = 0
+      for (const k of Object.keys(urlFor)) {
+        if (want[k]) { byKey[k] = settled[idx]; idx++ } else { byKey[k] = skipped }
+      }
+      const dashRes = byKey.dashboard, flowRes = byKey.capitalFlow
+      const newsRes = byKey.news, flowDashRes = byKey.flowDashboard
+      const lhbRes = byKey.lhb, brokerRes = byKey.broker, sentHistRes = byKey.sentimentHistory
       if (dashRes.status === 'fulfilled' && dashRes.value.data?.status === 'success') {
         const d = dashRes.value.data.data
         if (d.macroAssets) setAssets(d.macroAssets)
@@ -145,7 +171,7 @@ export function useDashboardData() {
     } finally {
       setFetching(false)
     }
-  }, [])
+  }, [activeTab])
 
   const handleManualRefresh = useCallback(async () => {
     try {

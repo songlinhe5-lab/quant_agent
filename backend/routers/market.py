@@ -44,6 +44,84 @@ class SyncKlineRequest(BaseModel):
 
 router = APIRouter(prefix="/market", tags=["Market & Portfolio"])
 
+# ── PERF-01: /market/history 短 TTL 结果缓存 ─────────────────────────
+# 前端行情图对同一 (ticker, ktype, num) 会高频请求（首载 + 轮询/增量核对）。
+# OpenD 分页拉取网络抖动会直接拖慢前端，这里加一层 10s 短缓存打平抖动：
+#   - 命中：直接返回缓存（cached=true），不穿透 OpenD
+#   - miss：正常拉取并回填；下次 10s 内的重复请求直接命中
+# 注意：TTL 仅 10s，不影响 K 线最终一致性；长历史对账由前端 30s 轮询兜底。
+_HISTORY_CACHE_TTL_SEC = 10
+_HISTORY_CACHE_PREFIX = "market:history:v1"
+
+
+async def _get_history_cache(ticker: str, ktype: str, num: int):
+    key = f"{_HISTORY_CACHE_PREFIX}:{ticker}:{ktype}:{num}"
+    try:
+        raw = await redis_client.get(key)
+        if raw is None:
+            return None
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return payload
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[history-cache] 读取失败 {key}: {e}")
+        return None
+
+
+async def _put_history_cache(ticker: str, ktype: str, num: int, payload: dict) -> None:
+    key = f"{_HISTORY_CACHE_PREFIX}:{ticker}:{ktype}:{num}"
+    try:
+        await redis_client.set(key, json.dumps(payload, ensure_ascii=False), ex=_HISTORY_CACHE_TTL_SEC)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[history-cache] 写入失败 {key}: {e}")
+
+
+# PERF: /option-iv-summary 短 TTL 结果缓存（IV 指标变化慢，10min）
+async def _put_iv_cache(key: str, payload: dict) -> None:
+    try:
+        await redis_client.set(key, json.dumps(payload, ensure_ascii=False), ex=600)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[iv-cache] 写入失败 {key}: {e}")
+
+
+# PERF-02: 数仓优先读取 —— 历史 K 线不可变，优先从 L2 Parquet 极速读取。
+# 命中则直接返回（避免穿透 OpenD），并异步触发 update_ticker 补齐最新 bar。
+async def _try_read_kline_warehouse(ticker: str, ktype: str, num: int):
+    """从 L2 Parquet 数仓按条数读取 K 线；命中返回 dict list，未命中返回 None。"""
+    try:
+        symbol = format_ticker(ticker)  # 统一为带市场前缀的 Futu 格式，与数仓 key 对齐
+        df = await kline_warehouse.get_history(symbol, ktype=ktype, num=num)
+        if df is None or df.empty:
+            return None
+        return df.tail(num).to_dict(orient="records")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[history-warehouse] 读取数仓失败 {ticker}/{ktype}: {e}")
+        return None
+
+
+# PERF-02: 后台异步落数仓。用 per-ticker 去重，避免并发请求触发重复 update_ticker
+# 打爆 OpenD 频控（update_ticker 内部对增量已做智能跳过：last_date 最新时直接 return）。
+_sync_scheduled: dict[tuple[str, str], bool] = {}
+
+
+def _schedule_warehouse_sync(ticker: str, ktype: str) -> None:
+    key = (ticker.upper(), ktype)
+    if _sync_scheduled.get(key):
+        return
+    _sync_scheduled[key] = True
+
+    async def _do():
+        try:
+            await kline_warehouse.update_ticker(format_ticker(ticker), ktype=ktype)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[history-warehouse] 后台同步失败 {ticker}/{ktype}: {e}")
+        finally:
+            _sync_scheduled[key] = False
+
+    asyncio.create_task(_do())
+
 
 def _flat_facade_payload(
     facade_res,
@@ -508,41 +586,74 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
     Returns:
         dict: {"status": "success", "data": [KLineData]}
     """
+    # PERF-01: 短 TTL 结果缓存 —— 打平 OpenD 网络抖动，避免高频请求反复穿透
+    num = min(max(num, 1), 5000)
+    cached = await _get_history_cache(ticker, ktype, num)
+    if cached is not None:
+        cached["cached"] = True
+        return cached
+
+    # PERF-02: 数仓优先读取 —— 历史 K 线不可变，从 L2 Parquet 极速返回，不穿透 OpenD
+    wh_records = await _try_read_kline_warehouse(ticker, ktype, num)
+    if wh_records:
+        payload = {
+            "data": wh_records,
+            "source": "kline_warehouse",
+            "degraded": False,
+            "cached": True,
+        }
+        await _put_history_cache(ticker, ktype, num, payload)
+        return payload
+
     # BE-ARCH-06c: Futu 标的 (港股/美股/A股等) 经 DataSourceRouter.fetch_futu 单独通道
     # （facade/registry 不注册 futu，单独通道；与 /quote 保持一致，避免 .HK 走 yfinance 报错）
+    futu_failed = False
     if _is_futu_ticker(ticker):
         try:
             futu_res = await data_source_router.fetch_futu("HISTORY", ticker=ticker, ktype=ktype, num=num)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[Market API] Futu HISTORY fetch_futu 异常: {exc}")
-            raise HTTPException(status_code=500, detail=f"Futu 历史数据调用异常: {exc}")
-        if isinstance(futu_res, dict) and futu_res.get("status") == "success":
-            futu_data = futu_res.get("data") or {}
-            return {
-                **(futu_data if isinstance(futu_data, dict) else {"data": futu_data}),
-                "source": "futu",
-                "degraded": False,
-                "latency_ms": futu_res.get("latency_ms"),
-                "cached": futu_res.get("cached", False),
-            }
-        # Futu 失败: 回退 facade (yfinance/akshare 兜底)
-        logger.warning(
-            f"[Market API] Futu HISTORY 失败, 回退 facade: {futu_res.get('message') if isinstance(futu_res, dict) else futu_res}"
-        )
+            futu_failed = True
+        else:
+            if isinstance(futu_res, dict) and futu_res.get("status") == "success":
+                futu_data = futu_res.get("data") or {}
+                payload = {
+                    **(futu_data if isinstance(futu_data, dict) else {"data": futu_data}),
+                    "source": "futu",
+                    "degraded": False,
+                    "latency_ms": futu_res.get("latency_ms"),
+                    "cached": False,
+                }
+                await _put_history_cache(ticker, ktype, num, payload)
+                # PERF-02: 后台异步落数仓，下次请求走 L2 Parquet
+                _schedule_warehouse_sync(ticker, ktype)
+                return payload
+            # Futu 失败: 回退 facade (yfinance/akshare 兜底)
+            logger.warning(
+                f"[Market API] Futu HISTORY 失败, 回退 facade: {futu_res.get('message') if isinstance(futu_res, dict) else futu_res}"
+            )
+            futu_failed = True
 
     # BE-ARCH-06c: 统一走新 Facade
     facade_res = await _facade_market.get_history(ticker, ktype=ktype, num=num)
     if not facade_res.is_success or not facade_res.data:
         err_msg = facade_res.error.message if facade_res.error else "获取历史数据失败"
+        # Futu 通道异常时给出更明确的 500 语义（而非 400）
+        if futu_failed:
+            raise HTTPException(status_code=500, detail=f"Futu 历史数据调用异常: {err_msg}")
         raise HTTPException(status_code=400, detail=err_msg)
 
     # BE-13 方案 B：扁平 payload 交由中间件统一包信封。
     # HISTORY 的 data 是 K 线 list，不能 ** 展开，统一包入 data 键（前端读 res.data.data）。
-    return {
+    payload = {
         "data": facade_res.data,
         "source": f"facade+{facade_res.source}",
         "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
+    await _put_history_cache(ticker, ktype, num, payload)
+    # PERF-02: 后台异步落数仓，下次请求走 L2 Parquet
+    _schedule_warehouse_sync(ticker, ktype)
+    return payload
 
 
 @router.get("/option-chain")
@@ -586,22 +697,35 @@ async def get_option_iv_summary(ticker: str):
     Returns:
         dict: {"status": "success", "data": OptionIvSummary}
     """
+    # PERF: IV 指标变化慢，加 10min 结果缓存，避免每次请求重拉期权链+日K 外部源
+    iv_key = f"market:iv-summary:v1:{ticker.upper()}"
+    try:
+        cached_iv = await redis_client.get(iv_key)
+        if cached_iv is not None:
+            return {**json.loads(cached_iv), "cached": True}
+    except Exception:  # noqa: BLE001
+        pass
+
     facade_res = await _facade_market.get_option_iv_summary(ticker)
     if isinstance(facade_res, dict):
         # get_option_iv_summary 返回的是扁平 dict（非 Result），直接包信封
-        return {
+        payload = {
             "data": facade_res,
             "source": "facade+market",
             "degraded": not facade_res.get("available", False),
         }
+        await _put_iv_cache(iv_key, payload)
+        return payload
     if hasattr(facade_res, "is_error") and facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "期权 IV 指标数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    return {
+    payload = {
         "data": facade_res.data if hasattr(facade_res, "data") else facade_res,
         "source": f"facade+{getattr(facade_res, 'source', 'market')}",
         "degraded": getattr(facade_res, "status", None) == ResultStatus.DEGRADED,
     }
+    await _put_iv_cache(iv_key, payload)
+    return payload
 
 
 @router.get("/option-strategy-lab")

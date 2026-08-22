@@ -206,3 +206,52 @@ class TestSentimentService:
         assert hasattr(sentiment_service, "analyze_news_sentiment")
         assert hasattr(sentiment_service, "batch_filter_news")
         assert hasattr(sentiment_service, "batch_analyze_news")
+
+    async def test_analyze_news_sentiment_cache_hit_skips_llm(self, service):
+        """PERF-卡顿: 同一 headline 的 LLM 结果缓存命中时，不应再调 LLM（消除逐条打分放大）"""
+        cached_payload = {
+            "status": "success",
+            "score": 80,
+            "label": "Bullish",
+            "reasoning": "缓存命中",
+            "summary_zh": "公司发布强劲财报",
+        }
+        llm_response = _build_chat_response(json.dumps(cached_payload))
+        cache_store = {}
+
+        async def fake_get(key):
+            return cache_store.get(key)
+
+        async def fake_set(key, val, ex=None):
+            cache_store[key] = val
+
+        with (
+            patch("backend.core.redis_client.redis_client.get", new=AsyncMock(side_effect=fake_get)),
+            patch("backend.core.redis_client.redis_client.set", new=AsyncMock(side_effect=fake_set)),
+            _mock_llm_client(llm_response),
+        ):
+            # 第一次: 缓存 miss → 调 LLM 并写缓存
+            r1 = await service.analyze_news_sentiment("公司发布财报", "营收增长")
+            # 第二次: 缓存命中 → 不应调 LLM
+            r2 = await service.analyze_news_sentiment("公司发布财报", "营收增长")
+
+        assert r1["status"] == "success"
+        assert r2["status"] == "success"
+        assert r2["reasoning"] == "缓存命中"
+        # LLM 只被调用一次（第二次走缓存）
+        assert len(cache_store) == 1  # 只写入了一条缓存
+
+    async def test_analyze_news_sentiment_cache_redis_down_still_works(self, service):
+        """PERF-卡顿: Redis 不可用时应跳过缓存正常调 LLM，不阻塞"""
+        llm_response = _build_chat_response(
+            json.dumps({"score": 50, "label": "Neutral", "reasoning": "ok", "summary_zh": "ok"})
+        )
+        with (
+            patch("backend.core.redis_client.redis_client.get", new=AsyncMock(side_effect=RuntimeError("redis down"))),
+            patch("backend.core.redis_client.redis_client.set", new=AsyncMock(side_effect=RuntimeError("redis down"))),
+            _mock_llm_client(llm_response),
+        ):
+            result = await service.analyze_news_sentiment("某新闻标题")
+
+        assert result["status"] == "success"  # Redis 挂不阻塞正常打分
+        assert result["label"] == "Neutral"

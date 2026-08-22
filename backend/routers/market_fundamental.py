@@ -390,11 +390,26 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     if not safe_ticker:
         return {"status": "error", "message": "非法的股票代码参数"}
 
+    # PERF: 个股事件(财报+新闻)变化频率低，加 5min 结果缓存，避免每次请求反复打 Finnhub。
+    cache_key = f"market:events:v1:{safe_ticker}:{days_back}:{days_ahead}"
+    try:
+        cached = await redis_client.get(cache_key)
+        if cached is not None:
+            return {**json.loads(cached), "cached": True}
+    except Exception:  # noqa: BLE001
+        pass
+
     events = []
 
+    # PERF: 财报 + 新闻两条外部调用并行拉取（原来串行 await 2 次 Finnhub）
+    real_earnings, real_news = await asyncio.gather(
+        _fetch_finnhub_earnings(safe_ticker, days_back, days_ahead),
+        _fetch_finnhub_news(safe_ticker, limit=10, days_back=days_back),
+        return_exceptions=True,
+    )
+
     # 1. 财报日历事件：优先 Finnhub，失败回退模拟数据
-    real_earnings = await _fetch_finnhub_earnings(safe_ticker, days_back, days_ahead)
-    if real_earnings:
+    if real_earnings and not isinstance(real_earnings, Exception) and real_earnings:
         events.extend(real_earnings)
     else:
         mock_earnings = [
@@ -412,8 +427,7 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
         events.extend(mock_earnings)
 
     # 2. 个股新闻作为重大事件：优先 Finnhub，失败回退模拟数据
-    real_news = await _fetch_finnhub_news(safe_ticker, limit=10, days_back=days_back)
-    if real_news:
+    if not (isinstance(real_news, Exception) or not real_news):
         for n in real_news:
             events.append(
                 {
@@ -444,13 +458,21 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     # 💡 按日期排序
     events.sort(key=lambda x: x.get("date", ""))
 
-    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（前端 lightweight-chart-canvas 读 res.data.data）
-    return {
+    payload = {
         "ticker": safe_ticker,
         "count": len(events),
         "data": events,
         "degraded": False,
+        "cached": False,
     }
+    # PERF: 写 5min 结果缓存，打平 Finnhub 外部网络抖动
+    try:
+        await redis_client.set(cache_key, json.dumps(payload, ensure_ascii=False), ex=300)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（前端 lightweight-chart-canvas 读 res.data.data）
+    return payload
 
 
 # ─────────────────────────────────────────────
