@@ -214,7 +214,7 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 - [x] **Phase 1（P0 红线）** `[→ AGENT-02 ✅ 452cb9d]` 中间件管线（共同落点）→ 并行 `[→ AGENT-07 ✅ 5b92f17]` 逐笔交易审批（fail-closed）· `[→ AGENT-08 ✅ 5b92f17]` Verify 阶段实装 · `[→ AGENT-09 ✅ 452cb9d]` 工具结果正交分类
 - [x] **Phase 2（审计）** `[→ AGENT-01 ✅ 4d2d154]` 会话事件日志 append-only · `[→ AGENT-10 ✅ aba5588]` 密钥作用域与日志脱敏 · `[→ AGENT-15 ✅ 3bb89a0]` Rollout JSONL 持久化 · `[→ AGENT-17 ✅ c0e1d8a]` 轮次元数据
 - [x] **Phase 3（成本）** `[→ AGENT-03 ✅ 7778186]` 工具集分发 · `[→ AGENT-11 ✅ 5453a30]` Prompt 缓存边界+Token 计量 · `[→ AGENT-16 ✅ c0e1d8a]` 摘要压缩取代截断 · `[→ AGENT-12]` 重复守卫（待定）· `[→ AGENT-05]` 脚本 RPC 批量（待定）
-- [ ] **Phase 4（韧性/扩展）** `[→ AGENT-06]` LLM 适配缝（待定）· `[→ AGENT-13]` 工具暴露为 MCP Server（待定）· `[→ AGENT-14]` 子代理并行（待定）· `[→ AGENT-18 ✅ d3e7a75]` 重试分类与退避 · `[→ AGENT-19 ✅ 1ef72d1]` Elicitation 提问缝
+- [x] **Phase 4（韧性/扩展）** `[→ AGENT-06 ✅ 27b9334]` LLM 适配缝（failover + SSE `provider_degraded`，17/17 测试）· `[→ AGENT-13 ✅ e74cef7]` 工具暴露为 MCP Server（只读域导出，交易类 blocklist，21/21 测试）· `[→ AGENT-14 ✅ 19562a6]` 子代理并行编排（subagent.py，继承父级审批/白名单）· `[→ AGENT-18 ✅ d3e7a75]` 重试分类与退避 · `[→ AGENT-19 ✅ 1ef72d1]` Elicitation 提问缝
 
 > **三条 AGENTS.md 红线目前无代码承载**（见 TODO-AGENT-ARCH.md §二）：§4.1 的 Verify 阶段不存在（S7）、§4.4 的连续失败 3 次熔断从未实现（S3）、§6 的交易二次确认无机制（S8）。Phase 1 就是补这三条。
 
