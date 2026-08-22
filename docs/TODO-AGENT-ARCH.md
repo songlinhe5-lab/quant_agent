@@ -246,11 +246,19 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     - ✅ SSE 'provider_degraded' 事件通知前端
     - ✅ Environment variables: LLM_FALLBACK_API_KEY / LLM_FALLBACK_BASE_URL / LLM_FALLBACK_MODEL
     - ✅ 17/17 tests passed (含 3 个验收测试：自动切换/降级事件/默认路由不变)
-- [ ] **[AGENT-13]** **把自家工具暴露为 MCP Server（对外互操作）**
-  - **动机**：这是"想用 dsh / Cursor / Claude 当客户端"的**正确接法** —— 我们提供工具，它们当消费端，**不需要引入任何一方的运行时**
-  - **改法**：参考 hermes `transports/hermes_tools_mcp_server.py`、dsh `packages/mcp`。复用现有 `ToolRegistry`，加 MCP 协议适配层
+- [x] **[AGENT-13]** **把自家工具暴露为 MCP Server（对外互操作）** ✅ e74cef7
+  - **动机**：这是“想用 dsh / Cursor / Claude 当客户端”的**正确接法** —— 我们提供工具，它们当消费端，**不需要引入任何一方的运行时**
+  - **改法**：参考 hermes `transports/hermes_tools_mcp_server.py`、dsh `packages/mcp`。复用现有 `ToolRegistry`，加 MCP 协议适配层 —— **已解决**
   - **约束**：交易类工具默认**不**导出；导出集受 AGENT-07 审批与 AGENT-10 脱敏约束
-  - **验收**：外部 MCP 客户端可发现并调用只读行情/基本面工具，交易类不可见
+  - **验收**：✅ 外部 MCP 客户端可发现并调用只读行情/基本面工具，交易类不可见
+  - **实现详情**：
+    - ✅ mcp_server.py (359 lines): MCPServer + MCPToolSchema + MCPToolResult
+    - ✅ MCP 协议方法: initialize / ping / tools/list / tools/call
+    - ✅ MCP_EXPORT_SCOPES: quote/indicators/fund_flow/fundamental/macro/news
+    - ✅ MCP_BLOCKLIST: delete_global_knowledge, manage_broker_orders, send_notification, ...
+    - ✅ 三层安全: scope 白名单 + 硬编码黑名单 + fail-closed
+    - ✅ 路由集成: /mcp/rpc (直接 JSON-RPC) + /mcp/tools (快捷列表)
+    - ✅ 21/21 tests passed (含验收测试: 工具发现/安全拦截/协议合规)
 - [ ] **[AGENT-14]** **子代理并行编排**
   - **动机**：多标的横截面分析目前串行（叠加 S11 的 1 req/s 更慢）
   - **改法**：参考 hermes `subagent_lifecycle.py`、dsh `subsystems/subagent.md`，隔离上下文的子代理并行跑各标的，主代理只收汇总
