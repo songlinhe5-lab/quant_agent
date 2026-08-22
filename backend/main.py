@@ -105,6 +105,7 @@ from backend.routers.options import router as options_router  # noqa: E402
 from backend.routers.paper import router as paper_router  # noqa: E402
 from backend.routers.portfolio import router as portfolio_router  # noqa: E402
 from backend.routers.preferences import router as preferences_router  # noqa: E402
+from backend.routers.rag import router as rag_router  # noqa: E402  # EARN-02/03
 from backend.routers.research import router as research_router  # noqa: E402
 from backend.routers.risk import router as risk_router  # noqa: E402
 from backend.routers.screener import router as screener_router  # noqa: E402
@@ -198,6 +199,7 @@ def create_app() -> FastAPI:
     application.include_router(logs_router, prefix=API_PREFIX)
     application.include_router(eval_router, prefix=API_PREFIX)
     application.include_router(earnings_router, prefix=API_PREFIX)
+    application.include_router(rag_router, prefix=API_PREFIX)  # EARN-02/03
     application.include_router(research_router, prefix=API_PREFIX)
     application.include_router(factor_router, prefix=API_PREFIX)
     application.include_router(alpha158_router, prefix=API_PREFIX)
