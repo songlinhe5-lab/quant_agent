@@ -2,7 +2,7 @@
 
 > 创建时间：2026-08-13
 > 最后核对：2026-08-22（代码仍未开始）
-> 状态：调研已完成，**代码未开始**（阶段 A 可随时启动；阶段 B 暂无可用的免费源，待定）
+> 状态：调研已完成，**阶段 A 已实现**；**阶段 B 核心（市场化 P/C 多空情绪）已随 CBOE 采集器 + sentiment_tracker 落地**，仅「散户社交多空占比」待定/付费决策（见 §三、阶段 B）
 > 目标：为 quant_agent 补齐「散户情绪面」维度，与现有机构情绪指标（VIX / P-C Ratio / Credit Spread）形成双层视图。
 
 ---
@@ -62,7 +62,9 @@
 
 ## 三、核心结论
 
-1. **「多空情绪」在免费/低成本数据源中暂无可靠解**：Finnhub 403、StockGeist 502、富途无 API、Utradea 停滞。若要真正的多空情绪，只能上机构级付费源（Social Market Analytics / RavenPack，$299+/月），属另一决策，不在本期。
+1. **「多空情绪」需分两层看，结论不同**：
+   - **市场化多空情绪（看跌/看涨力量对比）= 免费且已落地**：期权 Put/Call Ratio 是权威代理。本仓已通过 CBOE 官方 Total P/C（`cboe_pc_ratio.py` 采集器 + `cboe_pc_daemon` 周期刷新至 `yf_macro_cache_^CPC`）接入 `SentimentTracker` 研判层（`models.SentimentRecord.pc_ratio`），与 VIX / Credit Spread 形成机构级多空视图；个股级 P/C 可由 `yfinance` 期权链免费补充（2026-08 实测 yfinance 期权链仍可用，GitHub 多活跃项目佐证）。**阶段 B 核心可行。**
+   - **散户社交多空占比 = 仍无可靠免费源**：Finnhub 403、StockGeist 502、富途无 API、Utradea 停滞。若要真正的散户多空占比，只能上机构级付费源（Social Market Analytics / RavenPack，$299+/月），属另一决策，不在本期。阶段 A（ApeWisdom 热度）已覆盖散户注意力，「散户社交多空占比」维持待定。
 2. **「散户热度/注意力」可立即落地**：ApeWisdom 免费、无 Key、已实测可用。
 3. **热度 ≠ 情绪**：必须作为两个独立指标分别定义、分别入研判矩阵，严禁混成一个「情绪分」。
 
@@ -86,14 +88,18 @@
 - [x] **A.6** 单测：正常返回、异常兜底、分页、字段归一化、中途失败部分返回——`tests/test_apewisdom.py` 5 passed。
 - [ ] **A.7** 提交 PR。
 
-### 阶段 B：多空情绪（❌ 暂无可用的免费源，待定）
+### 阶段 B：多空情绪（✅ 可行：市场化 P/C 已免费落地；散户社交多空占比仍待定）
 
-- [ ] **B.1** 若未来找到新的免费/低价多空情绪源，先按 §2 教训**实测 Key 权限 + 端点存活**再接入。
-- [ ] **B.2** 明确情绪分数语义与取值范围，归一化到系统统一约定（如 -1~1）。
-- [ ] **B.3** 实现 `_internal/sentiment/<new-source>.py` + worker 注册 `action="SENTIMENT_SCORE"`。
-- [ ] **B.4** 单测 + 限流退避（付费源尤需）。
-- [ ] **B.5** 提交 PR。
-- [ ] **B.6** 备选决策：若确认需要，评估机构级付费源（Social Market Analytics / RavenPack），单独立项。
+> 2026-08-22 调研修正：原结论"暂无可用的免费源"系将「多空情绪」窄化为「散户社交多空占比」。
+> 实际上**多空情绪的本质是看跌/看涨力量对比**，期权 Put/Call Ratio 是免费、权威、已落地的代理指标，
+> 且本仓已实现（CBOE 全市场 P/C 已接入 `sentiment_tracker` 研判层）。仅「散户社交多空占比」一项仍无可靠免费源。
+
+- [x] **B.0** 市场化多空情绪已落地：CBOE Total P/C Ratio（`cboe_pc_ratio.py` 采集器 + `cboe_pc_daemon` 周期刷新至 `yf_macro_cache_^CPC`）已由 `SentimentTracker` 每小时打点落库（`models.SentimentRecord.pc_ratio`），与 VIX / Credit Spread 形成机构级多空视图。*（2026-08-22 调研确认，代码早已存在）*
+- [ ] **B.1** 个股级多空情绪增强（可选）：基于 `yfinance` 期权链计算单标的 Put/Call 成交量比（免费、2026-08 实测可行），作为 CBOE 全市场 P/C 的补充，刻画个股多空倾向。实现 `_internal/yfinance/options_pc.py` + 接入研判矩阵 C 线，并对 yfinance 限速退避（免费源易被封）。
+- [ ] **B.2** 明确 P/C Ratio 语义与归一化：按系统约定标注偏多/偏空阈值（如 >1.2 偏空 / <0.8 偏多，或映射 -1~1），接入 `AGENTS.md` §7 多空矩阵作为独立情绪行。
+- [ ] **B.3** 单测 + 限流退避（yfinance 免费但需限速）。
+- [ ] **B.4** 提交 PR。
+- [ ] **B.5** 散户社交多空占比（原 B.6）：仍维持待定。若确认需要，评估机构级付费源（Social Market Analytics / RavenPack，$299+/月），单独立项。未经实测 Key 权限 + 端点存活不接入。
 
 ### 阶段 C：信号接入研判层
 
