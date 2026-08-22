@@ -494,7 +494,10 @@ class HermesAgent(MemoryOperationsMixin):
                             kwargs["model"] = model
                             return await client.chat.completions.create(**kwargs)
 
-                        resp, failover_evt = await self.provider_router.execute_with_failover(_create_func)
+                        # AGENT-18: 流式调用需传 is_streaming=True（半截流式保护）
+                        resp, failover_evt = await self.provider_router.execute_with_failover(
+                            _create_func, is_streaming=True
+                        )
                         await llm_response_queue.put(("ok", resp, failover_evt))
                     except Exception as e:
                         await llm_response_queue.put(("error", e, None))
