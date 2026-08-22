@@ -4,9 +4,12 @@ AGENT-16-NEXT · Prompt Governance 服务层测试
 
 import pytest
 
-from hermes_agent.prompt_versioning import (
+from backend.services.prompt.governance_service import (
     FeedbackCollector,
     GoldenDatasetItem,
+    GoldenDatasetRunner,
+)
+from hermes_agent.prompt_versioning import (
     PromptVersionManager,
 )
 
@@ -119,7 +122,7 @@ def test_quality_evaluator_coherence_clarity():
 @pytest.mark.asyncio
 async def test_llm_driven_perplexity_fallback():
     """测试 LLM-driven perplexity 的 fallback 机制"""
-    from hermes_agent.prompt_versioning import LLMDrivenEvaluator
+    from backend.services.prompt.governance_service import LLMDrivenEvaluator
 
     # Create evaluator without LLM client (should fallback to heuristic)
     evaluator = LLMDrivenEvaluator(llm_client=None)
@@ -134,7 +137,8 @@ async def test_llm_driven_perplexity_fallback():
 
 def test_vector_store_embedding_and_search(tmp_path):
     """测试向量存储的嵌入和搜索功能"""
-    from hermes_agent.prompt_versioning import PromptQualityMetrics, VectorStoreIntegrator
+    from backend.services.prompt.governance_service import VectorStoreIntegrator
+    from hermes_agent.prompt_versioning import PromptQualityMetrics
 
     vector_store = VectorStoreIntegrator(embedding_client=None)
 

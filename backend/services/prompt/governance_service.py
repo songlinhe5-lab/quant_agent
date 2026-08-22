@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,18 +27,6 @@ except ImportError:
         PromptQualityMetrics,
         PromptVersionManager,
     )
-
-
-@dataclass
-class GoldenDatasetItem:
-    """单条用户反馈记录"""
-
-    prompt_name: str
-    version: str
-    user_id: str
-    rating: int  # -1 (down) to 1 (up), 0 (neutral)
-    comment: Optional[str] = None
-    created_at: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -129,7 +118,7 @@ class GoldenDatasetRunner:
                     print(f"⚠️ [GoldenDataset] Skip malformed line: {e}")
 
     def _create_sample_dataset(self):
-        """创建示例数据集"""
+        """创建示例数据集（并加载到内存 self.items）"""
         self.dataset_path.parent.mkdir(parents=True, exist_ok=True)
 
         samples = [
@@ -150,6 +139,17 @@ class GoldenDatasetRunner:
         with open(self.dataset_path, "w", encoding="utf-8") as f:
             for sample in samples:
                 f.write(json.dumps(sample, ensure_ascii=False) + "\n")
+
+        # 将示例数据加载到内存，使 self.items 立即可用
+        for sample in samples:
+            self.items.append(
+                GoldenDatasetItem(
+                    name=sample["name"],
+                    input_context=sample["input_context"],
+                    expected_output=sample["expected_output"],
+                    metrics=sample.get("metrics", ["relevance", "accuracy"]),
+                )
+            )
 
         print(f"✅ [GoldenDataset] Created sample dataset with {len(samples)} items")
 
@@ -191,6 +191,18 @@ class GoldenDatasetRunner:
     def _simulate_llm_response(self, prompt: str, context: str) -> str:
         """模拟 LLM 响应（生产环境替换为真实调用）"""
         return f"基于提示词 '{prompt[:50]}...' 生成的响应，针对上下文：{context}"
+
+
+@dataclass
+class FeedbackRecord:
+    """单条用户反馈记录"""
+
+    prompt_name: str
+    version: str
+    user_id: str
+    rating: int  # 1-5 或 -1/1（thumbs）
+    comment: Optional[str] = None
+    created_at: float = field(default_factory=time.time)
 
 
 class FeedbackCollector:
@@ -324,7 +336,9 @@ class LLMDrivenEvaluator:
     def _heuristic_perplexity(self, text: str) -> float:
         """启发式估算（fallback）"""
         tokens = text.split()
-        unique_ratio = len(set(tokens.lower().split())) / len(tokens) if tokens else 1
+        if not tokens:
+            return 1.0
+        unique_ratio = len(set(t.lower() for t in tokens)) / len(tokens)
         return 1.0 - unique_ratio
 
     async def evaluate_quality(self, prompt: str, output: str, criteria: List[str]) -> Dict[str, float]:
@@ -430,30 +444,38 @@ class VectorStoreIntegrator:
         return candidates[:top_k]
 
     def _generate_embedding(self, text: str) -> List[float]:
-        """生成嵌入向量（简化版：随机向量 fallback）"""
+        """生成嵌入向量（简化版 fallback：确定性词频 TF 向量）
+
+        说明：生产环境应使用真实 embedding 客户端（如 bge-large-zh）。
+        当 embedding_client 不可用或调用失败时，使用基于 token 词频的
+        确定性 TF 向量作为占位：相同/相似词汇的文本会产生正余弦相似度，
+        从而支持基本的相似检索（与真实语义 embedding 无关，仅用于无依赖回退）。
+        """
         try:
             # Production: Use real embedding client
             # response = self.embedding_client.embeddings.create(model="bge-large-zh", input=text)
             # return response.data[0].embedding
-
-            # Fallback: deterministic pseudo-random vector
-            import hashlib
-
-            hash_obj = hashlib.sha256(text.encode())
-            hash_bytes = hash_obj.digest()
-
-            # Convert to 768-dim vector (matching bge-large-zh)
-            vector = []
-            for i in range(768):
-                byte_idx = (i * 4) % len(hash_bytes)
-                value = (hash_bytes[byte_idx] / 255.0) * 2 - 1  # Normalize to [-1, 1]
-                vector.append(value)
-
-            return vector
-
+            raise NotImplementedError("real embedding client not configured in fallback mode")
         except Exception:
-            # Ultimate fallback
-            return [0.0] * 768
+            pass
+
+        # Fallback: deterministic bag-of-words TF vector (768-dim, non-negative)
+        import hashlib
+        import re
+
+        tokens = re.findall(r"[a-zA-Z0-9\u4e00-\u9fff]+", text.lower())
+        vector = [0.0] * 768
+        for tok in tokens:
+            # Map token to a stable bucket via its hash
+            bucket = int(hashlib.md5(tok.encode()).hexdigest(), 16) % 768
+            vector[bucket] += 1.0
+
+        # L2-normalize so cosine similarity reduces to dot product on unit vectors
+        norm = math.sqrt(sum(v * v for v in vector))
+        if norm > 0:
+            vector = [v / norm for v in vector]
+
+        return vector
 
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """计算余弦相似度"""

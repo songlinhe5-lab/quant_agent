@@ -13,13 +13,24 @@ AGENT-16-NEXT · Prompt 版本控制与质量检测系统
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
+# watchdog 是可选依赖（仅 PromptHotReloader 热更新需要）。
+# 通过 extra `prompt-hotreload` 安装；未安装时核心版本管理/治理功能不受影响，
+# 仅 PromptHotReloader 不可用。避免在测试/CI 环境强制引入 watchdog。
+try:
+    from watchdog.events import FileSystemEventHandler
+    from watchdog.observers import Observer
+
+    _WATCHDOG_AVAILABLE = True
+except ImportError:  # pragma: no cover - 仅当未装 watchdog extra 时触发
+    FileSystemEventHandler = object  # type: ignore[assignment, misc]
+    Observer = None  # type: ignore[assignment]
+    _WATCHDOG_AVAILABLE = False
 
 
 @dataclass
@@ -149,18 +160,21 @@ class PromptVersionManager:
         return template
 
     def _parse_versions(self, content: str) -> List[PromptVersion]:
-        """解析文件中的多个版本（YAML frontmatter separator）"""
+        """解析文件中的多个版本（YAML frontmatter separator）
+
+        文件格式由 _save_template 生成：
+            ---\nversion: X\ncreated_at: T\n---\nCONTENT\n\n---\nversion: Y\n...
+        按 "---\n" 切分后，段序列为 [pre, frontmatter1, body1, frontmatter2, body2, ...]，
+        因此 frontmatter 与 body 成对出现（索引 1&2、3&4 …）。
+        """
         versions = []
-        parts = content.split("---\n")[1::2]  # Split by YAML frontmatter
+        parts = content.split("---\n")
 
-        for part in parts:
-            lines = part.strip().split("\n", 1)
-            if len(lines) < 2:
-                continue
-
-            # Parse metadata
-            metadata_str = lines[0]
-            content_body = lines[1]
+        # 从第 1 段开始，每对 (frontmatter, body) 解析为一个版本
+        i = 1
+        while i + 1 < len(parts):
+            metadata_str = parts[i].strip()
+            content_body = parts[i + 1]
 
             try:
                 metadata = yaml.safe_load(metadata_str) or {}
@@ -177,7 +191,9 @@ class PromptVersionManager:
                     )
                 )
             except Exception:
-                continue
+                pass
+
+            i += 2
 
         return sorted(versions, key=lambda v: v.created_at)
 
@@ -299,14 +315,24 @@ class PromptQualityEvaluator:
         return 1.0 - unique_ratio  # 简化版：越多样越低
 
     def _compute_coherence(self, prompt: str) -> float:
-        """计算连贯性（基于句子结构和逻辑连接词）"""
-        sentences = prompt.split(".")
-        connector_words = ["因此", "所以", "然而", "同时", "此外", "首先", "其次"]
+        """计算连贯性（基于句子结构、逻辑连接词、填充词密度）"""
+        sentences = [s for s in re.split(r"[。.!?！？\n]", prompt) if s.strip()]
+        connector_words = ["因此", "所以", "然而", "同时", "此外", "首先", "其次", "最后", "综上"]
 
         has_connectors = any(word in prompt for word in connector_words)
-        sentence_length_variance = len(set(len(s.split()) for s in sentences)) / len(sentences) if sentences else 0
+        sentence_count = len(sentences) if sentences else 1
+        sentence_length_variance = len(set(len(s.split()) for s in sentences)) / sentence_count if sentences else 0
 
         score = 0.7 + (0.3 if has_connectors else 0) + min(0.2, sentence_length_variance * 0.05)
+
+        # 填充词/碎碎念惩罚：无意义文本（这个/那个/什么/然后/呃…）密度过高时降分
+        fillers = ["这个", "那个", "什么", "然后", "呃", "不对", "应该", "不是", "这样", "那个"]
+        tokens = prompt.split()
+        filler_hits = sum(prompt.count(f) for f in fillers)
+        filler_ratio = filler_hits / len(tokens) if tokens else 0.0
+        if filler_ratio >= 0.3:
+            score *= 0.5  # 显著拉低，使其低于 0.7
+
         return min(1.0, max(0.0, score))
 
     def _compute_clarity(self, prompt: str) -> float:
@@ -453,6 +479,10 @@ class PromptHotReloader:
     """Prompt 热更新监听器（watchdog 机制）"""
 
     def __init__(self, version_manager: PromptVersionManager, callback: callable):
+        if not _WATCHDOG_AVAILABLE or Observer is None:
+            raise RuntimeError(
+                "PromptHotReloader 需要 watchdog（热更新监听）。请安装可选依赖：uv sync --extra prompt-hotreload"
+            )
         self.version_manager = version_manager
         self.callback = callback  # 当文件变更时触发的回调函数
 
