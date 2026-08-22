@@ -476,9 +476,13 @@ def get_sentiment_history(
             data.append(
                 {
                     "time": r.timestamp.strftime("%m-%d %H:%M") if r.timestamp else "",
+                    # 机构情绪（B 层 · 市场化多空）
                     "pc_ratio": r.pc_ratio,
                     "vix": r.vix_value,
                     "credit_spread": r.credit_spread,
+                    # C.2/C.3: 散户热度（A 层 · 注意力突变），与机构情绪双层视图
+                    "retail_heat_change_pct": r.retail_heat_change_pct,
+                    "retail_heat_total": r.retail_heat_total,
                 }
             )
         return {"status": "success", "data": data}

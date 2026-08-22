@@ -11,6 +11,7 @@ export function SentimentInfoPanel({ onClose }: { onClose: () => void }) {
     { name: '恐慌指数 (VIX)', desc: '衡量标普500指数未来30天的预期波动率。VIX 飙升通常意味着市场恐慌加剧，避险情绪浓厚。' },
     { name: '期权 P/C Ratio', desc: '看跌期权(Put)与看涨期权(Call)的成交量比率。比率大于1意味着市场看空情绪占优，小于1则看多情绪占优，同样是重要的逆向参考。' },
     { name: '高收益债利差 (HY Spread)', desc: '高收益企业债（垃圾债）与无风险国债的收益率之差。利差扩大意味着信贷市场认为违约风险上升，是系统性流动性危机的重要预警信号。' },
+    { name: '散户热度 (ApeWisdom)', desc: 'ApeWisdom 社区 top-N 标的的提及量（mentions）环比变化。⚠️ 热度 ≠ 情绪：这是「散户注意力突变」指标，反映关注度激增/骤冷，不代表看多或看空方向，需与 P/C、VIX 等方向性指标分开解读。' },
   ]
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
@@ -39,10 +40,11 @@ function SentimentHistoryChart({ history }: { history: any[] }) {
     const dates = history.map(r => (r.time || '').slice(0, 11))
     const vix = history.map(r => (r.vix != null ? Number(r.vix.toFixed(2)) : null))
     const pc = history.map(r => (r.pc_ratio != null ? Number(r.pc_ratio.toFixed(3)) : null))
+    const heat = history.map(r => (r.retail_heat_change_pct != null ? Number((r.retail_heat_change_pct * 100).toFixed(1)) : null))
     return {
       grid: { left: 38, right: 40, top: 24, bottom: 24 },
       tooltip: { trigger: 'axis', backgroundColor: ECHART_DARK.tooltipBg, borderColor: ECHART_DARK.split, textStyle: { color: ECHART_DARK.text, fontSize: 10 } },
-      legend: { data: ['VIX', 'P/C'], textStyle: { color: ECHART_DARK.text, fontSize: 10 }, top: 0, right: 0 },
+      legend: { data: ['VIX', 'P/C', '散户热度'], textStyle: { color: ECHART_DARK.text, fontSize: 10 }, top: 0, right: 0 },
       xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: ECHART_DARK.split } }, axisLabel: { color: ECHART_DARK.text, fontSize: 9, hideOverlap: true } },
       yAxis: [
         { type: 'value', name: 'VIX', scale: true, nameTextStyle: { color: ECHART_DARK.text, fontSize: 9 }, axisLabel: { color: ECHART_DARK.text, fontSize: 9 }, splitLine: { lineStyle: { color: ECHART_DARK.split } } },
@@ -51,6 +53,7 @@ function SentimentHistoryChart({ history }: { history: any[] }) {
       series: [
         { name: 'VIX', type: 'line', smooth: true, showSymbol: false, yAxisIndex: 0, data: vix, lineStyle: { color: ECHART_DARK.warn }, itemStyle: { color: ECHART_DARK.warn } },
         { name: 'P/C', type: 'line', smooth: true, showSymbol: false, yAxisIndex: 1, data: pc, lineStyle: { color: ECHART_DARK.accent }, itemStyle: { color: ECHART_DARK.accent } },
+        { name: '散户热度', type: 'bar', yAxisIndex: 1, data: heat, itemStyle: { color: 'rgba(125, 211, 252, 0.35)' } },
       ],
     }
   }, [history])
