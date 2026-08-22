@@ -259,10 +259,20 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     - ✅ 三层安全: scope 白名单 + 硬编码黑名单 + fail-closed
     - ✅ 路由集成: /mcp/rpc (直接 JSON-RPC) + /mcp/tools (快捷列表)
     - ✅ 21/21 tests passed (含验收测试: 工具发现/安全拦截/协议合规)
-- [ ] **[AGENT-14]** **子代理并行编排**
+- [x] **[AGENT-14]** **子代理并行编排** ✅ 19562a6
   - **动机**：多标的横截面分析目前串行（叠加 S11 的 1 req/s 更慢）
-  - **改法**：参考 hermes `subagent_lifecycle.py`、dsh `subsystems/subagent.md`，隔离上下文的子代理并行跑各标的，主代理只收汇总
+  - **改法**：参考 hermes `subagent_lifecycle.py`、dsh `subsystems/subagent.md`，隔离上下文的子代理并行跑各标的，主代理只收汇总 —— **已解决**
   - **约束**：子代理继承父级的审批策略与工具白名单，不得提权
+  - **实现详情**：
+    - ✅ subagent.py (544 lines): SubAgent + SubAgentOrchestrator + run_parallel_analysis()
+    - ✅ SubAgent: 隔离上下文的轻量级代理（独立 messages，共享 ToolRegistry）
+    - ✅ SubAgentOrchestrator: Semaphore(5) 并发控制 + wait_for 超时保护
+    - ✅ 安全继承: 子代理继承父级 ToolRegistry + 审批策略 + scope 过滤
+    - ✅ MAX_SUBAGENT_ITERATIONS=4 (比父级 8 次更保守)
+    - ✅ SUBAGENT_TIMEOUT=60s, ORCHESTRATION_TIMEOUT=120s
+    - ✅ agent.py: +parallel_analyze() 方法
+    - ✅ API: POST /api/v1/agent/parallel-analyze
+    - ✅ 22/22 tests passed (含验收测试: 隔离/安全/并行/超时)
 
 ---
 
