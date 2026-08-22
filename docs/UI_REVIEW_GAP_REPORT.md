@@ -177,5 +177,5 @@
 2. **UIRF-18~23**：✅ 全部 `[x]`（TODO.md L262-267）。`use-backtest.ts` 工程债已拆为 `use-backtest.ts`(配置) + `use-backtest-engine.ts` + `use-backtest-metrics.ts` 三 hook（非 290 行单体）。
 3. **截图级复核结论**：
    - 选股「营销话术」`全市场 5,832 只 · 毫秒级扫描` → ✅ 已改为真实 WS 状态徽章 LIVE/待连接（`c0a3f7e`）。列序经 `screener-ag-grid.tsx` 固定列(代码/名称)+dynamicCols 实现，需在浏览器确认价格→涨跌→规模→估值→成长顺序。
-   - 持仓表「脏名标注」（阅文→"以交易所为准"）+ 合计校验：⬜ **未落地**（前端无 dirty-name 渲染，依赖后端 `/position` 返回 `display_name`/`exchange_note` 字段，需后端协同）。
-   - 策略下拉草稿「真实状态」徽章：⬜ **部分落地**（下拉已含内置+草稿+自定义三分组，但草稿项的"真实状态"需后端 `/strategy/list` 返回 `source_type`/`updated_at` 字段才能渲染状态徽章，属 UIRF-06 三分组遗留，待后端加字段）。
+   - 持仓表「脏名标注」（阅文→"以交易所为准"）+ 合计校验：✅ **已落地**。`risk-account-section.tsx:68-74` 已有 `isDirtyName` 启发式（仅当名称含替换符 U+FFFD/控制字符/异常空格时标注），`:342-354` 渲染琥珀色 `数据源名称·以交易所为准` 提示。后端 `/risk/positions-breakdown` 已透传 Futu `stock_name`，**无需后端加字段**（设计稿明确"不做前端臆测纠错"）。合计行 `totalMarketVal`/`totalNavPct` 校验已存在。
+   - 策略下拉草稿「真实状态」徽章：✅ **已落地**（`b79e06b`）。后端 `/strategy/list` 早已返回 `status`(draft/backtested/deployed)+`status_updated_at`；本轮补 `source_type:"draft"` 字段，前端 `backtest-config.tsx` 改为三 `<optgroup>`（内置引擎/我的草稿/自定义），草稿项后缀渲染真实状态（草稿/已回测/已部署）。
