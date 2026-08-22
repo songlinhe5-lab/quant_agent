@@ -5,9 +5,10 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 import { NavChart } from './nav-chart'
 import { CompareChart } from './compare-chart'
 import { DriftPanel } from './drift-panel'
@@ -127,6 +128,98 @@ export function PortfolioDetail() {
 
       {/* Drift Panel (always visible on overview) */}
       {tab === 'overview' && <DriftPanel portfolioId={portfolio.id} />}
+
+      {/* AI-07 实盘教练卡（ai07 开关控制，挂载于 overview） */}
+      {tab === 'overview' && <AiCoachCard portfolioId={portfolio.id} />}
+    </div>
+  )
+}
+
+/**
+ * AI-07 实盘教练卡：拉 /paper/portfolios/{id}/readiness → 展示体检结论 + 能否实盘 + 关键指标。
+ * ai07 开关控制；无数据 / LLM 未配置时诚实降级，不编造。
+ */
+function AiCoachCard({ portfolioId }: { portfolioId: string }) {
+  const ai07Enabled = useAiPushPrefStore((s) => s.isEnabled('ai07'))
+  const [loading, setLoading] = useState(false)
+  const [data, setData] = useState<{
+    ready_for_live: boolean | null
+    metrics: Record<string, any>
+    coach_advice: string | null
+    confidence: number | null
+    message: string | null
+  } | null>(null)
+
+  useEffect(() => {
+    if (!ai07Enabled) return
+    let alive = true
+    setLoading(true)
+    setData(null)
+    ;(async () => {
+      try {
+        const res = await apiClient.get(`/paper/portfolios/${portfolioId}/readiness`)
+        const body = res.data || res
+        if (alive && body) setData(body)
+      } catch (e: any) {
+        if (alive) setData({ ready_for_live: null, metrics: {}, coach_advice: null, confidence: null, message: e?.response?.data?.message || '教练服务调用失败' })
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [ai07Enabled, portfolioId])
+
+  if (!ai07Enabled) return null
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-3.5 w-3.5 text-primary" />
+          <span className="text-[11px] font-semibold text-primary">AI 实盘教练</span>
+          <span className="text-[9px] text-muted-foreground">体检中…</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const m = data.metrics || {}
+  const ready = data.ready_for_live
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+      <div className="flex items-center gap-2 mb-1.5">
+        <Sparkles className="h-3.5 w-3.5 text-primary" />
+        <span className="text-[11px] font-semibold text-primary">AI 实盘教练</span>
+        {ready === true && <span className="text-[10px] text-green-400">✓ 可转实盘</span>}
+        {ready === false && <span className="text-[10px] text-red-400">✗ 暂不宜实盘</span>}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] mb-1.5">
+        <div>
+          <span className="text-muted-foreground">最大回撤 </span>
+          <span className="font-mono">{m.max_drawdown != null ? `${(m.max_drawdown * 100).toFixed(1)}%` : '—'}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">连续亏损 </span>
+          <span className="font-mono">{m.consecutive_losses ?? '—'} 天</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">偏离基准 </span>
+          <span className="font-mono">{m.cumulative_drift != null ? `${(m.cumulative_drift * 100).toFixed(1)}%` : '—'}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">跟踪误差 </span>
+          <span className="font-mono">{m.tracking_error != null ? m.tracking_error.toFixed(4) : '—'}</span>
+        </div>
+      </div>
+      {data.coach_advice && <p className="text-[10px] text-foreground/90 leading-relaxed">{data.coach_advice}</p>}
+      {data.message && <p className="text-[9px] text-muted-foreground/70 mt-1">{data.message}</p>}
+      <p className="pt-1 mt-1 text-[9px] text-muted-foreground/50 border-t border-border/30">
+        AI 生成 · 仅供参考，不构成实盘建议
+      </p>
     </div>
   )
 }
