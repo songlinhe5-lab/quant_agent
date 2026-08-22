@@ -151,3 +151,87 @@ class TestSentimentTracker:
     def test_global_singleton_exists(self):
         """全局单例 sentiment_tracker 应可正常导入"""
         assert hasattr(sentiment_tracker, "track_daemon")
+
+    async def test_track_daemon_extracts_retail_heat_factor(self, tracker):
+        """C.1: 经 fetch_sentiment 拉取 ApeWisdom 热度 → 派生市场级热度因子落库"""
+        vix_cache = json.dumps([{"Close": 18.5}, {"Close": 19.2}])
+        cpc_cache = json.dumps([{"Close": 0.85}, {"Close": 0.92}])
+        heat_payload = {
+            "data": [
+                {"ticker": "SPY", "mentions": 188, "mentions_24h_ago": 323, "mentions_delta_pct": -0.418},
+                {"ticker": "NVDA", "mentions": 147, "mentions_24h_ago": 82, "mentions_delta_pct": 0.7927},
+            ]
+        }
+
+        mock_db = MagicMock()
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__enter__ = MagicMock(return_value=mock_db)
+        mock_session_ctx.__exit__ = MagicMock(return_value=False)
+
+        async def fake_get(key):
+            if key == "yf_macro_cache_^VIX":
+                return vix_cache
+            if key == "yf_macro_cache_^CPC":
+                return cpc_cache
+            return None
+
+        async def fake_fetch_sentiment(action, **params):
+            return heat_payload
+
+        with (
+            patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
+            patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
+            patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
+            patch(
+                "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
+            ),
+            # mock data_source_router.fetch_sentiment 返回 ApeWisdom 热度
+            patch(
+                "backend.services.datasource.router.data_source_router.fetch_sentiment",
+                new=AsyncMock(side_effect=fake_fetch_sentiment),
+            ),
+        ):
+            result = await tracker._run_once()
+
+        assert result is True
+        record = mock_db.add.call_args[0][0]
+        # 热度因子: (-0.418 + 0.7927) / 2 = 0.18735 → round 0.1874
+        assert record.retail_heat_change_pct == pytest.approx(0.1874, abs=1e-3)
+        assert record.retail_heat_total == 188 + 147
+
+    async def test_track_daemon_heat_source_failure_degrades(self, tracker):
+        """C.1: ApeWisdom 取数失败时热度因子降级为 None（不污染历史序列）"""
+        vix_cache = json.dumps([{"Close": 19.2}])
+        cpc_cache = json.dumps([{"Close": 0.92}])
+
+        mock_db = MagicMock()
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__enter__ = MagicMock(return_value=mock_db)
+        mock_session_ctx.__exit__ = MagicMock(return_value=False)
+
+        async def fake_get(key):
+            if key == "yf_macro_cache_^VIX":
+                return vix_cache
+            if key == "yf_macro_cache_^CPC":
+                return cpc_cache
+            return None
+
+        with (
+            patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
+            patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
+            patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
+            patch(
+                "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
+            ),
+            # fetch_sentiment 抛异常 → 热度降级 None
+            patch(
+                "backend.services.datasource.router.data_source_router.fetch_sentiment",
+                new=AsyncMock(side_effect=RuntimeError("router down")),
+            ),
+        ):
+            result = await tracker._run_once()
+
+        assert result is True
+        record = mock_db.add.call_args[0][0]
+        assert record.retail_heat_change_pct is None  # 降级,不臆造
+        assert record.retail_heat_total is None

@@ -104,7 +104,10 @@ class ApeWisdomService:
                 # 翻页中途失败：返回已收集部分 + 错误上下文
                 resp["collected"] = [_normalize_item(x) for x in collected]
                 return resp
-            page_data = resp["data"].get("data", [])
+            # 🔧 2026-08-22 实跑修复：ApeWisdom API 真实响应键是 `results`（非 `data`），
+            #    且 count 在顶层。原读 `data` 导致 get_trending 永远空列表（count=0）。
+            payload = resp.get("data") or {}
+            page_data = payload.get("results") or payload.get("data") or []
             if not page_data:
                 break
             collected.extend(page_data)

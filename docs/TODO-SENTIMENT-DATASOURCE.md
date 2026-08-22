@@ -103,9 +103,9 @@
 
 ### 阶段 C：信号接入研判层
 
-- [ ] **C.1** 定义两个独立指标，严禁混淆：
-  - **热度因子**（A 线）：`mentions` 环比变化 `(mentions - mentions_24h_ago) / mentions_24h_ago` → 「散户注意力突变」。
-  - **情绪因子**（B 线，待源）：多空占比 / 情绪分数 → 「散户多空倾向」。
+- [x] **C.1** 定义两个独立指标，严禁混淆：
+  - **热度因子**（A 线）：`mentions` 环比变化 `(mentions - mentions_24h_ago) / mentions_24h_ago` → 「散户注意力突变」。✅ **2026-08-22 已接入研判层**：`apewisdom._normalize_item` 已算 `mentions_delta_pct`；`SentimentRecord` 新增 `retail_heat_change_pct`/`retail_heat_total` 字段（create_all 自动建表）；`sentiment_tracker._run_once` 经 `fetch_sentiment("trending")` 拉取 ApeWisdom top-N 榜 → 派生市场级热度因子（delta 均值 + 总 mentions）→ 落库。**修复 bug**：ApeWisdom API 真实响应键为 `results`（非 `data`），原代码读 `data` 导致 count=0，已修复 + 兼容旧键。实测 top10 热度环比均值=0.4137。
+  - **情绪因子**（B 线，待源）：多空占比 / 情绪分数 → 「散户多空倾向」。（B.1 已用 Futu 个股 P/C 落地部分）
 - [ ] **C.2** 接入 `AGENTS.md` §7 多空矩阵，热度因子与情绪因子作为独立的多头/空头行。
 - [ ] **C.3** 与 `get_macro_sentiment_history`（VIX / P-C Ratio / Credit Spread）拼成「机构情绪 + 散户情绪」双层视图。
 - [ ] **C.4** 前端展示需分别标注数据源与含义（热度 ≠ 情绪），避免误导。

@@ -60,6 +60,38 @@ class SentimentTracker:
             # 3. 拟合 Credit Spread (基于 VIX)
             credit_spread = round(2.0 + (vix_val / 10.0), 2) if vix_val is not None else None  # noqa: E501
 
+            # ── C.1 热度因子（A 线 · 散户注意力突变）─────────────────────
+            # ApeWisdom top-N 榜单的 mentions 环比均值 → 「散户注意力突变」。
+            # 经 data_source_router.fetch_sentiment 远程取数（数据源已下沉 data_subservice）。
+            # 取数失败 / 无 delta 时静默降级为 None（不污染历史序列）。
+            retail_heat_change_pct = None
+            retail_heat_total = None
+            try:
+                from backend.services.datasource.router import data_source_router
+
+                heat_res = await data_source_router.fetch_sentiment("trending", filter="all", top_n=10)
+                heat_data = heat_res.get("data") if isinstance(heat_res, dict) else None
+                items = heat_data or []
+                deltas = []
+                total_now = 0
+                for it in items:
+                    if it.get("mentions_delta_pct") is not None:
+                        try:
+                            deltas.append(float(it["mentions_delta_pct"]))
+                        except (TypeError, ValueError):
+                            continue
+                    if it.get("mentions") is not None:
+                        try:
+                            total_now += int(it["mentions"])
+                        except (TypeError, ValueError):
+                            continue
+                if deltas:
+                    retail_heat_change_pct = round(sum(deltas) / len(deltas), 4)
+                if total_now:
+                    retail_heat_total = total_now
+            except Exception as e:  # noqa: BLE001
+                print(f"⚠️ [Sentiment Tracker] 热度因子采集失败(降级 None): {e}")
+
             # ── 数据完整性红线 (PROD-零幻觉) ──
             # 若 VIX 与 P/C 源数据均缺失（如 yfinance 节点瘫痪导致 Redis 无缓存），
             # 禁止写入全 None 的垃圾记录污染历史序列，直接跳过本次打点。
@@ -74,12 +106,16 @@ class SentimentTracker:
                         vix_value=vix_val,
                         pc_ratio=cpc_val,
                         credit_spread=credit_spread,
+                        retail_heat_change_pct=retail_heat_change_pct,
+                        retail_heat_total=retail_heat_total,
                     )  # noqa: E501
                     db.add(record)
                     db.commit()
 
             await asyncio.to_thread(save_to_db)  # 数据库是同步 IO，必须用 to_thread 防止阻塞网关  # noqa: E501
-            print(f"📈 [Sentiment Tracker] 数据打点成功: VIX={vix_val}, P/C={cpc_val}, Spread={credit_spread}")  # noqa: E501
+            print(
+                f"📈 [Sentiment Tracker] 数据打点成功: VIX={vix_val}, P/C={cpc_val}, Spread={credit_spread}, Heat={retail_heat_change_pct}({retail_heat_total})"
+            )  # noqa: E501
 
         except Exception as e:
             print(f"❌ [Sentiment Tracker] 记录数据失败: {e}")
