@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getZhLabel } from './shared'
 import { useScreenerContext } from './screener-context'
+import { useScreenerWsStatus } from './use-screener-ws'
 import { apiClient } from '@/lib/api-client'
 
 // 设计稿「选股树」单级标签筛选：市场 / 自选 / 策略模板
@@ -38,6 +39,7 @@ export function ScreenerQueryPanel() {
     isLoading, progress, scanStatus, handleTranslate, showRawDsl, setShowRawDsl, handleSubscribe,
     fetchPageData, setCurrentPage, sortKey, sortDir, pageSize, columnFilters
   } = useScreenerContext()
+  const wsStatus = useScreenerWsStatus()
   const [activeTag, setActiveTag] = useState<{ group: string; key: string } | null>(null)
 
   const _parseVal = (v: any) => {
@@ -105,7 +107,15 @@ export function ScreenerQueryPanel() {
             <span className="text-sm font-semibold tracking-wide">AI 语义筛选</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground font-mono bg-secondary/50 px-2 py-0.5 rounded border border-border/30 hidden sm:inline-block">全市场 5,832 只 · 毫秒级扫描</span>
+            {wsStatus.connected ? (
+              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-mono flex items-center gap-1 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE 实时推送
+              </span>
+            ) : (
+              <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full font-mono flex items-center gap-1 border border-amber-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> 实时行情待连接
+              </span>
+            )}
           </div>
         </div>
 
