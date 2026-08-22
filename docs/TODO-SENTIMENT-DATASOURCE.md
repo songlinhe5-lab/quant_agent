@@ -1,7 +1,8 @@
 # TODO — 散户情绪数据源接入调研与计划
 
 > 创建时间：2026-08-13
-> 状态：调研已完成，**代码未开始**（后期开动）
+> 最后核对：2026-08-22（代码仍未开始）
+> 状态：调研已完成，**代码未开始**（阶段 A 可随时启动；阶段 B 暂无可用的免费源，待定）
 > 目标：为 quant_agent 补齐「散户情绪面」维度，与现有机构情绪指标（VIX / P-C Ratio / Credit Spread）形成双层视图。
 
 ---
@@ -73,7 +74,7 @@
 
 - [ ] **0.1** 确认新增独立 `sentiment` 数据源（而非并入 `search`）：热度/情绪是结构化数值序列，与 `search` 非结构化文本语义不同。
 - [ ] **0.2** 确认消费方式：走 `DataSourceRouter.fetch_sentiment` HTTP 代理（禁止前端/主服务直连外部）。
-- [ ] **0.3** 本文件即决策记录，落地后同步摘要到 `MEMORY.md`。
+- [ ] **0.3** 本文件即决策记录，落地后摘要沉淀到 `update_memory` 知识库（**勿写 `MEMORY.md`**：AGENTS.md §0 规定其为会话笔记、禁止默认加载，本仓记忆机制已迁移至 `update_memory`）。
 
 ### 阶段 A：热度榜（ApeWisdom，✅ 已可用）
 
@@ -105,7 +106,7 @@
 
 ### 阶段 D：收尾与文档
 
-- [ ] **D.1** `MEMORY.md` 沉淀：数据源选型结论 + 三个源的验证失败记录（Finnhub 403 / StockGeist 502 / 富途无 API）。
+- [ ] **D.1** 沉淀选型结论到 `update_memory` 知识库（**勿写 `MEMORY.md`**：AGENTS.md §0 规定其为会话笔记、禁止默认加载）+ 在本文档 §二保留三个源验证失败记录（Finnhub 403 / StockGeist 502 / 富途无 API）。
 - [ ] **D.2** `DEPLOYMENT_CHECKLIST.md` 补 `sentiment` 数据源接入说明 + 环境变量（ApeWisdom 免 Key）。
 - [ ] **D.3** 更新 `.env.data-node.example` 与 `DS_CAPABILITIES` 说明（新增 `sentiment`）。
 - [ ] **D.4** 全链路端到端验证 + 最终 PR。
