@@ -340,10 +340,17 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 
 ### 9.3 任务清单（AGENT-15 ~ AGENT-19）
 
-- [ ] **[AGENT-15]** **会话事件日志持久化（Rollout）**
+- [x] **[AGENT-15]** **会话事件日志持久化（Rollout）** ✅
   - **现状**：S14
   - **改法**：SessionEventLog 增加 JSONL rollout 落盘：`logs/sessions/{date}/{session_id}.jsonl`，首行 SessionMeta（session_id / model / 创建时间）；append-only 写入；budget 上限（单文件超限 → 移入 archived 子目录，事件不丢）；`_load_session` 冷启动时从 rollout 重放事件日志（Redis/PG 消息与事件日志双轨恢复）
   - **验收**：进程重启后事件日志可完整重放；budget 超限走归档而非截断；恢复幂等测试
+  - **实现** (commit `3bb89a0`)：
+    - `rollout_storage.py` +199 行：cursor 分页 (`read_events_paginated`) + `list_sessions` + `get_event_stats`
+    - `memory_ops.py` +54 行：三轨冷启动恢复 Redis → PG → Rollout JSONL + `_restore_event_log_from_rollout` 辅助
+    - `agent.py` +22 行：`initialize()` 幂等写入 SessionMeta
+    - `event_log.py` +3 行：`load_from_rollout` 支持 `base_dir` 参数（测试隔离）
+    - `routers/chat.py` +83 行：3 个 Rollout 查询 API（分页/统计/会话列表）
+    - `test_rollout_storage_ag15.py`：32/32 测试全通过
 - [ ] **[AGENT-16]** **摘要压缩取代破坏性截断**
   - **现状**：S15 —— 现在滑动窗口直接丢消息，被丢内容不可恢复（仅事件日志可重建，但模型看不到的部分没有摘要承接）
   - **改法**：`_compress_memory` 新增摘要路径：被裁部分用 pro 模型生成摘要，产出 `ContextCompactionItem` 写回 messages 头部与事件日志（压缩本身可审计）；摘要失败时 fallback 现有有损截断（codex `compact_model_fallback` 范式）；token-based 截断策略统一事件日志 4KB / tool 内容 800 字两处口径
