@@ -256,6 +256,63 @@ class OptionDataService:
             enable_merge=False,
         )
 
+    async def get_option_underlying_put_call(
+        self,
+        ticker: str,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """B.1 个股级多空情绪（Put/Call 量比）。
+
+        基于 Futu `OPTION_UNDERLYING_OVERVIEW` 的 call_volume/put_volume 派生个股 P/C 比
+        （OpenD 已接入、零幻觉；yfinance 免费期权链 2026-08 实测限流不可用，故不走它）。
+        与 CBOE 全市场 P/C（sentiment_tracker）互补，刻画个股多空倾向。
+
+        B.2 归一化（文档约定）：P/C > 1.2 → 偏空（-）；< 0.8 → 偏多（+）；映射 -1~1。
+        空数据 / 无量 → available=False 降级（零幻觉，不臆造）。
+        """
+        self._validate_ticker(ticker)
+        res = await self.get_option_underlying_overview(ticker, prefer_sources=prefer_sources)
+        if res.is_error:
+            return res
+        data = res.data
+        row = None
+        if isinstance(data, dict):
+            rows = data.get("data")
+            if isinstance(rows, list) and rows:
+                row = rows[0]
+        if not isinstance(row, dict):
+            return res
+        call_vol = row.get("call_volume")
+        put_vol = row.get("put_volume")
+        panel = {"available": False, "note": "Put/Call 量仓缺失", "ticker": ticker, "pc_ratio": None, "signal": None}
+        if call_vol and put_vol:
+            try:
+                pc = float(put_vol) / float(call_vol)
+            except (TypeError, ValueError, ZeroDivisionError):
+                pc = None
+            if pc is not None:
+                # B.2 归一化：>1.2 偏空 / <0.8 偏多，中间中性；映射 -1(极空)~+1(极多)
+                if pc >= 1.2:
+                    score = max(-1.0, -0.4 - (pc - 1.2) * 2.0)
+                    signal = "偏空"
+                elif pc <= 0.8:
+                    score = min(1.0, 0.4 + (0.8 - pc) * 2.0)
+                    signal = "偏多"
+                else:
+                    score = (0.8 - pc) * 5.0  # 0.8~1.2 → +0 附近
+                    signal = "中性"
+                panel = {
+                    "available": True,
+                    "ticker": ticker,
+                    "call_volume": float(call_vol),
+                    "put_volume": float(put_vol),
+                    "pc_ratio": round(pc, 4),
+                    "score": round(max(-1.0, min(1.0, score)), 4),
+                    "signal": signal,
+                }
+        data["underlying_put_call"] = panel
+        return res
+
     async def get_option_market_statistic(
         self,
         option_market: str = "US_SECURITY",

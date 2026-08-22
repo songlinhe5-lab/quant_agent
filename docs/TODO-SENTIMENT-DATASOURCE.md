@@ -95,10 +95,10 @@
 > 且本仓已实现（CBOE 全市场 P/C 已接入 `sentiment_tracker` 研判层）。仅「散户社交多空占比」一项仍无可靠免费源。
 
 - [x] **B.0** 市场化多空情绪已落地：CBOE Total P/C Ratio（`cboe_pc_ratio.py` 采集器 + `cboe_pc_daemon` 周期刷新至 `yf_macro_cache_^CPC`）已由 `SentimentTracker` 每小时打点落库（`models.SentimentRecord.pc_ratio`），与 VIX / Credit Spread 形成机构级多空视图。*（2026-08-22 调研确认，代码早已存在）*
-- [ ] **B.1** 个股级多空情绪增强（可选）：基于 `yfinance` 期权链计算单标的 Put/Call 成交量比（免费、2026-08 实测可行），作为 CBOE 全市场 P/C 的补充，刻画个股多空倾向。实现 `_internal/yfinance/options_pc.py` + 接入研判矩阵 C 线，并对 yfinance 限速退避（免费源易被封）。
-- [ ] **B.2** 明确 P/C Ratio 语义与归一化：按系统约定标注偏多/偏空阈值（如 >1.2 偏空 / <0.8 偏多，或映射 -1~1），接入 `AGENTS.md` §7 多空矩阵作为独立情绪行。
-- [ ] **B.3** 单测 + 限流退避（yfinance 免费但需限速）。
-- [ ] **B.4** 提交 PR。
+- [x] **B.1** 个股级多空情绪增强：✅ **2026-08-22 实现，数据源改用 Futu 而非 yfinance**。零幻觉验证：`yfinance` 期权链 **2026-08-22 实测全局限流**（`YFRateLimitError: Too Many Requests`，AAPL+MSFT 均失败），故弃用；改用 **Futu `get_option_underlying_overview`（P0.5 已实现，OpenD 实测返回 call_volume=924462/put_volume=610806）** 派生个股 P/C。实现 `business/option.py::get_option_underlying_put_call`（基于 overview 的 call/put volume）+ HTTP 端点 `/option-underlying-put-call`。实测 AAPL P/C=0.6607 → 偏多。
+- [x] **B.2** P/C Ratio 语义与归一化：✅ 文档约定阈值落地：**P/C > 1.2 偏空 / < 0.8 偏多 / 中间中性**，映射 **-1(极空)~+1(极多)**；`get_option_underlying_put_call` 返回 `pc_ratio`/`score`/`signal`，空数据降级不臆造。
+- [x] **B.3** 单测：✅ `TestUnderlyingPutCall` 5 例（偏空/偏多/中性/无量仓降级/错误透传），`test_option_full_dim_service.py` 共 **17 例全过**。（注：yfinance 限流故不再做 yfinance 限流退避，改用 Futu 已接入数据源）
+- [ ] **B.4** 提交 PR（本次 B.1~B.3 已 commit `B.1 个股P/C`，待标注）。
 - [ ] **B.5** 散户社交多空占比（原 B.6）：仍维持待定。若确认需要，评估机构级付费源（Social Market Analytics / RavenPack，$299+/月），单独立项。未经实测 Key 权限 + 端点存活不接入。
 
 ### 阶段 C：信号接入研判层

@@ -680,6 +680,19 @@ async def get_option_underlying_overview(ticker: str):
     return {**facade_res.data, "source": f"facade+{facade_res.source}"}
 
 
+@router.get("/option-underlying-put-call")
+async def get_option_underlying_put_call(ticker: str):
+    """B.1 个股级多空情绪（Put/Call 量比 + 归一化信号）。
+
+    基于 Futu overview 的 call/put volume 派生（OpenD 零幻觉；yfinance 限流不可用）。
+    B.2 归一化：P/C > 1.2 偏空 / < 0.8 偏多，映射 -1(极空)~+1(极多)。
+    """
+    facade_res = await _facade_option.get_option_underlying_put_call(ticker)
+    if facade_res.is_error:
+        raise HTTPException(status_code=400, detail=facade_res.error.message if facade_res.error else "个股 P/C 不可用")
+    return {**facade_res.data, "source": f"facade+{facade_res.source}"}
+
+
 @router.get("/option-market-statistic")
 async def get_option_market_statistic(
     option_market: str = "US_SECURITY",

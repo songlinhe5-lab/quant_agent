@@ -120,3 +120,50 @@ async def test_put_call_panel_error_passthrough(svc):
     svc._facade._dispatch = AsyncMock(return_value=_result(None, is_error=True))
     out = await svc.get_option_put_call_panel("US_SECURITY", "VOLUME")
     assert out.is_error is True
+
+
+# ── B.1 个股级多空情绪（get_option_underlying_put_call）──────────────────
+async def test_underlying_put_call_bearish(svc):
+    """P/C > 1.2 → 偏空，score 为负"""
+    data = {"data": [{"call_volume": 1000, "put_volume": 1500}]}
+    svc._facade._dispatch = AsyncMock(return_value=_result(data))
+    out = await svc.get_option_underlying_put_call("US.AAPL")
+    panel = out.data["underlying_put_call"]
+    assert panel["available"] is True
+    assert abs(panel["pc_ratio"] - 1.5) < 1e-3
+    assert panel["signal"] == "偏空"
+    assert panel["score"] < 0
+
+
+async def test_underlying_put_call_bullish(svc):
+    """P/C < 0.8 → 偏多，score 为正"""
+    data = {"data": [{"call_volume": 924462, "put_volume": 610806}]}
+    svc._facade._dispatch = AsyncMock(return_value=_result(data))
+    out = await svc.get_option_underlying_put_call("US.AAPL")
+    panel = out.data["underlying_put_call"]
+    assert panel["available"] is True
+    assert panel["signal"] == "偏多"
+    assert panel["score"] > 0
+
+
+async def test_underlying_put_call_neutral(svc):
+    """0.8 <= P/C <= 1.2 → 中性"""
+    data = {"data": [{"call_volume": 1000, "put_volume": 1000}]}
+    svc._facade._dispatch = AsyncMock(return_value=_result(data))
+    out = await svc.get_option_underlying_put_call("US.AAPL")
+    assert out.data["underlying_put_call"]["signal"] == "中性"
+
+
+async def test_underlying_put_call_missing_volume_degrades(svc):
+    """无量仓 → available=False + note（零幻觉，不臆造）"""
+    data = {"data": [{"call_volume": None, "put_volume": None}]}
+    svc._facade._dispatch = AsyncMock(return_value=_result(data))
+    out = await svc.get_option_underlying_put_call("US.AAPL")
+    assert out.data["underlying_put_call"]["available"] is False
+
+
+async def test_underlying_put_call_error_passthrough(svc):
+    """上游 error → 原样透传"""
+    svc._facade._dispatch = AsyncMock(return_value=_result(None, is_error=True))
+    out = await svc.get_option_underlying_put_call("US.AAPL")
+    assert out.is_error is True
