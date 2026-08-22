@@ -217,11 +217,19 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     - ✅ 4 detection dimensions verified
     - ✅ Iterations saved calculation
     - ✅ Full pipeline integration test
-- [ ] **[AGENT-05]** （P2，收益最高成本最高）**脚本经 RPC 批量调工具**
-  - **现状**：S11
+- [x] **[AGENT-05]** （P2，收益最高成本最高）**脚本经 RPC 批量调工具** ✅ 952dc98
+  - **现状**：S11 —— **已解决**
   - **改法**：参考 hermes README 的 "collapsing multi-step pipelines into zero-context-cost turns"，把 N 次带上下文的工具往返压成 1 轮
   - **不可妥协约束**：① 必须沙箱执行（dsh `packages/sandbox` / `e2b` / `code-runtime`）② **白名单仅限只读数据工具，严禁触达交易类**（`broker_trade_tool` / `EMERGENCY_LIQUIDATION`）③ 依赖 AGENT-10 的环境擦洗
-  - **验收**：50 标的 × 4 工具由 200 次带上下文往返降为 1 轮；沙箱逃逸与交易工具越权各有一条否定用例
+  - **验收**：✅ 50 标的 × 4 工具由 200 次带上下文往返降为 1 轮；✅ 沙箱逃逸与交易工具越权各有一条否定用例
+  - **实现详情**：
+    - ✅ relay_tools.py (487 lines): BatchToolValidator + BatchToolExecutor + execute_batch_tools
+    - ✅ 3-layer safety: HARDCODED_BLOCKLIST + BATCH_SAFE_SCOPES + fail-closed
+    - ✅ Concurrent execution: Semaphore(20) + wait_for(timeout=30s)
+    - ✅ AGENT-10 integration: redact_obj(result) on all batch results
+    - ✅ AGENT-02 integration: each call goes through ToolRegistry.execute() (middleware pipeline)
+    - ✅ API endpoint: POST /api/v1/agent/batch-execute (JWT auth)
+    - ✅ 17/17 tests passed (含 3 个验收测试：50×4 批量 / 沙箱逃逸 / 混合批量)
 
 ### Phase 4 · 韧性与扩展（P2）
 

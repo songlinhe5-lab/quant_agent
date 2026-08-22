@@ -217,7 +217,6 @@ class TestBatchToolExecutor:
         """测试批量执行处理工具错误"""
         # 注册一个会失败的工具
         executor._registry.register("failing_tool", scopes=["quote"])
-        original_execute = executor._registry.tools["failing_tool"].execute
 
         async def failing_execute(**kwargs):
             return {"status": "error", "message": "模拟失败"}
