@@ -37,6 +37,9 @@
 2. 新增 `PUT /api/v1/preferences/ai-push`、`GET /api/v1/preferences/ai-push`。
 3. 前端抽 `useAiPushPrefStore`(persist)，取代散落开关；AI-01~08 推送逻辑统一读此 store。
 
+> ✅ **底座已实现**（早于 B3 批次）：`PreferencesModel` 扩 `ai_push` 字段；`GET/PUT /settings/preferences/ai-push`（`preferences.py`，未知模块返回 400，已单测 `test_api_preferences.py`）；`useAiPushPrefStore`(persist) + 前端 `AiPushPreferencesCard`（`settings-content.tsx`）渲染 ai01~08 独立开关 + 阈值输入，已被 AI-01~08 真实消费。
+> ⚠️ **自然语言配置子项（"把告警推到 Telegram，只推 P0/P1"）未做**：拆出为 P3，依赖 Telegram/推送通道接入（`notifications` 仍为占位），非 B3 红线范围，单独跟踪。
+
 **接口契约**
 ```
 PUT /api/v1/preferences/ai-push
@@ -115,6 +118,8 @@ POST /api/v1/backtest/overfit-check  NEW
 2. 新增 `GET /oms/position-health/{id}`：对比入场逻辑信号，失效则建议止盈（复用 `alpha158` 信号）。
 3. 前端 `order-confirm-modal` 注入 AI 预检区块，由 `ai04` 开关控制。
 
+> ✅ **已实现**（2026-08-22，commit `de66443`）：`POST /oms/precheck` + `GET /oms/position-health/{id}` 已落地；position-health 复用 `alpha158` 信号对比失效建议止盈。前端 `order-confirm-modal` 注入 `AiPrecheckBlock`（ai04 开关）；LLM 缺失/失败诚实降级。
+
 **接口契约**
 ```
 POST /api/v1/oms/precheck  NEW
@@ -133,6 +138,8 @@ GET /api/v1/oms/position-health/{position_id}  NEW
 2. 复用 `alert_router` 推送通道 + `ai05` 开关。
 3. 压测情景推荐：读 `risk/stress-test/scenarios`，按持仓 Beta 排序 Top3。
 
+> ✅ **已实现**（2026-08-22，commit `2c53368`）：`POST /risk/alert-narrative` + 压测情景推荐已落地；复用 `alert_router` 推送通道（ai05 开关）；LLM 缺失/失败诚实降级。
+
 **接口契约**
 ```
 POST /api/v1/risk/alert-narrative  NEW
@@ -147,6 +154,8 @@ POST /api/v1/risk/alert-narrative  NEW
 ### AI-06 告警中心·分诊员（P2）
 **Plan**：新增 `POST /alert/triage`，吃 `alert/events` + `macro/sector-fund-flow`，LLM 做板块关联分析 + 多告警优先级排序（止损>突破）；排序质量用 `EvalFramework` 校验。
 
+> ✅ **已实现**（2026-08-22，commit `ddf8026`）：`POST /alert/triage` 已落地；排序质量经 `EvalFramework` 校验；LLM 缺失/失败诚实降级（仅规则结论）。
+
 **接口契约**
 ```
 POST /api/v1/alert/triage  NEW
@@ -157,6 +166,8 @@ POST /api/v1/alert/triage  NEW
 ### AI-07 纸面组合·实盘教练（P2）
 **Plan**：新增 `POST /paper/{id}/readiness` + `POST /paper/{id}/drift-warning`，基于 `paper/compare` + `llm_service` 生成实盘就绪评估、纸面 vs 回测偏差预警（Sharpe 差异归因滑点）。
 
+> ✅ **已实现**（2026-08-22，commit `2b84f27`）：改为只读 `GET /paper/portfolios/{pid}/readiness` + `GET /paper/portfolios/{pid}/drift-warning`（体检语义更契合 GET）；复用 `paper_ledger_service` + `paper/compare` 的 cumulative_drift/tracking_error；规则检查（状态非running/回撤>20%/偏离基准>5%/成交稀疏）+ LLM 综合建议；前端 `PortfolioDetail` 注入 `AiCoachCard`（ai07 开关）。
+
 **接口契约**
 ```
 POST /api/v1/paper/{portfolio_id}/readiness  NEW
@@ -166,6 +177,8 @@ POST /api/v1/paper/{portfolio_id}/readiness  NEW
 
 ### AI-08 宏观数据中心·事件推演（P2）
 **Plan**：新增 `POST /macro/event-inference`（高危事件推演卡，复用 `sentiment_service` + `llm_service`）；新增 `POST /macro/vix-beta-impact`（VIX×组合 Beta→日波动测算，复用 `alpha158.beta`）。
+
+> ✅ **已实现**（2026-08-22，commit `bb61d01`）：`POST /macro/event-inference` 已落地（LLM(STANDARD) 推演 + confidence，诚实降级）；前端 `EconomicView` 紫卡 `AiEventInferenceCard`（ai08 开关）从硬编码假文本改为真实调用。**注**：`POST /macro/vix-beta-impact`（VIX×组合 Beta 日波动测算）本次未建，留待后续。
 
 **接口契约**
 ```

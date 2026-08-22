@@ -235,7 +235,7 @@ def _safe_pct(value, mult: float = 100.0):
 
 
 @router.get("/news")
-async def get_company_news(ticker: str, limit: int = 10):
+async def get_company_news(ticker: str, limit: int = 10, with_sentiment: bool = False):
     """获取个股专属新闻 (Finnhub 直连)"""
     from datetime import datetime
 
@@ -280,6 +280,15 @@ async def get_company_news(ticker: str, limit: int = 10):
                     real_news = await _fetch_finnhub_news(safe_ticker, limit, days_back=3)
                     source_tag = "finnhub"
                 if real_news is not None:
+                    # SENT-02: 可选经 SentimentService 对每条新闻做 LLM 情感打分（-100~100），
+                    # 打分失败不影响返回（降级为无 sentiment 的新闻）
+                    if with_sentiment and real_news:
+                        try:
+                            from backend.services.macro.sentiment_service import sentiment_service
+
+                            real_news = await sentiment_service.batch_analyze_news(real_news)
+                        except Exception as sent_e:  # noqa: BLE001
+                            print(f"⚠️ [Market News] {safe_ticker} 情感打分失败(降级跳过): {sent_e}")
                     result = {
                         "status": "success",
                         "count": len(real_news),
@@ -314,6 +323,13 @@ async def get_company_news(ticker: str, limit: int = 10):
                         for item in yahoo_news_list[:limit]
                         if isinstance(item, dict)
                     ]
+                    if with_sentiment and yahoo_formatted:
+                        try:
+                            from backend.services.macro.sentiment_service import sentiment_service
+
+                            yahoo_formatted = await sentiment_service.batch_analyze_news(yahoo_formatted)
+                        except Exception as sent_e:  # noqa: BLE001
+                            print(f"⚠️ [Market News] {safe_ticker} Yahoo 情感打分失败(降级跳过): {sent_e}")
                     result = {
                         "status": "success",
                         "count": len(yahoo_formatted),

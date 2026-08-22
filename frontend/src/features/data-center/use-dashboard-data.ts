@@ -9,7 +9,7 @@ import { playAlertSound } from '@/features/data-center/shared'
 import type { MarginMarketData } from '@/features/data-center/margin-trading'
 import type { SectorFundFlowData } from '@/features/data-center/sector-flow'
 
-export type HubTab = 'overview' | 'capital' | 'calendars'
+export type HubTab = 'overview' | 'capital' | 'calendars' | 'earnings'
 
 export function useDashboardData() {
   const setWsStatus = useSystemStore((state) => state.setWsStatus)
@@ -28,6 +28,8 @@ export function useDashboardData() {
   const [news, setNews] = useState<any[]>([])
   const [capitalFlows, setCapitalFlows] = useState<CapitalFlowItem[]>([])
   const [sentimentInd, setSentimentInd] = useState<any>(null)
+  // SENT-01: 情绪因子历史序列（VIX / P/C / 信用利差），来自 /macro/sentiment-history，用于真实折线图
+  const [sentimentHistory, setSentimentHistory] = useState<any[]>([])
   const [earnings, setEarnings] = useState<any[]>([])
   const [earningsStatus, setEarningsStatus] = useState<string>('unknown')
   const [earningsMessage, setEarningsMessage] = useState<string>('')
@@ -35,6 +37,14 @@ export function useDashboardData() {
   const [marginStatus, setMarginStatus] = useState<string>('unknown')
   const [sectorFlowData, setSectorFlowData] = useState<SectorFundFlowData | null>(null)
   const [sectorFlowStatus, setSectorFlowStatus] = useState<string>('unknown')
+  // FUNDFLOW-01: 跨市场资金流看板聚合（港股南向双通道 / 美股板块ETF / 美股大单）
+  const [capitalFlowDashboard, setCapitalFlowDashboard] = useState<any>(null)
+  const [capitalFlowDashboardStatus, setCapitalFlowDashboardStatus] = useState<string>('unknown')
+  // FUNDFLOW-02: A股龙虎榜 + 港股经纪商席位
+  const [aShareLhb, setAShareLhb] = useState<any>(null)
+  const [aShareLhbStatus, setAShareLhbStatus] = useState<string>('unknown')
+  const [hkBrokerQueue, setHkBrokerQueue] = useState<any>(null)
+  const [hkBrokerQueueStatus, setHkBrokerQueueStatus] = useState<string>('unknown')
   const [ecoMsg, setEcoMsg] = useState('')
   const [ecoDed, setEcoDed] = useState('')
   const [ecoSources, setEcoSources] = useState<string[]>([])
@@ -68,10 +78,14 @@ export function useDashboardData() {
     if (document.hidden) return
     try {
       setFetching(true)
-      const [dashRes, flowRes, newsRes] = await Promise.allSettled([
+      const [dashRes, flowRes, newsRes, flowDashRes, lhbRes, brokerRes, sentHistRes] = await Promise.allSettled([
         apiClient.get('/macro/dashboard'),
         apiClient.get('/macro/capital-flow'),
         apiClient.get('/macro/news?limit=50'),
+        apiClient.get('/macro/capital-flow-dashboard'),
+        apiClient.get('/macro/a-share-lhb'),
+        apiClient.get('/macro/hk-broker-queue?symbol=HK.00700'),
+        apiClient.get('/macro/sentiment-history?limit=120'),
       ])
       if (dashRes.status === 'fulfilled' && dashRes.value.data?.status === 'success') {
         const d = dashRes.value.data.data
@@ -97,8 +111,34 @@ export function useDashboardData() {
       if (flowRes.status === 'fulfilled' && flowRes.value.data?.status === 'success') {
         setCapitalFlows(flowRes.value.data.data || [])
       }
+      // FUNDFLOW-01: 跨市场资金流看板（港股南向双通道 / 美股板块ETF / 美股大单）
+      if (flowDashRes.status === 'fulfilled' && flowDashRes.value.data?.status === 'success') {
+        setCapitalFlowDashboard(flowDashRes.value.data.data || null)
+        setCapitalFlowDashboardStatus('success')
+      } else {
+        setCapitalFlowDashboardStatus('unavailable')
+      }
+      // FUNDFLOW-02: A股龙虎榜
+      if (lhbRes.status === 'fulfilled' && lhbRes.value.data?.status === 'success') {
+        setAShareLhb(lhbRes.value.data.data || null)
+        setAShareLhbStatus('success')
+      } else {
+        setAShareLhbStatus('unavailable')
+      }
+      // FUNDFLOW-02: 港股经纪商席位队列
+      if (brokerRes.status === 'fulfilled' && brokerRes.value.data?.status === 'success') {
+        setHkBrokerQueue(brokerRes.value.data.data || null)
+        setHkBrokerQueueStatus('success')
+      } else {
+        setHkBrokerQueueStatus('unavailable')
+      }
       if (newsRes.status === 'fulfilled' && newsRes.value.data?.status === 'success') {
         setNews(newsRes.value.data.data || [])
+      }
+      // SENT-01: 情绪因子历史序列（VIX / P/C / 信用利差）真实数据，供折线图使用
+      if (sentHistRes.status === 'fulfilled' && sentHistRes.value.data?.status === 'success') {
+        const hist = sentHistRes.value.data.data || []
+        setSentimentHistory(Array.isArray(hist) ? hist : [])
       }
     } catch (err) {
       console.warn('仪表盘数据获取失败:', err)
@@ -253,9 +293,11 @@ export function useDashboardData() {
   return {
     // state
     fetching, last, radarInfo, setRadarInfo, calendarInfo, setCalendarInfo,
-    assets, radar, events, news, capitalFlows, sentimentInd, earnings,
+    assets, radar, events, news, capitalFlows, sentimentInd, earnings, sentimentHistory,
     earningsStatus, earningsMessage, marginData, marginStatus, sectorFlowData,
     sectorFlowStatus, ecoMsg, ecoDed, ecoSources, earnDed,
+    capitalFlowDashboard, capitalFlowDashboardStatus,
+    aShareLhb, aShareLhbStatus, hkBrokerQueue, hkBrokerQueueStatus,
     selectedImpacts, setSelectedImpacts, selectedCountry, setSelectedCountry,
     selectedDateFilter, setSelectedDateFilter, selectedEvent, setSelectedEvent,
     visibleNewsCount, setVisibleNewsCount, uniqueCountries,

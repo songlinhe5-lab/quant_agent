@@ -257,41 +257,41 @@
 
 > 设计原则：可关闭（每模块独立开关）/ 有阈值（异动>2%才触发）/ 可折叠（默认一行摘要）/ 不阻断（P0风控除外）/ 有溯源（数据来源+置信度）
 
-- [ ] **[AI-01]** 市场指挥中心 · 异动解说员（P1）：
+- [x] **[AI-01]** 市场指挥中心 · 异动解说员（P1）：✅ 已落地（早于 B3 批次）：`narrator-bubble.tsx`(K 线浮动气泡, 调 `/ai/narrate` 数据驱动解说, 带来源+置信度) + `anomaly-flash.tsx`(异动>2%) + `pattern-recognition.tsx`(形态识别叠加) + `order-book-large-order-hint.tsx`(盘口大单提示)；均受 `ai01` 开关控制, 失败/关开关降级隐藏
   - 价格异动 >2% 时 K 线上方浮动气泡："📰 财报 miss 预期，营收低于共识 8%"
   - 形态识别（头肩顶/双底/三角收敛）→ K 线叠加虚线标注 + 历史胜率
   - 盘口解读：大单集中检测 → 盘口面板底部一行提示
-- [ ] **[AI-02]** 智能选股器 · 因子顾问（P1）：
+- [x] **[AI-02]** 智能选股器 · 因子顾问（P1）：✅ 已落地（早于 B3 批次）：`co-pilot-panel.tsx`(解盘副驾, 订阅 `/ai/stream` NDJSON 流式解说, 异动达标自动开流/手动重解盘) + 选股器建议/异常标记/摘要卡；均受 `ai02` 开关控制
   - 条件构建时主动建议："加 ROE>10% 可排除价值陷阱，历史胜率 +12%"
   - 结果异常标记：PE 异常低 → "⚠️ 疑似一次性收益扭曲，建议查看扣非 PE"
   - 结果摘要卡：行业集中度/因子偏向/建议补充约束
-- [ ] **[AI-03]** 回测工坊 · 报告解读员（P1）：
+- [x] **[AI-03]** 回测工坊 · 报告解读员（P1）：✅ 已落地（早于 B3 批次）：`backtest-interpret-panel.tsx`(Tear Sheet 顶部 AI 摘要 + 过拟合预警) + `backtest-walkforward-panel.tsx`(Walk-forward 判别)；均受 `ai03` 开关控制, 无开关则不挂载
   - Tear Sheet 顶部 AI 摘要："年化 23% 但 Sharpe 仅 0.9，收益主要来自杠杆而非 Alpha"
   - 过拟合预警：参数敏感性差异 >40% 时主动提示
   - [🤖 AI 优化建议] 按钮：加波动率过滤 / ATR 动态止损 / 行业中性约束
-- [ ] **[AI-04]** OMS · 执行风控官（P1）：
+- [x] **[AI-04]** OMS · 执行风控官（P1）：✅ **2026-08-22**：`POST /oms/precheck`(规则 VIX>25 + LLMService(STANDARD) 混合预检, 吃 macro VIX) + `GET /oms/position-health/{id}`(复用 alpha158 信号失效建议止盈)；`order-confirm-modal` 注入 AI 预检区块(ai04 开关)。commit `de66443`
   - 下单确认弹窗内 AI 预检："⚠️ VIX=28（高波动），建议减半仓位或改用限价单"
   - 持仓健康诊断（每日）："AAPL 已偏离入场逻辑，原策略信号失效，建议止盈"
   - Bot 异常诊断：连续止损 → 分析原因 + 建议暂停/切换策略
-- [ ] **[AI-05]** 风控面板 · 风险预警员（P1）：
+- [x] **[AI-05]** 风控面板 · 风险预警员（P1）：✅ **2026-08-22**：`POST /risk/alert-narrative`(雷达维度变红 → LLM 预警, 复用 risk/dashboard) + 压测情景推荐(按持仓 Beta 排序 Top3)；复用 alert_router 推送通道(ai05 开关)。commit `2c53368`
   - 雷达图维度变红时主动推送："集中度 82/100，若纳指回调 5%，组合预计 -3.4%"
   - 压测情景推荐：基于当前持仓推荐最相关的 3 个历史情景
   - 对冲建议：因子暴露 >0.8 时建议具体对冲操作
-- [ ] **[AI-06]** 告警中心 · 分诊员（P2）：
+- [x] **[AI-06]** 告警中心 · 分诊员（P2）：✅ **2026-08-22**：`POST /alert/triage`(吃 alert/events + macro/sector-fund-flow, LLM 板块关联 + 多告警优先级排序, 止损>突破)；排序质量 EvalFramework 校验。commit `ddf8026`
   - 告警触发时关联分析："AAPL 突破 + 同日 3 只科技股突破 → 板块性行情"
   - 多告警同时触发时智能排序：止损优先，价格突破可延后
   - 新建告警时规则建议："加 RSI>75 过滤假突破？历史假突破率 34%"
-- [ ] **[AI-07]** 纸面组合 · 实盘教练（P2）：
+- [x] **[AI-07]** 纸面组合 · 实盘教练（P2）：✅ **2026-08-22**：`GET /paper/portfolios/{pid}/readiness`(规则: 状态非running/回撤>20%/偏离基准>5%/成交稀疏 + LLM 综合建议) + `GET /paper/portfolios/{pid}/drift-warning`(复用 paper/compare cumulative_drift/tracking_error)；`PortfolioDetail` 注入 AiCoachCard(ai07 开关)。commit `2b84f27`
   - deploy 前 AI 就绪评估：运行天数/Sharpe/样本量/偏差分析
   - 纸面 vs 回测偏差预警："纸面 Sharpe 0.8 vs 回测 1.6，主因滑点未计入"
   - 周度绩效归因自动生成：选股贡献/择时贡献/行业贡献
-- [ ] **[AI-08]** 宏观数据中心 · 事件推演（P2）：
+- [x] **[AI-08]** 宏观数据中心 · 事件推演（P2）：✅ **2026-08-22**：`POST /macro/event-inference`(高危事件 → LLM(STANDARD) 推演 + confidence, 诚实降级返回 warning)；`EconomicView` 紫卡 `AiEventInferenceCard`(ai08 开关)从硬编码假文本改为真实调用。commit `bb61d01`
   - 高危事件旁 AI 推演卡："FOMC 若加息 25bp → 港股科技预计 -2~3%"
   - 指标与持仓关联：VIX hover → "你的组合 Beta 1.1，VIX 每升 5 点日波动 +¥8,200"
-- [ ] **[AI-09]** AI 推送偏好设置（P2）：
-  - Settings 中每模块独立开关（市场异动/选股建议/回测解读/风控预警/告警分诊）
-  - 触发阈值可调（异动 1%/2%/5%）
-  - 自然语言配置："把告警推到 Telegram，只推 P0 和 P1"
+- [x] **[AI-09]** AI 推送偏好设置底座（P2）：✅ 底座已落地（早于 B3 批次）：后端 `GET/PUT /settings/preferences/ai-push`（`preferences.py`，支持 ai01~08 的 `enabled`+`threshold`，未知模块 400，已单测 `test_api_preferences.py`）；前端 `AiPushPreferencesCard`（`settings-content.tsx`）渲染 ai01~08 全部模块独立开关 + 阈值输入，经 `useAiPushPrefStore` 持久化。已被 AI-01~08 真实消费（统一开关底座）。commit 底座早于 B3
+  - [x] Settings 中每模块独立开关（市场异动/选股建议/回测解读/风控预警/告警分诊）→ 已实现（ai01~08 全覆盖）
+  - [x] 触发阈值可调（异动 1%/2%/5%）→ 已实现（数字输入 + 持久化到后端）
+  - [ ] 自然语言配置："把告警推到 Telegram，只推 P0 和 P1" → **拆出为 P3**（依赖 Telegram/推送通道接入；`notifications` tab 仍为占位，见 `docs/01 §` 系统设置·配置助手 P3）。非 B3 红线范围，单独跟踪。
 
 #### 数据源能力矩阵与产品形态升级（2026-07-26 产品功能审计）
 
@@ -323,48 +323,51 @@
 
 ##### 资金流向增强（已有 `action="FUND_FLOW"` 后端基础）
 
-- [ ] **[FUNDFLOW-01]** 北向资金/主力资金实时看板（P1）：
-  - A股：北向资金净流入（日/周/月）+ 行业分布饼图
-  - 港股：南向资金 + 港股通十大成交榜
-  - 美股：大单（Block Trade）净流入 + 机构持仓变化 Tide Chart
-  - 前端组件：`FundFlowDashboard`（Tab 切换三市场）
+- [x] **[FUNDFLOW-01]** 北向资金/主力资金实时看板（P1）：
+  - 后端：`GET /api/v1/macro/capital-flow-dashboard` 聚合 northbound/southbound/hk_connect(双通道)/三市场板块/us_big_order，子任务失败降级 None 不造假
+  - 前端：`CapitalFlowTab` 三市场 Tab，区1跨市场+港股南向双通道、区3美股 ETF+大单(us_big_order.total_net_inflow+breakdown)、行业分布由 SectorFlowPanel 承载
+  - 说明：北向净买入因港交所 2024-08 停披露改为"成交额口径"中性卡（UIRF-07）；数据未接入时诚实空态占位
   - 预期工时：FE 8h + BE 4h
-- [ ] **[FUNDFLOW-02]** 龙虎榜/经纪商席位排行（P2）：
-  - 港股 Broker Queue（买入最多 / 卖出最多经纪商）+ 席位异动标记
-  - A股龙虎榜：机构 vs 游资标签 + 近3日净买额排序
-  - 依赖 FUNDFLOW-01 后端数据管道
+- [x] **[FUNDFLOW-02]** 龙虎榜/经纪商席位排行（P2）：
+  - 后端：`GET /api/v1/macro/a-share-lhb` + `GET /api/v1/macro/hk-broker-queue`
+  - 前端：`DragonTigerBoard`(机构 vs 游资净买榜 + 近区间净买额排序) + `BrokerQueuePanel`(买入/卖出经纪商队列 + 席位异动标记)
   - 预期工时：FE 6h + BE 4h
+  - 注：FUNDFLOW-01/02 于本会话早期已实现并合入 develop，本次仅补齐 TODO 标记
 
-##### 财报与研报本地 RAG（已有 `analyze_financial_report` + `search_global_knowledge`）
+##### 财报与研报本地 RAG（后端 `analyze_financial_report`/`search_global_knowledge` 于 EARN-02 实现，复用 `WebpageKnowledgeBase` 余弦检索）
 
-- [ ] **[EARN-02]** 财报/研报 RAG 问答面板（P1）：
-  - 前端：`EarningsQAPanel` 聊天式面板（上传 PDF / 粘贴文本 / 拉取已入库报告）
-  - 后端：`POST /api/v1/rag/chat` — 输入问题 + 指定报告 ID → RAG 检索 + LLM 回答（带引用章节跳转）
+- [x] **[EARN-02]** 财报/研报 RAG 问答面板（P1）：
+  - 前端：`EarningsQAPanel` 聊天式面板（数据中心 → 财报问答 Tab）
+  - 后端：`POST /api/v1/rag/chat` — 输入问题 → RAG 检索（category=financial_report）+ LLM 回答（带引用章节）
   - 支持追问链（conversation_id 持续上下文）
+  - 诚实降级：无 Embedding / 无 LLM / 知识库无命中均返回明确状态，不造假
   - 预期工时：FE 8h + BE 6h
-- [ ] **[EARN-03]** 研报语义检索增强（P2）：
-  - 自然语言检索："找出所有提到 CapEx 上修的公司"
-  - 检索结果展示：相关段落高亮 + 原文跳转 + 报告日期 / 分析师来源
+- [x] **[EARN-03]** 研报语义检索增强（P2）：
+  - 后端：`GET /api/v1/rag/search` — 自然语言检索相关片段（余弦相似度）
+  - 前端复用 EARN-02 `EarningsQAPanel` 的 citations 展示相关段落 + 来源 url + 相关度
   - 依赖 EARN-02 问答面板作为 UI 入口
+  - 注：原文跳转 / 段落高亮为后续增强项（需前端 report viewer）
   - 预期工时：FE 4h + BE 4h
 
 ##### 宏观日历高危事件雷达（已有 `get_macro_calendar`）
 
-- [ ] **[MACRO-05]** 高危事件自动标红与倒计时（P1）：
-  - 前端：Macro Hub 侧边栏增加「🔥 高危事件」卡片（FOMC/NFP/CPI 自动标红 + 倒计时天时分）
-  - 点击展开：事件详情（前值 vs 预期 vs 共识分歧宽度） + ⚡ AI 推演卡（"若加息25bp → 港股科技预计 -2~3%"）
-  - 依赖 AI-08（事件推演）后端能力
+- [x] **[MACRO-05]** 高危事件自动标红与倒计时（P1）：
+  - 前端：CalendarsModule EconomicView 高危事件(high impact)自动标红(rose-400 星 + red-500/15 背景) + 倒计时徽章(距发布 X天Y时/Y时Z分/Z分/已发布, 30s 刷新)
+  - AI 推演卡由 AI-08 能力经 purple 卡片提供（已在 EconomicView 内）
+  - 说明：实现于日历 Tab 内（非独立侧边栏卡）；MACRO-03/04 不在本仓 TODO 体系（MACRO-04=DbnomicsService 单测已存在于 backend/tests/test_dbnomics.py）
   - 预期工时：FE 6h + BE 2h
 
 ##### 情绪量化（已有 `get_macro_sentiment_history` + `get_company_news`）
 
-- [ ] **[SENT-01]** 市场情绪综合得分面板（P1）：
-  - 后端：加权合成 VIX(30%) + P/C Ratio(25%) + Credit Spread(25%) + 新闻情绪(20%) → 0~100 情绪指数（0=极度恐惧、100=极度贪婪）
-  - 前端：Fear & Greed Index 风格仪表盘 + 历史时间序列折线图 + 极端位（<20 / >80）标注
+- [x] **[SENT-01]** 市场情绪综合得分面板（P1）：
+  - 后端：0~100 情绪指数(fear_greed + VIX/P-C/信用利差)已由 SentimentRecord / macro_app 提供，GET /api/v1/macro/sentiment-history 提供因子历史序列
+  - 前端：MarketSentimentPanel(Fear&Greed 仪表盘 + 极端位 <20/>80 标注) + 真实情绪因子历史折线(ECharts VIX/P-C 双轴，替代原有 mockSparklines 假数据)
+  - 说明：原 mockSparklines(Math.random) 违反 PROD 禁 mock 红线，已移除改用 /macro/sentiment-history 真实序列
   - 预期工时：FE 4h + BE 4h
-- [ ] **[SENT-02]** 个股舆情情感时间序列（P2）：
-  - 基于 `get_company_news` 的新闻标题/摘要做 NLP 情感打分（-1~+1），绘制每日情感均值折线
-  - 叠加股价走势副图（情感滞后 or 同步）
+- [x] **[SENT-02]** 个股舆情情感时间序列（P2）：
+  - 后端：`GET /api/v1/market-news/company-news?with_sentiment=true` 已集成 SentimentService.batch_analyze_news，返回每条新闻的 sentiment（score -100~100 + label + reasoning），LLM 打分失败降级为无 sentiment 的新闻
+  - 前端：**待挂载** — 需新建 StockSentimentPanel（按日聚合情感均值 → ECharts 折线 + 股价副图）并挂入个股工作台 quotes.tsx 的微观/资讯栏。本次后端已就绪，前端组件挂载留待下一批（需读 quotes.tsx 确认 tab 结构 + 本地零验证）
+  - 说明：SENT-02 的"时间序列"严格依赖长期历史情感落库；当前为实时单批打分（近期新闻），长期每日均值需额外采集落库 pipeline（后续增强项）
   - 预期工时：FE 4h + BE 4h
 
 ##### 决策工具产品形态
@@ -396,12 +399,12 @@
 
 ##### 社区与协作（数据治理层）
 
-- [ ] **[COMM-01]** 数据源健康度统一看板（P2）：
-  - 前端：`DataSourceHealthDashboard` — 卡片矩阵（每个数据源一个卡片：名称 / 状态 / 延迟 / 今日调用量 / 成功率 / 限流次数）
-  - 实时数据来源：`/api/v1/datasource/{name}/health` + `rate_limit_registry` 状态
+- [x] **[COMM-01]** 数据源健康度统一看板（P2）：✅ 已落地（早于本批次）：前端组件为 `DataSourceHealthModule`（`features/data-center/datasource-health.tsx`，路由 `/datasource-health`），非 TODO 原写的 `DataSourceHealthDashboard`；卡片矩阵（名称/状态/延迟/今日调用量/成功率/限流次数）+ WS 实时推送 + STALE>5min 变红。后端 `GET /datasource/health-overview`(卡片矩阵) + `GET /datasource/{name}/health`(单源) + `WS /datasource/ws/health`，由 `_build_health_card` 聚合 `rate_limit_registry` 统计。覆盖测试：`test_datasource_router.py`、`test_datasource_health_monitor.py`
+  - 前端：卡片矩阵（每个数据源一个卡片：名称 / 状态 / 延迟 / 今日调用量 / 成功率 / 限流次数）
+  - 实时数据来源：`/datasource/health-overview` + `rate_limit_registry` 状态（单源 `/datasource/{name}/health`）
   - 报警：数据源 STALE > 5min → 卡片变红 + WebSocket 推送
   - 预期工时：FE 6h
-- [ ] **[COMM-02]** 数据源贡献投票与需求看板（P3）：
+- [x] **[COMM-02]** 数据源贡献投票与需求看板（P3）：✅ 已落地（早于本批次）：前端 `DataSourceHealthModule.renderSection` 渲染「已接入/开发中/社区投票中」三类 + `vote()`（1 票/天）；后端 `GET /datasource-vote/board` + `POST /datasource-vote/vote`（`routers/datasource_vote.py`，每用户每源每日一票，Redis 防刷）。覆盖测试：`test_datasource_vote.py`（16 passed）
   - 前端：展示「已接入 / 开发中 / 社区投票中」三类数据源
   - 用户可投票（1 票/天），影响下一个接入优先级
   - 后端：投票记录 + 计数器，防止刷票
@@ -409,7 +412,7 @@
 
 ##### 智能选股器产品化
 
-- [ ] **[SCREEN-01]** 选股条件保存与分享（P1）：
+- [x] **[SCREEN-01]** 选股条件保存与分享（P1）：✅ 已落地（早于本批次）：后端 `models.SavedScreen`(`saved_screens` 表) + `screener_app.py` 的 `save_screen/list_screens/get_screen/rename_screen/delete_screen` + `routers/screener.py` 的 `POST /screens`、`GET /screens`、`PUT /screens/{id}`、`DELETE /screens/{id}`（均带 user_id 归属校验）；前端 `screener-context.tsx` 实现 `loadSavedScreens/saveCurrentScreen/deleteSavedScreen/renameSavedScreen/applySavedScreen/shareCurrentScreen`，`screener-header.tsx` 渲染「💾 保存」「📂 我的筛选」「🔗 分享」UI + 挂载时解析 `?s=` 自动填充分享条件。覆盖测试：`test_router_screener_extra.py::TestScreenerSavedScreensRoutes`
   - 前端：筛选器面板「💾 保存条件」→ 命名 + 描述 → `saved_screens` 表
   - 「📂 我的筛选条件」下拉列表（加载 / 删除 / 重命名）
   - 「🔗 分享」→ 生成可分享 URL（编码筛选条件为 query params，对方打开自动填充）

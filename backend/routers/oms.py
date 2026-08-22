@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.core import models
+from backend.core.config import settings
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.domain.algo_analytics import algo_analytics
@@ -82,6 +83,106 @@ async def get_oms_initial_state(db: Session = Depends(get_db)):
             "trading_mode": trading_mode,
         },
     }
+
+
+class PrecheckReq(BaseModel):
+    symbol: str
+    side: str  # BUY | SELL
+    order_type: str  # LIMIT | STOP
+    price: float
+    qty: int
+
+
+class PrecheckResp(BaseModel):
+    status: str  # success | warning
+    vix: float | None = None
+    rule_warning: str | None = None
+    llm_advice: dict | None = None
+    message: str | None = None
+
+
+async def _get_current_vix() -> float | None:
+    """从 yfinance 缓存读取最新 VIX（与 sentiment_tracker 同源，避免重复抓取）。"""
+    try:
+        raw = await redis_client.get("yf_macro_cache_^VIX")
+        if not raw:
+            return None
+        if isinstance(raw, bytes):
+            raw_str = raw.decode("utf-8")
+        else:
+            raw_str = str(raw)
+        assert isinstance(raw_str, str)
+        records = json.loads(raw_str)
+        if isinstance(records, list) and records:
+            last = records[-1]
+            return float(last.get("close") or last.get("vix") or 0) or None
+    except Exception:
+        return None
+    return None
+
+
+@router.post("/precheck", response_model=PrecheckResp, dependencies=[Depends(get_current_user)])
+async def ai_precheck_order(req: PrecheckReq):
+    """
+    AI-04 OMS 执行风控官：规则(VIX>25→减半/限价) + LLM(STANDARD) 混合预检。
+    不阻断下单，仅给建议；LLM 缺失时仅返回规则层结果（不编造）。
+    """
+    vix = await _get_current_vix()
+
+    # 规则层：VIX 高位预警（无需 LLM）
+    rule_warning = None
+    if vix is not None and vix > 25:
+        rule_warning = (
+            f"当前 VIX={vix:.1f} 高于 25 阈值，建议：① 下单量减半；② 使用限价单避免滑点；③ 避开重大事件窗口。"
+        )
+
+    # LLM 层：综合研判
+    llm_advice = None
+    message = None
+    if not settings.llm_model:
+        message = "LLM 模型未配置，仅返回规则层预检"
+    else:
+        from backend.bootstrap.lifecycle import global_llm_client
+
+        if global_llm_client is None:
+            message = "LLM 客户端未初始化，仅返回规则层预检"
+        else:
+            prompt = (
+                "你是 OMS 执行风控官。基于以下订单与宏观波动，给出结构化执行建议。\n"
+                f"标的={req.symbol} 方向={req.side} 类型={req.order_type} "
+                f"价格={req.price} 数量={req.qty} 当前VIX={vix}\n"
+                '仅输出 JSON：{"advice": string(中文执行建议), '
+                '"caution": string(风险提示), "confidence": number(0-1)}\n'
+                "无可靠依据时 confidence 取低值，不要编造。"
+            )
+            try:
+                resp = await global_llm_client.chat.completions.create(
+                    model=settings.llm_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0.2,
+                )
+                content = resp.choices[0].message.content
+                if not content:
+                    raise ValueError("LLM 返回空内容")
+                parsed = json.loads(content)
+                llm_advice = {
+                    "advice": parsed.get("advice"),
+                    "caution": parsed.get("caution"),
+                    "confidence": parsed.get("confidence"),
+                }
+            except Exception as e:
+                logger.warning(f"AI-04 precheck LLM 失败: {e}")
+                message = "LLM 研判失败，仅返回规则层预检"
+
+    status = "warning" if rule_warning else "success"
+    return PrecheckResp(
+        status=status,
+        vix=vix,
+        rule_warning=rule_warning,
+        llm_advice=llm_advice,
+        message=message,
+    )
 
 
 async def execute_emergency_liquidation(db: Session):

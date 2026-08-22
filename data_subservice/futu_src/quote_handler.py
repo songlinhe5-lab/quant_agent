@@ -5,7 +5,7 @@ Futu 行情数据处理模块
 
 import asyncio
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 from futu import RET_OK, AuType, KLType, SubType
@@ -14,7 +14,7 @@ from data_subservice._internal.logger import logger
 from data_subservice._internal.retry_utils import with_global_retry
 
 from ._compat import safe_float
-from .cache_manager import CacheManager
+from .cache_manager import _SEARCH_QUOTE_TTL, CacheManager
 
 
 def _map_heat_market(market: str) -> Any:
@@ -175,6 +175,59 @@ class QuoteHandler:
             )
         return {"status": "success", "data": news, "source": "futu", "count": len(news)}
 
+    # ── P1.2: 行情搜索（关键词 → 标的列表，补「名称→代码」盲区）─────────
+    @with_global_retry
+    async def get_search_quote(self, keyword: str, max_count: int = 10) -> Dict[str, Any]:
+        """按关键词搜索标的（补「名称→代码」盲区，Agent 高频刚需）。
+
+        Futu ``get_search_quote(keyword, max_count)`` → (ret, DataFrame)，
+        列: market / code / name / sec_type / is_watched。
+        支持中文名（如「腾讯」→ HK.00700）与代码（如 AAPL → US.AAPL）。
+        高频刚需，带 L1 内存缓存（10 分钟），避免频繁穿透 OpenD。
+        """
+        keyword = str(keyword or "").strip()
+        if not keyword:
+            return {"status": "error", "source": "futu", "message": "搜索关键词为空"}
+        try:
+            max_count = max(1, min(int(max_count), 50))
+        except (TypeError, ValueError):
+            max_count = 10
+
+        cache_key = f"futu_search_quote_{keyword.lower()}_{max_count}"
+        now = time.time()
+        cached = self.cache_mgr.get_search_quote_cache(cache_key)
+        if cached and now - cached[0] < _SEARCH_QUOTE_TTL:
+            return cached[1]
+
+        if not self.conn_mgr.quote_ctx:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_search_quote, keyword, max_count)
+            if ret != RET_OK or not isinstance(df, pd.DataFrame):
+                res = {"status": "error", "source": "futu", "message": f"行情搜索失败: {df}"}
+                self.cache_mgr.set_search_quote_cache(cache_key, now, res)
+                return res
+            results = []
+            for _, row in df.iterrows():
+                results.append(
+                    {
+                        "code": str(row.get("code", "")),
+                        "name": str(row.get("name", "")),
+                        "market": str(row.get("market", "")),
+                        "sec_type": str(row.get("sec_type", "")),
+                        "is_watched": bool(row.get("is_watched", False)),
+                    }
+                )
+            res = {"status": "success", "source": "futu", "keyword": keyword, "count": len(results), "data": results}
+            self.cache_mgr.set_search_quote_cache(cache_key, now, res)
+            return res
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_search_quote 失败 %s: %s", keyword, e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
     # ── F4-2: FedWatch FOMC 隐含概率（市场级，无 code 参数）──────────────
     @with_global_retry
     async def get_fed_watch_target_rate(self) -> Dict[str, Any]:
@@ -202,6 +255,37 @@ class QuoteHandler:
             }
         except Exception as e:  # noqa: BLE001
             logger.error("❌ get_fed_watch_target_rate 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── P1.8: FedWatch 点阵图（FOMC 委员利率预测散点）──────────────────
+    @with_global_retry
+    async def get_fed_watch_dot_plot(self) -> Dict[str, Any]:
+        """获取 FedWatch 点阵图（FOMC 委员各年利率预测散点）。
+
+        get_fed_watch_dot_plot() → (ret, data) 二元组，无 code 参数（全市场）。
+        实测返回 DataFrame 列: year / rate / vote_count / is_median / median_rate / current_rate。
+        低频数据，可长 TTL 缓存。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_fed_watch_dot_plot)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"FedWatch 点阵图获取失败: {data}"}
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_fed_watch_dot_plot 失败: %s", e)
             return {"status": "error", "source": "futu", "message": str(e)}
 
     # ── F4-3: 板块热力图（需 market 参数）──────────────────────────────
@@ -653,3 +737,574 @@ class QuoteHandler:
         }  # noqa: E501
         self.cache_mgr.set_order_book_cache(cache_key, now, result)
         return result
+
+    # ── P2.2: 机构持仓 / ARK 交易（美股聪明钱）──────────────────────────
+    @with_global_retry
+    async def get_institution_list(
+        self,
+        market: str = "US",
+        count: int = 20,
+        page: int = 1,
+        name_part: Optional[str] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P2.2 机构列表（美股 13F 机构，返回 institution_id 供后续查询）。
+
+        get_institution_list(market, sort_field, sort_dir, count, page, name_part)
+        → (ret, df1, str, int)。实测 df1 列: institution_id/institution_name/position_value/
+        position_value_change/position_count/position_count_change/disclosure_date/currency。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data, _, _ = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_institution_list, market, None, None, int(count), int(page), name_part
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"机构列表获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "institution_id": r.get("institution_id"),
+                    "institution_name": r.get("institution_name"),
+                    "position_value": safe_float(r.get("position_value")),
+                    "position_value_change": safe_float(r.get("position_value_change")),
+                    "position_count": r.get("position_count"),
+                    "disclosure_date": r.get("disclosure_date"),
+                    "currency": r.get("currency"),
+                }
+                for r in rows
+            ]
+            return {"status": "success", "source": "futu", "market": market, "count": len(clean), "data": clean}
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_institution_list 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_institution_holding_list(
+        self,
+        institution_id: Any,
+        market: str = "US",
+        change_type: Optional[str] = None,
+        count: int = 20,
+        page: int = 1,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P2.2 机构持仓明细（13F 数据，美股聪明钱核心信号）。
+
+        get_institution_holding_list(market, institution_id, change_type, ...)
+        → (ret, df1, str, int)。实测 df1 列: security/name/industry_name/holding_value/
+        holding_pct/change_shares/portfolio_pct/change_pct/holding_date/source(=13F数据汇总)。
+        change_type 有效值: INCREASE/DECREASE/NEW/SOLD_OUT。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data, _, _ = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_institution_holding_list,
+                market,
+                institution_id,
+                change_type,
+                None,
+                None,
+                int(count),
+                int(page),
+                None,
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"机构持仓获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "security": r.get("security"),
+                    "name": r.get("name"),
+                    "industry_name": r.get("industry_name"),
+                    "holding_value": safe_float(r.get("holding_value")),
+                    "holding_pct": safe_float(r.get("holding_pct")),
+                    "change_shares": safe_float(r.get("change_shares")),
+                    "portfolio_pct": safe_float(r.get("portfolio_pct")),
+                    "change_pct": safe_float(r.get("change_pct")),
+                    "holding_date": r.get("holding_date"),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "institution_id": institution_id,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_institution_holding_list 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_institution_holding_change(
+        self,
+        institution_id: Any,
+        market: str = "US",
+        change_type: Optional[str] = None,
+        count: int = 20,
+        page: int = 1,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P2.2 机构增减持明细（美股聪明钱变动）。
+
+        get_institution_holding_change(market, institution_id, change_type, ...)
+        → (ret, df1, str, int)。实测 df1 列: security/name/portfolio_pct/change_shares/change_pct/holding_date/source。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data, _, _ = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_institution_holding_change,
+                market,
+                institution_id,
+                change_type,
+                None,
+                None,
+                int(count),
+                int(page),
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"机构增减持获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "security": r.get("security"),
+                    "name": r.get("name"),
+                    "change_shares": safe_float(r.get("change_shares")),
+                    "change_pct": safe_float(r.get("change_pct")),
+                    "portfolio_pct": safe_float(r.get("portfolio_pct")),
+                    "holding_date": r.get("holding_date"),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "institution_id": institution_id,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_institution_holding_change 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_institution_distribution(
+        self,
+        institution_id: Any,
+        market: str = "US",
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P2.2 机构行业分布（持仓行业权重）。
+
+        get_institution_distribution(market, institution_id) → (ret, DataFrame)。
+        实测列: industry_id/industry_name/position_value/portfolio_pct。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_institution_distribution, market, institution_id
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"机构行业分布获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "industry_name": r.get("industry_name"),
+                    "position_value": safe_float(r.get("position_value")),
+                    "portfolio_pct": safe_float(r.get("portfolio_pct")),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "institution_id": institution_id,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_institution_distribution 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_institution_profile(
+        self,
+        institution_id: Any,
+        market: str = "US",
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P2.2 机构画像（持仓行为总览）。
+
+        get_institution_profile(market, institution_id) → (ret, dict)。
+        实测 keys: institution_name/description/position_value/position_value_change_pct/
+        total_holding_count/new_count/sold_out_count/increase_count/decrease_count/top10_pct/disclosure_date。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_institution_profile, market, institution_id)
+            if ret != RET_OK or not isinstance(data, dict):
+                return {"status": "error", "source": "futu", "message": f"机构画像获取失败: {data}"}
+            return {
+                "status": "success",
+                "source": "futu",
+                "institution_id": institution_id,
+                "data": {
+                    "institution_name": data.get("institution_name"),
+                    "position_value": safe_float(data.get("position_value")),
+                    "position_value_change_pct": safe_float(data.get("position_value_change_pct")),
+                    "total_holding_count": data.get("total_holding_count"),
+                    "new_count": data.get("new_count"),
+                    "sold_out_count": data.get("sold_out_count"),
+                    "increase_count": data.get("increase_count"),
+                    "decrease_count": data.get("decrease_count"),
+                    "top10_pct": safe_float(data.get("top10_pct")),
+                    "disclosure_date": data.get("disclosure_date"),
+                },
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_institution_profile 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_ark_fund_holding(
+        self,
+        holding_type: str = "POSITION",
+        cycle_type: str = "ONE_DAY",
+        count: int = 20,
+        page: int = 1,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P2.2 ARK 基金持仓（美股聪明钱，Finnhub 无此数据）。
+
+        get_ark_fund_holding(holding_type, cycle_type, sort_field, sort_dir, count, page)
+        → (ret, df1, str, int)。实测 df1 列: security/name/shares/shares_change/market_value/weight/weight_change。
+        holding_type 有效值: POSITION/INCREASE/DECREASE/NEW/SOLD_OUT；
+        cycle_type 有效值: ONE_DAY/FIVE_DAY/TEN_DAY/THIRTY_DAY/SIXTY_DAY。
+        """
+        from futu import ArkCycleType, ArkHoldingType
+
+        ht = getattr(ArkHoldingType, str(holding_type).upper(), ArkHoldingType.POSITION)
+        ct = getattr(ArkCycleType, str(cycle_type).upper(), ArkCycleType.ONE_DAY)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data, _, _ = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_ark_fund_holding, ht, ct, None, None, int(count), int(page)
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"ARK 持仓获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "security": r.get("security"),
+                    "name": r.get("name"),
+                    "shares": safe_float(r.get("shares")),
+                    "shares_change": safe_float(r.get("shares_change")),
+                    "market_value": safe_float(r.get("market_value")),
+                    "weight": safe_float(r.get("weight")),
+                    "weight_change": safe_float(r.get("weight_change")),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "holding_type": str(holding_type).upper(),
+                "cycle_type": str(cycle_type).upper(),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_ark_fund_holding 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_ark_active_transaction(
+        self,
+        holding_type: str = "INCREASE",
+        cycle_type: str = "ONE_DAY",
+        count: int = 20,
+        page: int = 1,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P2.2 ARK 活跃交易（每日买卖明细）。
+
+        get_ark_active_transaction(holding_type, cycle_type, sort_field, sort_dir, count, page)
+        → (ret, df1, str, int)。实测 df1 列: security/name/change_amount/change_shares。
+        """
+        from futu import ArkActiveTransactionHoldingType, ArkCycleType
+
+        ht = getattr(
+            ArkActiveTransactionHoldingType, str(holding_type).upper(), ArkActiveTransactionHoldingType.INCREASE
+        )
+        ct = getattr(ArkCycleType, str(cycle_type).upper(), ArkCycleType.ONE_DAY)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data, _, _ = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_ark_active_transaction, ht, ct, None, None, int(count), int(page)
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"ARK 活跃交易获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "security": r.get("security"),
+                    "name": r.get("name"),
+                    "change_amount": safe_float(r.get("change_amount")),
+                    "change_shares": safe_float(r.get("change_shares")),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "holding_type": str(holding_type).upper(),
+                "cycle_type": str(cycle_type).upper(),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_ark_active_transaction 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── G8: 数据正确性基座（复权因子/交易日历/K线额度/市场状态）───────────
+    @with_global_retry
+    async def get_rehab(self, ticker: str, format_ticker_func=None, is_unsupported_func=None) -> Dict[str, Any]:
+        """G8 复权因子（回测与技术指标地基，因子错 = 全部信号错）。
+
+        get_rehab(code) → (ret, DataFrame)。实测列: ex_div_date/split_ratio/per_cash_div/
+        forward_adj_factorA/B/backward_adj_factorA/B/allotment_price/spin_off_ratio 等 30 列。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": code,
+            }
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_rehab, code)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"复权因子获取失败: {data}",
+                    "code": code,
+                }
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: (None if pd.isna(v) else v) for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_rehab 失败 %s: %s", code, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
+    @with_global_retry
+    async def get_trading_days(
+        self,
+        market: str = "HK",
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        ticker: Optional[str] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G8 交易日历（G2 T-1 语义 / K线对齐 / 是否交易日判定）。
+
+        10.10 方法名 request_trading_days（非 get_trading_days）。返回 list：
+        [{time, trade_date_type=WHOLE/HALF/NONE}]。market 有效值: HK/US/CN/SH/SZ 等。
+        """
+        from futu import Market
+
+        mkt = getattr(Market, str(market).upper(), Market.HK)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.request_trading_days, mkt, start, end, ticker)
+            if ret != RET_OK or not isinstance(data, list):
+                return {"status": "error", "source": "futu", "message": f"交易日历获取失败: {data}"}
+            clean = [{"time": d.get("time"), "trade_date_type": d.get("trade_date_type")} for d in data]
+            return {
+                "status": "success",
+                "source": "futu",
+                "market": str(market).upper(),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_trading_days 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_history_kl_quota(
+        self,
+        get_detail: bool = True,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G8 历史 K 线额度（批量拉取前查询，防静默失败）。
+
+        get_history_kl_quota(get_detail) → (ret, (used, remaining, detail_list))。
+        实测 detail 列: code/name/request_time。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_history_kl_quota, bool(get_detail))
+            if ret != RET_OK or not isinstance(data, tuple):
+                return {"status": "error", "source": "futu", "message": f"K线额度获取失败: {data}"}
+            used, remaining = data[0], data[1]
+            detail = data[2] if len(data) > 2 and isinstance(data[2], list) else []
+            clean = [
+                {"code": d.get("code"), "name": d.get("name"), "request_time": d.get("request_time")} for d in detail
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "quota_used": used,
+                "quota_remaining": remaining,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_history_kl_quota 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    @with_global_retry
+    async def get_market_state(
+        self,
+        codes: Any,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G8 市场状态（区分「盘后正常空」与「故障空」，消除误报与假 STALE）。
+
+        get_market_state(code_list) → (ret, DataFrame)。实测列: code/stock_name/market_state。
+        market_state 有效值: CLOSED/AUCTION/MATCHING/... 等。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        code_list = codes if isinstance(codes, (list, tuple)) else [str(codes)]
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_market_state, list(code_list))
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"市场状态获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {"code": r.get("code"), "name": r.get("stock_name"), "market_state": r.get("market_state")}
+                for r in rows
+            ]
+            return {"status": "success", "source": "futu", "count": len(clean), "data": clean}
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_market_state 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── G6: 板块轮动前置 —— 标的所属板块（get_owner_plate）─────────────
+    @with_global_retry
+    async def get_owner_plate(
+        self,
+        ticker: str,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """G6 标的所属板块（板块轮动/标的分组前置）。
+
+        get_owner_plate(code) → (ret, DataFrame)。实测列: code/name/plate_code/
+        plate_name/plate_type（腾讯 → 明星科网股/人工智能/港股通 等 CONCEPT/OTHER 板块）。
+        与 get_hk_sector_flow（板块→成分）互补，构成板块轮动的双向索引。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": code,
+            }
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_owner_plate, code)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"所属板块获取失败: {data}",
+                    "code": code,
+                }
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "plate_code": r.get("plate_code"),
+                    "plate_name": r.get("plate_name"),
+                    "plate_type": r.get("plate_type"),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_owner_plate 失败 %s: %s", code, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}

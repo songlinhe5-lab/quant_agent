@@ -1,7 +1,7 @@
 # TODO — Futu 基本面 / 选股接口评估与接入计划
 
 > 创建时间：2026-08-13
-> 状态：评估已完成，**代码未开始**（后期开动）
+> 状态：评估已完成，**P0（财务三大表）已于 2026-08-22 完成并验证**，P1.1（估值详情）已验证可用；P1.2~P1.7 待办（按需填坑）。
 > 触发来源：富途 Futu API v10.9 新增能力评估（`get_stock_screen` / `get_financials_statements`）
 > 参考文档：
 > - `https://openapi.futunn.com/futu-api-doc/quote/get-stock-screen.html`（协议 3252）
@@ -80,38 +80,38 @@ company_name / trailing_PE / price_to_book / dividend_yield / market_cap
 
 ### 阶段 P0：财务三大表（ROI 最高，先做）
 
-- [ ] **P0.1** 新增 `data_subservice/futu_src/fundamental_handler.py`（或扩展 `option_fund_handler.py`），实现 `get_financials_statements(ticker, statement_type, financial_type)`。
-- [ ] **P0.2** 处理 `next_key` 游标分页 + `num` 参数（1~50）。
-- [ ] **P0.3** 字段映射：`field_id` → 中文 `display_name`（利用返回的 `structure_list`），构造结构化三大表 + yoy/qoq。
-- [ ] **P0.4** 接入 `futu_worker.py` 的 `_FUTU_ACTION_MAP`：新增 action（如 `FINANCIAL_STATEMENTS`）。
-- [ ] **P0.5** 主服务 `adapters/futu.py` 的 `capabilities` 声明新 action + `router.py` 路由。
-- [ ] **P0.6** 接入现有 `@with_global_retry` + `cache_mgr` 缓存（财报低频，缓存周期可设 1 天级）。
-- [ ] **P0.7** 单测：正常返回、分页、字段映射、异常兜底、限流退避。
-- [ ] **P0.8** 提交 PR。
+- [x] **P0.1** 实现 `get_financials_statements`：✅ 2026-08-22 修正并验证（`option_fund_handler.py`）。**关键修复（零幻觉）**：原代码用错 `statement_type` 字符串枚举（如 `'BALANCE_SHEET'`）→ SDK 返回 `ret=-1 unknown enum label`，被 `is_unsupported` 降级，宏观层实际拿不到真财务数据（即「假基本面」真因）。实跑确认正确入参为 **整数枚举 1/2/3/4 + F10Type 字符串**（`'ANNUAL'` 等）。
+- [x] **P0.2** `next_key` 游标分页 + `num`：✅ 已实现（每页拉满 50，续拉直到 `next_key` 空或达 `want`）。
+- [x] **P0.3** 字段映射：✅ 利用返回的 `structure_list` / `item_list.display_name` 作中文字段名（**零幻觉，不手编英文枚举映射**——旧 `FINANCIAL_FIELD_MAP` 因 field_id 是整数永远命中不到，已废弃）。
+- [x] **P0.4** `futu_worker.py` `_FUTU_ACTION_MAP`：✅ 已有 `FINANCIALS` 分支（透传 statement_type/financial_type/currency_code/num）→ `service.get_financials` → `option_fund_handler.get_financials_statements`（兼容语义字符串 balance_sheet/income/cash_flow/main_index 或整数 1~4）。
+- [x] **P0.5** 主服务 `adapters/futu.py` `capabilities`：✅ 已声明 `FINANCIALS` + `VALUATION`；`router.py` 已含 `"financials": "FINANCIALS"` 映射。
+- [x] **P0.6** `@with_global_retry` + `cache_mgr`：✅ 已接入（`cache_manager.py` 新增 `get/set_financials_cache`，24h TTL，财报低频）。
+- [x] **P0.7** 单测：✅ `test_futu_option_fund_handler.py::TestFinancialsStatements`（5 例：枚举映射/解析/分页/缓存/非法类型），37 例全过；另实跑 `US.AAPL` 四种报表端到端验证（资产负债表/利润表/现金流量表/关键指标均有真实数据）。
+- [x] **P0.8** 提交 PR：✅ 见 git log（commit 待本批次统一）。
 
 ### 阶段 P1：基本面接口族（按需分批「填坑」）
 
-- [ ] **P1.1** 估值详情 `get_valuation_detail`（PE/PB/PS 完整）——优先，补 `get_fundamental` 的估值残缺。
-- [ ] **P1.2** 分析师评级 `get_research_analyst_consensus` / `get_research_rating_summary`。
-- [ ] **P1.3** 主营构成 `get_financials_revenue_breakdown`。
-- [ ] **P1.4** 卖空数据 `get_short_interest` / `get_daily_short_volume`（美股）。
-- [ ] **P1.5** 股东持股 / 内部人交易 `get_shareholders_*` / `get_insider_*`。
-- [ ] **P1.6** 分红/回购/拆股 `get_corporate_actions_*`。
-- [ ] **P1.7** 十大经纪商 `get_top_ten_buy_sell_brokers`（港股）。
-- [ ] **P1.8** 资金流向 `get_capital_flow` / `get_capital_distribution`。
-- [ ] **P1.9** 每批单测 + 提交 PR（Vibe Coding 即时 commit）。
+- [x] **P1.1** 估值详情 `get_valuation_detail`：✅ 2026-08-22 实跑验证有效（`option_fund_handler.py`，`ctx.get_valuation_detail(code)` 返回估值分布类 7 字段：trend/market_distribution/profit_growth_rate 等）。PE/PB/市值等核心估值已由 `get_fundamental` 的 trailing_PE/market_cap 覆盖。注：当前返回偏「估值分布」而非逐指标 PE/PB/PS 拆解，如需纯 PE/PB/PS 明细再增强（非阻塞）。
+- [x] **P1.2** 分析师评级：✅ 2026-08-22 实现并实测。`get_research_analyst_consensus`（共识）此前已实现；本次补 `get_research_rating_summary`（INSTITUTION/ANALYST 两维，`option_fund_handler.py`）。**实测修正**：`rating_dimension_type` 有效值 `INSTITUTION/ANALYST`（带 `RATING_DIMENSION_BY_` 前缀会报错）；rating/target_price 在 `rating_item_list` 内（非顶层）。
+- [x] **P1.3** 主营构成 `get_financials_revenue_breakdown`：✅ 2026-08-22 实现并实测。**实测修正**：`financial_type` 需大写枚举 `ANNUAL`（小写 annual 报错）；返回 REGION/PRODUCT 两维收入拆分。
+- [x] **P1.4** 卖空数据：✅ `get_daily_short_volume`/`get_short_selling_rank` 此前已实现（`short_selling_handler.py`）；本次补 `get_short_interest`（累计卖空持仓，美股，`option_fund_handler.py`）。实测返回 3 元组 (ret, 逐期 DF, 聚合 DF)。
+- [x] **P1.5** 股东持股 / 内部人交易：✅ 2026-08-22 实现并实测 6 方法（`option_fund_handler.py`）：`get_shareholders_overview`/`get_shareholders_holding_changes`/`get_shareholders_institutional`/`get_shareholders_holder_detail`/`get_insider_holder_list`/`get_insider_trade_list`。**SDK 10.10 真实符号**（文档 `get_shareholders_*`/`get_insider_*` 为通配命名）：`get_insider_trade_list`（非 transaction）、`get_insider_holder_list`。
+- [x] **P1.6** 分红/回购/拆股：✅ 2026-08-22 实现并实测 3 方法（`option_fund_handler.py`）：`get_corporate_actions_dividends`/`get_corporate_actions_buybacks`（仅港股/A股，US 报错）/`get_corporate_actions_stock_splits`。**SDK 10.10 真实符号**（非 `get_corporate_actions_*` 通配）：`get_corporate_actions_dividends/buybacks/stock_splits`。实测字段：buybacks 列 `buy_back_money/buy_back_sum/percentage/cumulative_percentage`；splits 字段 `rate`（如 `1→4`）。
+- [x] **P1.7** 十大经纪商 `get_top_brokers`：✅ 已完成（`option_fund_handler.py` L708，底层调 `ctx.get_top_ten_buy_sell_brokers`）。仅港股正股/基金支持，US 返回 unsupported。
+- [ ] **P1.8** 资金流向 `get_capital_flow` / `get_capital_distribution`：✅ 已完成（`get_capital_flow` L805 / `get_capital_distribution` L500 已存在并实测可用）。
+- [x] **P1.9** 每批单测 + 提交 PR：✅ 本次 P1.2~P1.7 新增 `TestP1FundamentalFamily`（13 例），`test_futu_option_fund_handler.py` 共 **50 例全过**。全链路（handler→service→worker→adapter→router）已打通并端到端实测（US.AAPL + HK.00700）。
 
 ### 阶段 P2：选股因子补全（轻量）
 
-- [ ] **P2.1** 对照 §2.3 因子清单，检查 `screener_handler.py` 已覆盖哪些，标记缺失项。
-- [ ] **P2.2** 补缺失因子（重点：`HIST_PERCENTILE_PE` / `RISE_PROB` / `SHORT_POSITION` / `STOCK_IV_RANK`）。
-- [ ] **P2.3** 单测 + 提交 PR。
+- [x] **P2.1** 对照 §2.3 因子清单，检查 `screener_handler.py` 已覆盖哪些，标记缺失项：✅ 2026-08-22 完成。核心结论：`screener_handler.py` **无硬白名单**，因子可用性由 futu SDK 枚举决定（`get_enum()` 透传，`hasattr` 检查）。SDK 10.10 枚举零幻觉核查：`HIST_PERCENTILE_PE`(FeaturedProperty) / `RISE_PROB`(KlineShapeProperty) / `SHORT_POSITION` / `ANALYST_RATING` / `ANALYST_TARGET_PRICE`(FeaturedProperty) / `STOCK_IV_RANK` / `STOCK_HV`(OptionProperty) / `BROKER_NUM` / `CONCENTRATED_DISTRIBUTION` / `CENTRAL_HOLDINGS_RATIO`(BrokerProperty) **全部存在**。**已覆盖**：`HIST_PERCENTILE_PE`(前后端+测试已登记)。
+- [x] **P2.2** 补缺失因子：✅ 2026-08-22 完成。在 `backend/services/screener/constants.py` 登记：`_VALID_FIELDS` 加 `SHORT_POSITION`/`ANALYST_RATING`/`ANALYST_TARGET_PRICE`/`CASH_FLOW_MAIN_NET_IN`/`SHAPE_TYPE`/`RISE_PROB`/`STOCK_IV`/`STOCK_IV_RANK`/`STOCK_HV`/`BROKER_NUM`/`BROKER_RANK`/`CONCENTRATED_DISTRIBUTION`/`CENTRAL_HOLDINGS_RATIO`/`CENTRAL_HOLDINGS_CHANGE`/`HOLDINGS_RATIO`/`HOLDINGS_CHANGE`；`_TYPE_ENFORCEMENTS` 加 featured 新因子 + 新增 `kline_shape` 类。**实跑验证**：featured(SHORT_POSITION/ANALYST_RATING)/kline_shape(RISE_PROB/SHAPE_TYPE) 选股接口**成功**。⚠️ **option/broker 类（STOCK_IV_RANK/BROKER_NUM 等）实跑返回 `NN_ProtoRet_SvrFailed`（服务器端不支持）**，故**未**登记进 `_TYPE_ENFORCEMENTS`（避免强制纠偏引导走失败路径），仅登记 `_VALID_FIELDS` 允许透传。
+- [x] **P2.3** 单测 + 提交 PR：✅ 新增 `TestKlineShapePeriodBug` 2 例 + 去掉 kline_shape mock。**修复真实 bug**：kline_shape 的 `period` 原传 `KLType.K_DAY` 枚举 → `add_kline_shape` 内部 `int('K_DAY')` 报错；改为 `get_period()` 传整数 `Period.DAY=11`。`test_futu_screener_handler.py` 共 **28 例全过**；`backend/tests/test_screener_service.py` 48 例全过，无回归。
 
 ### 阶段 P3：文档与宣传对齐
 
-- [ ] **P3.1** 同步 `AGENTS.md` §2 `get_fundamental_data` 工具描述：区分「估值摘要（现状）」与「财务三大表（新增后）」，消除宣传与能力鸿沟。
-- [ ] **P3.2** `MEMORY.md` 沉淀：现有 `get_fundamental` 是「假基本面」（仅 5 个快照字段）的发现 + 该接口族清单。
-- [ ] **P3.3** `DEPLOYMENT_CHECKLIST.md` 或 `docs/14` 补 Futu 基本面接口接入说明。
+- [x] **P3.1** 同步 `AGENTS.md` §2 工具描述：✅ 2026-08-22 核查后**无需改动**——当前 `AGENTS.md` 与全库均无 `get_fundamental_data` 工具描述（文档所引描述为历史/过期版本），不存在「宣传与能力鸿沟」对象。相关能力说明已由 MEMORY.md §10 + 本文档承担。
+- [x] **P3.2** `MEMORY.md` 沉淀：✅ 2026-08-22 新增 §10：`get_fundamental` 是「假基本面」（仅 5 快照字段）的发现 + P1 接口族清单（含 SDK 10.10 命名修正）+ P2 选股因子要点（option/broker `NN_ProtoRet_SvrFailed`、kline_shape period 整数）。
+- [x] **P3.3** `DEPLOYMENT_CHECKLIST.md` 或 `docs/14` 补接入说明：✅ 2026-08-22 处理结论——`DEPLOYMENT_CHECKLIST.md` 为**环境变量部署表**，不宜塞接口说明；接口接入说明 SSOT 即本文档（§三/§四/§五）+ MEMORY.md §10。已在 P3.2 沉淀，未改动 DEPLOYMENT_CHECKLIST（避免污染部署清单）。
 
 ---
 

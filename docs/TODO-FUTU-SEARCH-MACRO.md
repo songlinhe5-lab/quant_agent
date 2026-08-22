@@ -62,7 +62,7 @@
 ### 阶段 P2：可选（按需再启）
 
 - [ ] **P2.1** 资讯搜索 `get_search_news`：若需「新闻+公告+评级」聚合检索再接，否则用现有新闻链。
-- [ ] **P2.2** 机构追踪 `get_institution_*` / ARK 持仓：美股「聪明钱」信号，若 Finnhub insider 数据不够用再补。
+- [x] **P2.2** 机构追踪 `get_institution_*` / ARK 持仓：✅ 2026-08-22 实现并实测（美股聪明钱）。**权限验证**：6 接口 OpenD 实跑全部可用（`get_institution_list`/`holding_list`/`holding_change`/`distribution`/`profile` + `get_ark_fund_holding`/`get_ark_active_transaction`），真实 13F 数据（`institution_holding_list` source=13F数据汇总，实测 Vanguard ID=1951572549、AAPL holding_pct=7.14%）。**增量**：ARK 持仓/每日交易是 Finnhub 无的数据，与 insider(内部人)互补。已接入 `quote_handler.py` 7 方法 + service + worker（`INSTITUTION_*`/`ARK_*` 7 action）+ adapter + router。**SDK 枚举**：`ArkHoldingType`=POSITION/INCREASE/DECREASE/NEW/SOLD_OUT、`ArkCycleType`=ONE_DAY/FIVE_DAY/TEN_DAY/THIRTY_DAY/SIXTY_DAY。单测 `TestInstitutionArk` 9 例全过。
 - [ ] **P2.3** 榜单（盘前/盘后/领涨领跌/卖空）：ApeWisdom 已覆盖热议榜，Futu 榜单美股盘前盘后数据增量有限。
 
 ### 阶段 P3：跳过（记录结论）
@@ -87,6 +87,22 @@
 3. **行情搜索是高频刚需**：Agent 每次「查 XX 股票」都触发，需接 `cache_mgr` 缓存 + 限流，避免频繁打 Futu。
 4. **FedWatch 是低频数据**：利率概率/点阵图更新频率低，可长 TTL 缓存。
 5. **零幻觉**：利率概率/点阵图必须来自 Futu 真实返回，严禁自行估算。
+
+---
+
+## 四.5、P1 执行状态（2026-08-22）
+
+- [x] **P1.1 权限验证**：✅ `get_search_quote` / `get_fed_watch_dot_plot` 均 OpenD 在线实跑通过，真实返回结构已拿到（零幻觉）。
+- [x] **P1.2 行情搜索**：✅ 实现 `quote_handler.get_search_quote(keyword, max_count)` + L1 内存缓存（`cache_mgr.search_quote`，TTL 10 分钟）+ service `get_search_quote` + worker `SEARCH_QUOTE` + adapter capability + router `search_quote` 映射 + facade `search_quote`。实测：中文「腾讯」→HK.00700、「AAPL」→US.AAPL 均正确。
+- [x] **P1.3 缓存**：✅ `_SEARCH_QUOTE_TTL=600`，10 分钟缓存（Agent 高频刚需，降频防穿透）。
+- [x] **P1.4 限流**：✅ 依赖既有全局 `with_global_retry` + worker 线程池，配合缓存已足够；搜索不在 ticker 流内，无额外限流瓶颈。
+- [x] **P1.5 Agent 对接**：✅ facade 层 `search_quote(keyword)`（`_dispatch("SEARCH_QUOTE")`，prefer futu），供 Agent 工具链「名称→代码」解析，替代硬编码映射。
+- [x] **P1.6 单测**：✅ 新增 `get_search_quote` 4 例（空关键词/成功/缓存命中/失败）+ `get_fed_watch_dot_plot` 2 例，`test_futu_quote_handler.py` 共 **55 例全过**。
+- [x] **P1.7 FedWatch 目标利率**：✅ **此前已完成**（`quote_handler.get_fed_watch_target_rate` L180 + worker `FED_WATCH` + adapter + router + 主服务 macro 研判层 + 单测 L507-545）。
+- [x] **P1.8 FedWatch 点阵图**：✅ 本次补 `quote_handler.get_fed_watch_dot_plot`（返回 year/rate/vote_count/is_median/median_rate/current_rate）+ service `get_fed_watch_dot_plot` + worker `FED_WATCH_DOT_PLOT` + adapter + router。
+- [x] **P1.9 官方文档**：✅ 文件头部 4 个链接均为真实官方 URL（get-search-quote / get-search-news / get-indicator-list / overview），无需替换。
+- [x] **P1.10 主服务研判层接入**：✅ 2026-08-22 完成。`FedWatchTool`(get_fed_watch) 此前已存在并走 `/macro/fed-watch`；本次补齐专家辩论层接入——`data_collector._DATA_COLLECTORS` 新增 `fed_watch → get_fed_watch`（市场级无 ticker）；`expert_registry` 给 `MACRO_STRATEGIST` / `PORTFOLIO_RISK_MANAGER` 的 `available_tools` 追加 `get_fed_watch`，`financial_research` / `full_investment` 场景 `data_requirements` 追加 `fed_watch`；`macro_app.get_macro_assets` 额外把 FedWatch 派生为 `sentimentIndicators.fed_watch` + 风险雷达「FOMC政策」轴（降息概率→宽松倾向分，失败静默降级）。**FedWatch target_rate 现作为 Tier1 FOMC 前瞻信号进入宏观研判/风控层**。
+- [x] **P1.11 单测 + 提交 PR**：✅ 新增 `TestFedWatchInExpertTeam` 6 例（_DATA_COLLECTORS 映射 / 专家 available_tools / 场景 data_requirements / collect_shared_data 调用 get_fed_watch 且不传 ticker）。
 
 ---
 

@@ -72,12 +72,52 @@ class FutuDataSource:
             "VALUATION",  # F2: 估值明细
             "SHORT_SELLING",  # F1: 卖空数据分析
             "OPTION_STRATEGY",  # F3: 期权策略组合
+            "OPTION_STRATEGY_ANALYSIS",  # P0.2: 期权损益分析(盈亏平衡点/最大盈亏/Greeks)
+            "OPTION_QUOTE",  # P0.2: 期权快照(组合腿实时行情+Greeks)
+            # ── P0.5 期权全维数据 ──────────────────────────────────────
+            "OPTION_UNDERLYING_HIS_VOL",  # P0.5.2: 标的已实现波动率HV(时间序列)
+            "OPTION_UNDERLYING_OVERVIEW",  # P0.5.2: 标的期权总览(IV/IV_RANK/HV多周期)
+            "OPTION_MARKET_STATISTIC",  # P0.5.3: 期权市场Put/Call比(市场级)
+            "OPTION_ZERO_DTE_SCREENER",  # P0.5.4: 0DTE末日期权筛选器
+            "OPTION_ZERO_DTE_CONTRACT",  # P0.5.4: 0DTE合约明细
+            "OPTION_EARNINGS_SCREENER",  # P0.5.5: 财报期权筛选器
+            "OPTION_SELLER_SCREENER",  # P0.5.6: 卖方策略筛选器
+            "OPTION_EXERCISE_PROBABILITY",  # P0.5.7: 行权概率
             "OPTION_VOLATILITY",  # F3: 期权波动率
             "CAPITAL_DISTRIBUTION",  # F4-1: 主力筹码分层(支撑G3)
             "ANALYST_CONSENSUS",  # F4-4: 分析师共识(卖方观点,支撑G7)
             "FED_WATCH",  # F4-2: FedWatch FOMC隐含概率(支撑G5)
+            "FED_WATCH_DOT_PLOT",  # P1.8: FedWatch点阵图(FOMC委员利率预测)
+            "SEARCH_QUOTE",  # P1.2: 行情搜索(关键词→标的,补名称→代码)
+            # ── P2.2 机构持仓 / ARK 交易（美股聪明钱）──────────────────
+            "INSTITUTION_LIST",  # P2.2: 机构列表(13F,返回institution_id)
+            "INSTITUTION_HOLDING_LIST",  # P2.2: 机构持仓明细(13F聪明钱核心)
+            "INSTITUTION_HOLDING_CHANGE",  # P2.2: 机构增减持明细
+            "INSTITUTION_DISTRIBUTION",  # P2.2: 机构行业分布
+            "INSTITUTION_PROFILE",  # P2.2: 机构画像
+            "ARK_FUND_HOLDING",  # P2.2: ARK基金持仓(Finnhub无此数据)
+            "ARK_ACTIVE_TRANSACTION",  # P2.2: ARK活跃交易(每日买卖)
+            # ── G8 数据正确性基座 ─────────────────────────────────────
+            "REHAB",  # G8: 复权因子(回测/技术指标地基)
+            "TRADING_DAYS",  # G8: 交易日历(T-1语义/K线对齐)
+            "KL_QUOTA",  # G8: 历史K线额度(批量拉取防静默失败)
+            "MARKET_STATE",  # G8: 市场状态(区分盘后空vs故障空)
+            "OWNER_PLATE",  # G6: 标的所属板块(板块轮动/标的分组前置)
             "HEAT_MAP",  # F4-3: 板块热力图(支撑G6)
             "HK_SECTOR_FLOW",  # F4-5: 港股行业板块资金流聚合(支撑板块资金流向面板)
+            # ── P1.2~P1.7: 基本面接口族（按需填坑）────────────────────
+            "RATING_SUMMARY",  # P1.2: 分析师评级明细(机构/分析师)
+            "REVENUE_BREAKDOWN",  # P1.3: 主营构成(收入拆分)
+            "SHORT_INTEREST",  # P1.4: 累计卖空持仓(美股)
+            "SHAREHOLDERS_OVERVIEW",  # P1.5: 股东概况
+            "SHAREHOLDERS_HOLDING_CHANGES",  # P1.5: 股东持股变动
+            "SHAREHOLDERS_INSTITUTIONAL",  # P1.5: 机构持股统计
+            "SHAREHOLDERS_HOLDER_DETAIL",  # P1.5: 股东明细
+            "INSIDER_HOLDER_LIST",  # P1.5: 内部人持股列表
+            "INSIDER_TRADE_LIST",  # P1.5: 内部人交易明细
+            "CORP_ACTIONS_DIVIDENDS",  # P1.6: 分红记录
+            "CORP_ACTIONS_BUYBACKS",  # P1.6: 回购记录(仅港股/A股)
+            "CORP_ACTIONS_SPLITS",  # P1.6: 拆股记录
         ]
 
     # ── 远程节点状态感知 ──────────────────────────────────────

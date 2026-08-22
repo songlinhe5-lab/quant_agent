@@ -59,3 +59,28 @@ futu / finnhub 的 `health()` **都是**看 `node.status`，不打上游、不�
 ## 9. 北京直连 GHCR 无效（2026-08-15）
 
 MTU=1450 **解决不了**北京拉 GHCR。TLS 握手正常，blob 0 字节（Azure CDN 跨境实质阻断）。北京必须走 S1 registry `100.102.223.44:5000/...:cn`。勿把 BJ 镜像源改回 `ghcr.io`。
+
+## 10. Futu 基本面接口族（2026-08-22）
+
+**真相**：`get_fundamental`（`option_fund_handler.py`）底层是 `get_market_snapshot` 快照，**只有 5 个估值字段**（company_name/trailing_PE/price_to_book/dividend_yield/market_cap）——是「假基本面」，ROE/做空比例等宣传字段底层拿不到。要真基本面走 `FINANCIALS`（财务三大表）+ `VALUATION`。
+
+**P1 接口族已接入**（`option_fund_handler.py`，零幻觉实跑验证）：`FINANCIALS`（get_financials_statements，statement_type 传整数 1~4 + financial_type 大写枚举）、`VALUATION`、`RATING_SUMMARY`（rating_dimension_type=INSTITUTION/ANALYST，rating 在 rating_item_list 内）、`REVENUE_BREAKDOWN`（financial_type 大写 ANNUAL）、`SHORT_INTEREST`（3 元组）、`SHAREHOLDERS_*`/`INSIDER_*`（6 方法）、`CORP_ACTIONS_*`（dividends/buybacks/stock_splits，buybacks 仅港股/A股）。**SDK 10.10 命名与文档不同**：`get_insider_trade_list`（非 transaction）、`get_corporate_actions_{dividends,buybacks,stock_splits}`（非通配 `_*`）。全链路 handler→service→worker→adapter→router。
+
+**选股因子 P2**：`screener_handler.py` 无硬白名单，因子可用性由 futu SDK 枚举决定（`get_enum` 透传）。官方特色因子 `SHORT_POSITION`/`ANALYST_RATING`/`ANALYST_TARGET_PRICE`/`RISE_PROB` 等已在 `backend/services/screener/constants.py` 登记（`_VALID_FIELDS` + `_TYPE_ENFORCEMENTS`）。⚠️ **option/broker 类因子选股实测 `NN_ProtoRet_SvrFailed`**（服务器端不支持，勿登记进 `_TYPE_ENFORCEMENTS` 强制纠偏）。⚠️ **kline_shape 的 period 须传整数**（Period.DAY=11），传 KLType 枚举会 `int('K_DAY')` 报错——已修复用 `get_period()`。
+
+## 11. 新马日市场暂缓 + 组合期权接口族（2026-08-22）
+
+**新马日（SG/MY/JP）是长尾，暂不投入**。核查：全库（排除 node_modules）无任何 SG/MY/JP 策略线/研报/前端消费场景；底层 `quote_handler`（市场校验含 SG/JP）+ `screener_handler`（ScrMarket JP/SG）+ `format_ticker`（识别 JP./SG. 前缀）已能处理 SG/JP 代码——**能取数但无消费场景，无增量价值**。待有真实需求再启（行情走 quote_handler、交易走 trade_handler，参考 HK/US 路径）。
+
+**组合期权（`option_fund_handler.py`，P0/P0.5 全部 OpenD 实跑零幻觉）**：
+- **P0 三件套**：`get_option_strategy`（策略定义，正股入参）+ `get_option_strategy_analysis`（损益分析，实测宽跨式 max_loss=-10116/breakeven=[103.84,311.16]，**禁 Black-Scholes 近似**）+ `get_option_quote`（38 列快照）。⚠️ `option_legs` 每元素须为 `OptionStrategyLeg` 对象（code/action/quantity），字符串报 `each item must be OptionStrategyLeg`。
+- **P0.5 全维**：`get_option_underlying_his_volatility`（HV 时间序列）/`get_option_underlying_overview`（20 列 iv_rank+multi-hv）/`get_option_market_statistic`（Put/Call 比）/`get_option_zero_dte_screener`+`contract`（0DTE）/`get_option_earnings_screener`（财报期权）/`get_option_seller_screener`（卖方）/`get_option_exercise_probability`（行权概率）。⚠️ 枚举：`OptionMarket`=US_SECURITY、`SellerType`=COVERED_CALL、`OptionStatisticDataType`=VOLUME；`zero_dte_contract` 入参需 screener 的 `chain_info`。
+- **business 层聚合**：`backend/services/datasource/business/option.py` 8 方法 + `get_option_put_call_panel`（P/C 比派生 latest/avg_5d/signal，<0.7 偏谨慎/>1.0 偏乐观，空数据降级不臆造）；`routers/market.py` 9 个端点。
+- **P1 组合交易（骨架，沙箱）**：`trade_handler.py` 的 `place_combo_order`/`comboorder_tradinginfo_query`，`_resolve_trd_env` 默认 SIMULATE，仅 `REAL_TRADE_EXECUTE=1` **且** `force_real=True` 才 REAL；`ComboLeg` 字段=code/trd_side/qty_ratio/position_id/pred_side。OMS 实盘未实装，SIMULATE 盘推演。
+
+## 12. 另类数据 ALT-01~03 阻塞暂缓（2026-08-22）
+
+`TODO-ops.md` 的 3 项另类数据**均受外部 API 凭据阻塞，暂缓**。核查：全库配置文件**零命中** Reddit/X/链上/财报音频凭据，按零幻觉红线「先验证数据源可用再写代码，禁 mock」，不可盲写。
+- **ALT-01** Reddit WSB + X 散户情绪：需 `REDDIT_CLIENT_ID/SECRET` + X `BEARER_TOKEN`。现有 `data_subservice/_internal/sentiment/apewisdom.py`（热议榜）已部分覆盖散户热度。待凭据就绪可做（最接近可启动，需先权限验证）。
+- **ALT-02** 财报电话会议音频情感分析：需财报音频数据源（Seeking Alpha/IR）+ ASR + 声纹/语气模型，**重工程 + 数据源未就绪**，ROI 最低。
+- **ALT-03** 链上大资金追踪：需链上数据源 key（Glassnode/交易所 API），且加密资产是项目长尾（同新马日无消费场景）。

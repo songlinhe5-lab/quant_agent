@@ -87,6 +87,13 @@ class SentimentRecord(Base):
     pc_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 期权多空比 Put/Call Ratio  # noqa: E501
     credit_spread: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 高收益债利差  # noqa: E501
     fear_greed_score: Mapped[Optional[int]] = mapped_column(nullable=True)  # 贪婪恐惧指数  # noqa: E501
+    # C.1 热度因子（A 线 · 散户注意力突变）：top-N mentions 环比均值
+    retail_heat_change_pct: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # 散户注意力突变（小数，如 0.41=+41%）  # noqa: E501
+    retail_heat_total: Mapped[Optional[int]] = mapped_column(
+        nullable=True
+    )  # top-N 总 mentions（绝对热度）  # noqa: E501
 
 
 class IVSnapshot(Base):

@@ -731,3 +731,66 @@ class TestDataSourceError:
         err = DataSourceError()
         assert int(err.code) == 5000
         assert err.data == {"source": ""}
+
+
+# ─── P1.10/11: FedWatch 接入宏观研判层 ───────────────────────────────
+
+
+class TestFedWatchInExpertTeam:
+    """P1.10: FedWatch target_rate 作为 Tier1 FOMC 前瞻信号接入专家辩论层"""
+
+    def test_data_collector_has_fed_watch(self):
+        """_DATA_COLLECTORS 应含 fed_watch → get_fed_watch，市场级无 ticker"""
+        from backend.services.expert_team.data_collector import _DATA_COLLECTORS
+
+        assert "fed_watch" in _DATA_COLLECTORS
+        assert _DATA_COLLECTORS["fed_watch"]["tool"] == "get_fed_watch"
+        assert _DATA_COLLECTORS["fed_watch"]["param_key"] is None  # 市场级，无需 ticker
+
+    def test_macro_strategist_has_get_fed_watch(self):
+        """宏观策略师 available_tools 应含 get_fed_watch"""
+        expert = get_expert("macro_strategist")
+        assert expert is not None
+        assert "get_fed_watch" in expert.available_tools
+
+    def test_portfolio_risk_manager_has_get_fed_watch(self):
+        """组合风控经理 available_tools 应含 get_fed_watch"""
+        expert = get_expert("portfolio_risk_manager")
+        assert expert is not None
+        assert "get_fed_watch" in expert.available_tools
+
+    def test_financial_research_scenario_requires_fed_watch(self):
+        """financial_research 场景 data_requirements 应含 fed_watch"""
+        scenario = get_scenario("financial_research")
+        assert scenario is not None
+        assert "fed_watch" in scenario.data_requirements
+
+    def test_full_investment_scenario_requires_fed_watch(self):
+        """full_investment 场景 data_requirements 应含 fed_watch"""
+        scenario = get_scenario("full_investment")
+        assert scenario is not None
+        assert "fed_watch" in scenario.data_requirements
+
+    def test_collect_shared_data_invokes_fed_watch_tool(self):
+        """collect_shared_data 收到 fed_watch 需求时应调用 get_fed_watch 工具且不传 ticker"""
+        from backend.services.expert_team.data_collector import collect_shared_data
+
+        registry = MagicMock()
+
+        async def fake_execute(tool_name, **kwargs):
+            assert tool_name == "get_fed_watch"
+            assert "ticker" not in kwargs  # 市场级，无需 ticker
+            return {"status": "success", "data": {"cut_probability": 0.72}}
+
+        registry.execute = AsyncMock(side_effect=fake_execute)
+
+        result = asyncio.run(
+            collect_shared_data(
+                data_requirements=["fed_watch"],
+                tool_registry=registry,
+                ticker="US.AAPL",
+            )
+        )
+        assert "fed_watch" in result
+        assert result["fed_watch"].get("status") == "success"
+        registry.execute.assert_called_once()

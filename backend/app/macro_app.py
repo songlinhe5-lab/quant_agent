@@ -11,6 +11,7 @@ try:
 except ImportError:
     zoneinfo = None
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 from sqlalchemy.orm import Session
 
@@ -475,9 +476,13 @@ def get_sentiment_history(
             data.append(
                 {
                     "time": r.timestamp.strftime("%m-%d %H:%M") if r.timestamp else "",
+                    # 机构情绪（B 层 · 市场化多空）
                     "pc_ratio": r.pc_ratio,
                     "vix": r.vix_value,
                     "credit_spread": r.credit_spread,
+                    # C.2/C.3: 散户热度（A 层 · 注意力突变），与机构情绪双层视图
+                    "retail_heat_change_pct": r.retail_heat_change_pct,
+                    "retail_heat_total": r.retail_heat_total,
                 }
             )
         return {"status": "success", "data": data}
@@ -659,6 +664,39 @@ async def get_capital_flow_dashboard(force_refresh: bool = False):
         if any_ok:
             await redis_client.set(cache_key, json.dumps(result), ex=300 + random.randint(10, 60))
         return result
+
+
+# ── FUNDFLOW-02: A股龙虎榜 ────────────────────────────────────────────────────
+async def get_a_share_lhb(force_refresh: bool = False) -> Dict[str, Any]:
+    """A股龙虎榜（机构 vs 游资 + 区间净买额）。
+
+    数据来自 AKShare 子服务的 LHB_DETAIL / LHB_STOCK_STAT，经 data_source_router 远程调用。
+    无数据源时返回 status=warning / data=None（前端走诚实空态）。
+    """
+    from backend.services.fund_flow.a_share_lhb import get_a_share_lhb as _fetch_lhb
+
+    payload = await _fetch_lhb(force_refresh=force_refresh)
+    if payload is None:
+        return {"status": "warning", "data": None, "message": "龙虎榜数据不可用"}
+    return {"status": "success", "data": payload}
+
+
+# ── FUNDFLOW-02: 港股经纪商席位 (Broker Queue) ─────────────────────────────────
+async def get_hk_broker_queue(symbol: str, force_refresh: bool = False) -> Dict[str, Any]:
+    """港股指定标的的经纪商买卖队列（席位异动）。
+
+    数据来自 Futu 实时推送，经 subscription.get_broker 取进程内缓存的 broker_queue。
+    无 Futu 实时节点时返回 status=warning / data=None。
+    """
+    from backend.services.datasource.subscription import get_broker
+
+    try:
+        broker = await get_broker(symbol, force_refresh=force_refresh)
+    except Exception as e:
+        return {"status": "warning", "data": None, "message": f"经纪商队列获取失败: {e}"}
+    if not broker:
+        return {"status": "warning", "data": None, "message": "经纪商队列暂无数据（需 Futu 实时推送）"}
+    return {"status": "success", "data": broker}
 
 
 # ── 跨市场资金流向 ──────────────────────────────────────────────────────────
@@ -1388,6 +1426,49 @@ async def get_macro_assets(
                 "fear_greed": {"value": fg_score, "status": fg_status},
             }  # noqa: E501
 
+            # ── P1.10: FedWatch FOMC 前瞻信号（Tier1 利率前瞻）─────────────
+            # 从 Futu FedWatch 派生下一会议隐含利率、政策斜率、降息概率，
+            # 并入情绪指标 + 作为风险雷达的「FOMC政策」轴。失败则静默降级（不阻塞雷达）。
+            fed_panel = None
+            fomc_score = None
+            fomc_status = "N/A"
+            cut_prob = None
+            try:
+                from backend.services.datasource.business.macro import macro_data_service
+
+                fw_res = await macro_data_service.get_fed_watch_panel()
+                fw_data = fw_res.data if hasattr(fw_res, "data") else fw_res
+                if isinstance(fw_data, dict) and fw_data.get("status") == "success":
+                    panel = fw_data.get("panel") or fw_data.get("data") or {}
+                    fed_panel = panel
+                    cut_prob = panel.get("cut_probability")
+                    slope = panel.get("policy_slope")
+                    # 降息概率越高→风险偏好越高(FOMC 轴分数越高)；斜率转鹰→压低
+                    base = float(cut_prob) * 100 if cut_prob is not None else 50
+                    if slope == "dovish":
+                        base += 5
+                    elif slope == "hawkish":
+                        base -= 10
+                    fomc_score = round(max(0, min(100, base)), 1)
+                    fomc_status = "偏宽松" if fomc_score > 60 else ("偏紧缩" if fomc_score < 40 else "中性")
+            except Exception as e:  # noqa: BLE001
+                logging.warning("FedWatch FOMC 轴派生失败(降级): %s", e)
+
+            if fed_panel is not None:
+                sentiment_indicators["fed_watch"] = {
+                    "value": {
+                        "next_meeting_date": (
+                            fed_panel.get("next_meeting_date") if isinstance(fed_panel, dict) else None
+                        ),
+                        "next_meeting_implied_rate": (
+                            fed_panel.get("next_meeting_implied_rate") if isinstance(fed_panel, dict) else None
+                        ),
+                        "policy_slope": (fed_panel.get("policy_slope") if isinstance(fed_panel, dict) else None),
+                        "cut_probability": cut_prob,
+                    },
+                    "status": fomc_status,
+                }
+
             radar_data = [
                 {
                     "axis": "流动性",
@@ -1436,6 +1517,12 @@ async def get_macro_assets(
                     "current": crypto,
                     "benchmark": 50,
                     "desc": "加密资产投机情绪。",
+                },  # noqa: E501
+                {
+                    "axis": "FOMC政策",
+                    "current": fomc_score if fomc_score is not None else 50,
+                    "benchmark": 50,
+                    "desc": "FedWatch 降息概率派生的 FOMC 前瞻宽松/紧缩倾向(Tier1)。",
                 },  # noqa: E501
             ]
 

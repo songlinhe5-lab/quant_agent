@@ -18,6 +18,9 @@ from data_subservice._internal.akshare.flow import (
     get_hk_sector_flow,
     get_hsgt_top_holders,
     get_individual_flow,
+    get_lhb_detail,
+    get_lhb_institution,
+    get_lhb_stock_statistic,
     get_northbound_flow_full,
     get_southbound_flow,
 )
@@ -248,6 +251,43 @@ class AKShareService:
             return result
         except Exception as e:
             self._record_failure("sector_hk")
+            return {"status": "error", "message": str(e), "data": None}
+
+    # ───────── FUNDFLOW-02: A股龙虎榜 ─────────
+    async def get_lhb_detail(self, date: str) -> Dict[str, Any]:
+        def _call():
+            return get_lhb_detail(date)
+
+        try:
+            result = await circuit_breaker.call(f"akshare:lhb_detail:{date}", _call)
+            self._record_success("lhb_detail")
+            return result
+        except Exception as e:
+            self._record_failure("lhb_detail")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_lhb_stock_statistic(self, period: str = "近一月") -> Dict[str, Any]:
+        def _call():
+            return get_lhb_stock_statistic(period)
+
+        try:
+            result = await circuit_breaker.call(f"akshare:lhb_stat:{period}", _call)
+            self._record_success("lhb_stat")
+            return result
+        except Exception as e:
+            self._record_failure("lhb_stat")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_lhb_institution(self, start_date: str, end_date: str) -> Dict[str, Any]:
+        def _call():
+            return get_lhb_institution(start_date, end_date)
+
+        try:
+            result = await circuit_breaker.call(f"akshare:lhb_inst:{start_date}", _call)
+            self._record_success("lhb_inst")
+            return result
+        except Exception as e:
+            self._record_failure("lhb_inst")
             return {"status": "error", "message": str(e), "data": None}
 
 

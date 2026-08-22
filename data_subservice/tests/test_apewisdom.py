@@ -13,10 +13,11 @@ from data_subservice._internal.sentiment.apewisdom import ApeWisdomService
 
 
 def _fake_page(rank_start: int, count: int) -> dict:
+    # 🔧 2026-08-22: 对齐 ApeWisdom 真实 API 结构 —— 键是 `results`（非 `data`）
     return {
         "status": "success",
         "data": {
-            "data": [
+            "results": [
                 {
                     "rank": rank_start + i,
                     "ticker": f"SYM{i}",
@@ -102,3 +103,51 @@ async def test_get_trending_mid_pagination_failure_returns_partial():
         r = await svc.get_trending(filter="all", page=1, top_n=250)
     assert r["status"] == "error"
     assert len(r["collected"]) == 100  # 已收集部分不丢失
+
+
+@pytest.mark.asyncio
+async def test_get_trending_parses_real_api_results_key():
+    """🔧 2026-08-22: ApeWisdom 真实响应键为 `results`（顶层另有 count/pages），修复前读 `data` 导致空列表"""
+    svc = ApeWisdomService()
+    real_payload = {
+        "count": 1094,
+        "pages": 11,
+        "current_page": 1,
+        "results": [
+            {
+                "rank": 1,
+                "ticker": "BTC.X",
+                "name": "Bitcoin",
+                "mentions": 288,
+                "upvotes": 1939,
+                "rank_24h_ago": 2,
+                "mentions_24h_ago": 272,
+            },
+            {
+                "rank": 2,
+                "ticker": "SPY",
+                "name": "SPDR",
+                "mentions": 188,
+                "upvotes": 548,
+                "rank_24h_ago": 1,
+                "mentions_24h_ago": 323,
+            },
+        ],
+    }
+    with patch.object(svc, "_get", new=AsyncMock(return_value={"status": "success", "data": real_payload})):
+        r = await svc.get_trending(filter="all", page=1)
+    assert r["status"] == "success"
+    assert len(r["data"]) == 2  # 修复后能解析 results，不再 count=0
+    assert r["data"][0]["ticker"] == "BTC.X"
+    assert r["data"][0]["mentions_delta_pct"] == pytest.approx((288 - 272) / 272, abs=1e-3)
+
+
+@pytest.mark.asyncio
+async def test_get_trending_backwards_compat_old_data_key():
+    """兼容旧 `data` 键（若 API 回退旧结构）"""
+    svc = ApeWisdomService()
+    old_payload = {"data": [{"rank": 1, "ticker": "AAPL", "name": "Apple", "mentions": 100, "mentions_24h_ago": 80}]}
+    with patch.object(svc, "_get", new=AsyncMock(return_value={"status": "success", "data": old_payload})):
+        r = await svc.get_trending(filter="all", page=1)
+    assert r["status"] == "success"
+    assert r["data"][0]["ticker"] == "AAPL"

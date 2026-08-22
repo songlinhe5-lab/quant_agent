@@ -43,16 +43,16 @@ export const AI_PUSH_MODULES: AiModule[] = [
   'ai08',
 ]
 
-/** 模块中文释义，便于设置 UI 展示 */
+/** 模块中文释义，便于设置 UI 展示（语义以 AI_01_09_PLAN.md 契约 + 实际代码实现为准） */
 export const AI_PUSH_MODULE_META: Record<AiModule, string> = {
   ai01: '异动解说员（K线浮动气泡）',
-  ai02: '解盘副驾（自然语言投研）',
+  ai02: '解盘副驾（自然语言投研 / 流式）',
   ai03: '回测 Tear Sheet 解读员（杠杆/Alpha 判别 + 过拟合检测）',
-  ai04: '盘前早报自动生成',
-  ai05: '宏观风险雷达',
-  ai06: '智能选股与归因',
-  ai07: '策略自优化建议',
-  ai08: '持仓诊断与风控',
+  ai04: 'OMS 执行风控（订单预检）',
+  ai05: '风险预警员（雷达维度变红预警）',
+  ai06: '告警分级分诊（智能去噪/分类）',
+  ai07: '实盘教练（纸面组合体检）',
+  ai08: '宏观事件推演（经济日历高危事件）',
 }
 
 const DEFAULT_ENABLED = true

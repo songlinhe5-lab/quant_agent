@@ -546,6 +546,82 @@ class TestQuoteHandlerNewsFedHeat:
         assert result["status"] == "error"
         assert "kaboom" in result["message"]
 
+    # ── get_fed_watch_dot_plot（P1.8）───────────────────────────────
+    @pytest.mark.asyncio
+    async def test_fed_watch_dot_plot_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        df = pd.DataFrame(
+            [
+                {
+                    "year": 2026,
+                    "rate": 3.375,
+                    "vote_count": 1,
+                    "is_median": False,
+                    "median_rate": 3.875,
+                    "current_rate": 3.63,
+                }
+            ]
+        )
+        conn_mgr.quote_ctx.get_fed_watch_dot_plot.return_value = (RET_OK, df)
+        result = await handler.get_fed_watch_dot_plot()
+        assert result["status"] == "success"
+        assert result["count"] == 1
+        assert result["data"][0]["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_dot_plot_fail(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_fed_watch_dot_plot.return_value = (-1, "fail")
+        result = await handler.get_fed_watch_dot_plot()
+        assert result["status"] == "error"
+
+    # ── get_search_quote（P1.2 行情搜索）────────────────────────────
+    @pytest.mark.asyncio
+    async def test_search_quote_empty_keyword(self):
+        handler, _, _ = _make_handler()
+        result = await handler.get_search_quote("")
+        assert result["status"] == "error"
+        assert "空" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_search_quote_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_search_quote.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [{"market": "HK", "code": "HK.00700", "name": "腾讯控股", "sec_type": "STOCK", "is_watched": True}]
+            ),
+        )
+        result = await handler.get_search_quote("腾讯", 5)
+        assert result["status"] == "success"
+        assert result["count"] == 1
+        assert result["data"][0]["code"] == "HK.00700"
+        assert result["data"][0]["name"] == "腾讯控股"
+
+    @pytest.mark.asyncio
+    async def test_search_quote_cache_hit(self):
+        handler, conn_mgr, cache_mgr = _make_handler()
+        cache_mgr.set_search_quote_cache(
+            "futu_search_quote_腾讯_5", time.time(), {"status": "success", "count": 1, "data": [{"code": "HK.00700"}]}
+        )
+        called = {"n": 0}
+
+        def fake_get_search_quote(*args, **kw):
+            called["n"] += 1
+            return (RET_OK, pd.DataFrame())
+
+        conn_mgr.quote_ctx.get_search_quote.side_effect = fake_get_search_quote
+        result = await handler.get_search_quote("腾讯", 5)
+        assert result["status"] == "success"
+        assert called["n"] == 0, "缓存命中不应调 SDK"
+
+    @pytest.mark.asyncio
+    async def test_search_quote_fail(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_search_quote.return_value = (-1, "fail")
+        result = await handler.get_search_quote("腾讯")
+        assert result["status"] == "error"
+
     # ── get_heat_map_data ───────────────────────────────────────────
     @pytest.mark.asyncio
     async def test_heat_map_not_connected(self):
@@ -681,3 +757,253 @@ class TestQuoteHandlerNewsFedHeat:
         result = await handler.get_hk_sector_flow()
         assert result["status"] == "degraded"
         assert result["data"]["sectors"] == []
+
+
+# ── P2.2 机构持仓 / ARK 交易（美股聪明钱）──────────────────────────────
+class TestInstitutionArk:
+    """P2.2 机构/ARK 接口族"""
+
+    async def test_institution_list_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_list.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "institution_id": 1951572549,
+                        "institution_name": "Vanguard",
+                        "position_value": 5640083126208.48,
+                        "position_count": 4358,
+                    }
+                ]
+            ),
+            "4",
+            16806,
+        )
+        result = await handler.get_institution_list("US", 1, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["institution_id"] == 1951572549
+
+    async def test_institution_holding_list_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_holding_list.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "security": "US.AAPL",
+                        "name": "苹果",
+                        "holding_pct": 7.1438,
+                        "change_shares": 4539754,
+                        "holding_date": "2026-06-29",
+                    }
+                ]
+            ),
+            "4",
+            4346,
+        )
+        result = await handler.get_institution_holding_list(1951572549, "US", None, 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["holding_pct"] == 7.1438
+
+    async def test_institution_holding_change_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_holding_change.return_value = (
+            RET_OK,
+            pd.DataFrame([{"security": "US.VGNT", "name": "VERSIGENT", "change_pct": 5.2047}]),
+            "4",
+            2870,
+        )
+        result = await handler.get_institution_holding_change(1951572549, "US", None, 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["change_pct"] == 5.2047
+
+    async def test_institution_distribution_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_distribution.return_value = (
+            RET_OK,
+            pd.DataFrame([{"industry_name": "电子", "position_value": 984326797686.31, "portfolio_pct": 18.13}]),
+        )
+        result = await handler.get_institution_distribution(1951572549, "US")
+        assert result["status"] == "success"
+        assert result["data"][0]["portfolio_pct"] == 18.13
+
+    async def test_institution_profile_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_profile.return_value = (
+            RET_OK,
+            {
+                "institution_name": "Vanguard",
+                "new_count": 115,
+                "sold_out_count": 24,
+                "increase_count": 2878,
+                "top10_pct": 20.5,
+                "disclosure_date": "2026-08-13",
+            },
+        )
+        result = await handler.get_institution_profile(1951572549, "US")
+        assert result["status"] == "success"
+        assert result["data"]["new_count"] == 115
+
+    async def test_ark_fund_holding_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_ark_fund_holding.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "security": "US.ACHR",
+                        "name": "Archer",
+                        "shares": 27642593,
+                        "market_value": 168343391.37,
+                        "weight": 1.22,
+                    }
+                ]
+            ),
+            "4",
+            3,
+        )
+        result = await handler.get_ark_fund_holding("POSITION", "ONE_DAY", 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["weight"] == 1.22
+
+    async def test_ark_active_transaction_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_ark_active_transaction.return_value = (
+            RET_OK,
+            pd.DataFrame([{"security": "US.BWXT", "name": "BWX", "change_amount": 11629809.0, "change_shares": 69979}]),
+            "4",
+            3,
+        )
+        result = await handler.get_ark_active_transaction("INCREASE", "ONE_DAY", 3, 1)
+        assert result["status"] == "success"
+        assert result["data"][0]["change_amount"] == 11629809.0
+
+    async def test_p22_disconnected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None  # ctx 空 → handler 返回"未连接"
+        result = await handler.get_institution_list("US", 1, 1)
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    async def test_institution_failure(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_institution_list.return_value = (-1, "no permission")
+        result = await handler.get_institution_list("US", 1, 1)
+        assert result["status"] == "error"
+
+
+# ── G8 数据正确性基座（复权/交易日/额度/市场状态）────────────────────────
+class TestG8DataCorrectness:
+    """G8 复权因子 / 交易日历 / K线额度 / 市场状态"""
+
+    async def test_rehab_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_rehab.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [{"ex_div_date": "2005-04-19", "per_cash_div": 0.07, "forward_adj_factorA": 1.0, "split_ratio": None}]
+            ),
+        )
+        result = await handler.get_rehab("HK.00700")
+        assert result["status"] == "success"
+        assert result["data"][0]["per_cash_div"] == 0.07
+        assert result["data"][0]["split_ratio"] is None  # nan → None
+
+    async def test_rehab_unsupported(self):
+        handler, conn_mgr, _ = _make_handler()
+        result = await handler.get_rehab(
+            "GC=F", is_unsupported_func=lambda t: t.startswith("GC"), format_ticker_func=lambda t: t
+        )
+        assert result["status"] == "error"
+
+    async def test_trading_days_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.request_trading_days.return_value = (
+            RET_OK,
+            [{"time": "2026-01-02", "trade_date_type": "WHOLE"}],
+        )
+        result = await handler.get_trading_days("HK", "2026-01-01", "2026-01-31")
+        assert result["status"] == "success"
+        assert result["data"][0]["trade_date_type"] == "WHOLE"
+
+    async def test_history_kl_quota_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_history_kl_quota.return_value = (
+            RET_OK,
+            (2, 298, [{"code": "US.MU", "name": "美光科技", "request_time": "2026-08-21 10:26:32"}]),
+        )
+        result = await handler.get_history_kl_quota(True)
+        assert result["status"] == "success"
+        assert result["quota_used"] == 2
+        assert result["quota_remaining"] == 298
+        assert result["data"][0]["code"] == "US.MU"
+
+    async def test_market_state_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_market_state.return_value = (
+            RET_OK,
+            pd.DataFrame([{"code": "HK.00700", "stock_name": "腾讯控股", "market_state": "CLOSED"}]),
+        )
+        result = await handler.get_market_state(["HK.00700"])
+        assert result["status"] == "success"
+        assert result["data"][0]["market_state"] == "CLOSED"
+
+    async def test_g8_disconnected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_rehab("HK.00700")
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    async def test_g8_failure(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_rehab.return_value = (-1, "fail")
+        result = await handler.get_rehab("HK.00700")
+        assert result["status"] == "error"
+
+
+# ── G6 板块轮动前置：标的所属板块（get_owner_plate）─────────────────────
+class TestG6OwnerPlate:
+    """G6 get_owner_plate：标的→所属板块（与 get_hk_sector_flow 构成双向索引）"""
+
+    async def test_owner_plate_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_owner_plate.return_value = (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "code": "HK.00700",
+                        "name": "腾讯控股",
+                        "plate_code": "HK.LIST23586",
+                        "plate_name": "人工智能",
+                        "plate_type": "CONCEPT",
+                    }
+                ]
+            ),
+        )
+        result = await handler.get_owner_plate("HK.00700")
+        assert result["status"] == "success"
+        assert result["data"][0]["plate_name"] == "人工智能"
+        assert result["data"][0]["plate_type"] == "CONCEPT"
+
+    async def test_owner_plate_unsupported(self):
+        handler, conn_mgr, _ = _make_handler()
+        result = await handler.get_owner_plate(
+            "GC=F", is_unsupported_func=lambda t: t.startswith("GC"), format_ticker_func=lambda t: t
+        )
+        assert result["status"] == "error"
+
+    async def test_owner_plate_disconnected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_owner_plate("HK.00700")
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    async def test_owner_plate_failure(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_owner_plate.return_value = (-1, "fail")
+        result = await handler.get_owner_plate("HK.00700")
+        assert result["status"] == "error"

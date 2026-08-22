@@ -16,7 +16,9 @@ _OPTION_TTL = 300  # 期权链 5 分钟
 _FUND_FLOW_TTL = 120  # 资金流向 2 分钟
 _ORDER_BOOK_TTL = 30  # 盘口 30 秒
 _FUNDAMENTAL_TTL = 86400  # 基本面 24 小时
+_FINANCIALS_TTL = 86400  # 财务报表 24 小时（低频，复用基本面 TTL）
 _CAPITAL_DIST_TTL = 300  # 主力筹码分层 5 分钟 (与资金流同源, 可复用较短 TTL)
+_SEARCH_QUOTE_TTL = 600  # 行情搜索 10 分钟（Agent 高频刚需，降频防穿透）
 _MAX_CACHE_SIZE = 200  # 单类缓存最大条目数
 
 
@@ -46,9 +48,11 @@ class CacheManager:
         self._fund_flow_cache: Dict[str, Tuple[float, Dict]] = {}
         self._order_book_cache: Dict[str, Tuple[float, Dict]] = {}
         self._fundamental_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._financials_cache: Dict[str, Tuple[float, Dict]] = {}
         self._capital_dist_cache: Dict[str, Tuple[float, Dict]] = {}
         self._top_brokers_cache: Dict[str, Tuple[float, Dict]] = {}
         self._capital_flow_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._search_quote_cache: Dict[str, Tuple[float, Dict]] = {}
 
         # 资金流向限流与熔断
         self.ff_lock: Optional[asyncio.Lock] = None
@@ -132,6 +136,7 @@ class CacheManager:
             (self._fund_flow_cache, _FUND_FLOW_TTL),
             (self._order_book_cache, _ORDER_BOOK_TTL),
             (self._fundamental_cache, _FUNDAMENTAL_TTL),
+            (self._financials_cache, _FINANCIALS_TTL),
             (self._capital_dist_cache, _CAPITAL_DIST_TTL),
             (self._top_brokers_cache, _FUND_FLOW_TTL),
             (self._capital_flow_cache, _FUND_FLOW_TTL),
@@ -218,6 +223,22 @@ class CacheManager:
 
     def set_fundamental_cache(self, key: str, timestamp: float, data: Dict):
         self._fundamental_cache[key] = (timestamp, data)
+
+    # ── Financials Cache（三大财务报表）─────────────────────────────
+
+    def get_financials_cache(self, key: str) -> Optional[Tuple[float, Dict]]:
+        return self._financials_cache.get(key)
+
+    def set_financials_cache(self, key: str, timestamp: float, data: Dict):
+        self._financials_cache[key] = (timestamp, data)
+
+    # ── Search Quote Cache（行情搜索：关键词→标的）──────────────────
+
+    def get_search_quote_cache(self, key: str) -> Optional[Tuple[float, Dict]]:
+        return self._search_quote_cache.get(key)
+
+    def set_search_quote_cache(self, key: str, timestamp: float, data: Dict):
+        self._search_quote_cache[key] = (timestamp, data)
 
     # ── Data Compression Tools ────────────────────────────────────
 

@@ -43,8 +43,8 @@
 
 ### 另类数据
 
-- [ ] **[ALT-01]** Reddit WallStreetBets + X (Twitter) 散户情绪流监控
-- [ ] **[ALT-02]** 财报电话会议（Earnings Call）音频情感分析（声纹情绪 + 语气波动）
-- [ ] **[ALT-03]** 链上大资金追踪（针对加密资产，交易所净流入/流出预警）
+- [ ] **[ALT-01]** Reddit WallStreetBets + X (Twitter) 散户情绪流监控 — ⏸️ **阻塞暂缓**（2026-08-22）：需 `REDDIT_CLIENT_ID/SECRET` + X `BEARER_TOKEN`，当前零配置。现有 `sentiment/apewisdom.py` 已部分覆盖散户热度。待凭据就绪先权限验证再启（MEMORY §12）
+- [ ] **[ALT-02]** 财报电话会议（Earnings Call）音频情感分析（声纹情绪 + 语气波动）— ⏸️ **阻塞暂缓**（2026-08-22）：需财报音频数据源 + ASR + 声纹/语气模型，重工程且数据源未就绪，ROI 最低（MEMORY §12）
+- [ ] **[ALT-03]** 链上大资金追踪（针对加密资产，交易所净流入/流出预警）— ⏸️ **阻塞暂缓**（2026-08-22）：需链上数据源 key（Glassnode/交易所 API），且加密资产为项目长尾无消费场景（MEMORY §12）
 
 ---

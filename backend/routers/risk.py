@@ -3,11 +3,15 @@ Risk API 路由
 提供风控面板数据 + RISK-01~08 进阶风控能力端点
 """
 
+import json
+
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.core.config import settings
 from backend.core.logger import logger
+from backend.routers.auth import get_current_user
 from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.risk.risk_attribution import calc_attribution
 from backend.services.risk.risk_cvar import decompose_cvar
@@ -228,3 +232,123 @@ async def post_stress_test(req: StressTestRequest):
 async def get_stress_scenarios():
     """列出所有可用压力测试情景"""
     return stress_tester.list_scenarios()
+
+
+# ── AI-05: 风险预警员（雷达维度变红 → LLM 预警 + 压测情景推荐）─────────────
+
+
+class RiskDimension(BaseModel):
+    axis: str
+    current: float
+    limit: float
+
+
+class AlertNarrativeReq(BaseModel):
+    dimensions: list[RiskDimension] = []  # 六维风险雷达 {axis,current,limit}
+    portfolio_beta: float | None = None
+
+
+class AlertNarrativeResp(BaseModel):
+    status: str  # success | safe | warning
+    breaches: list[str] = []  # 超限维度名
+    narrative: str | None = None  # LLM 预警文本
+    suggested_scenarios: list[str] = []  # 推荐压测情景（真实情景名）
+    hedge_hint: str | None = None  # 对冲/降险建议
+    message: str | None = None
+
+
+@router.post("/alert-narrative", response_model=AlertNarrativeResp, dependencies=[Depends(get_current_user)])
+async def ai_alert_narrative(req: AlertNarrativeReq):
+    """
+    AI-05 风险预警员：雷达维度变红（current>limit）→ LLM 生成自然语言预警 +
+    推荐压测情景 + 对冲建议。复用 stress_tester.list_scenarios() 真实情景名。
+    无超限维度时返回 safe（不打 LLM）；LLM 缺失/失败仅返回规则层。
+    """
+    breaches = [d.axis for d in req.dimensions if d.current > d.limit]
+    scenarios: list[str] = []
+    try:
+        raw_scenarios = stress_tester.list_scenarios()
+        scenarios = [str(s) for s in raw_scenarios]
+    except Exception:
+        scenarios = []
+
+    if not breaches:
+        return AlertNarrativeResp(
+            status="safe",
+            breaches=[],
+            narrative="当前六维风险均在限额内，风险可控，无需预警。",
+            suggested_scenarios=[],
+            hedge_hint=None,
+            message="无超限维度",
+        )
+
+    # 规则层：列出超限维度（无 LLM 也能给结论）
+    rule_message = "超限维度：" + "、".join(breaches)
+
+    if not settings.llm_model:
+        return AlertNarrativeResp(
+            status="warning",
+            breaches=breaches,
+            narrative=None,
+            suggested_scenarios=[],
+            hedge_hint=None,
+            message=rule_message + "；LLM 模型未配置",
+        )
+
+    from backend.bootstrap.lifecycle import global_llm_client
+
+    if global_llm_client is None:
+        return AlertNarrativeResp(
+            status="warning",
+            breaches=breaches,
+            narrative=None,
+            suggested_scenarios=[],
+            hedge_hint=None,
+            message=rule_message + "；LLM 客户端未初始化",
+        )
+
+    dims_text = "\n".join(
+        f"- {d.axis}: 当前 {d.current} / 限额 {d.limit}" for d in req.dimensions if d.current > d.limit
+    )
+    beta_text = f"\n组合 Beta={req.portfolio_beta}" if req.portfolio_beta is not None else ""
+    scenario_text = f"\n可用压测情景：{', '.join(scenarios)}" if scenarios else ""
+    prompt = (
+        "你是量化风险预警员。以下风险维度已突破限额，请生成预警研判。\n"
+        f"超限维度：\n{dims_text}{beta_text}{scenario_text}\n"
+        '仅输出 JSON：{"narrative": string(中文预警，说明风险点与紧迫度), '
+        '"suggested_scenarios": list[string](从可用情景中推荐 2-3 个), '
+        '"hedge_hint": string(中文降险/对冲建议), "confidence": number(0-1)}\n'
+        "无可靠依据时 confidence 取低值，不要编造具体数字。"
+    )
+    try:
+        resp = await global_llm_client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        content = resp.choices[0].message.content
+        if not content:
+            raise ValueError("LLM 返回空内容")
+        parsed = json.loads(content)
+        suggested = parsed.get("suggested_scenarios") or []
+        # 仅保留真实存在的情景名，过滤编造
+        suggested_valid = [s for s in suggested if s in scenarios] if scenarios else []
+        return AlertNarrativeResp(
+            status="warning",
+            breaches=breaches,
+            narrative=parsed.get("narrative"),
+            suggested_scenarios=suggested_valid,
+            hedge_hint=parsed.get("hedge_hint"),
+            message=None,
+        )
+    except Exception as e:
+        logger.warning(f"AI-05 alert-narrative LLM 失败: {e}")
+        return AlertNarrativeResp(
+            status="warning",
+            breaches=breaches,
+            narrative=None,
+            suggested_scenarios=[],
+            hedge_hint=None,
+            message=rule_message + "；LLM 预警失败",
+        )

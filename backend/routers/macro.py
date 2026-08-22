@@ -12,20 +12,24 @@ WebSocket 处理器属于传输层关注点，保留在 router；其引用的 ``
 
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.app import macro_app
 from backend.app.macro_app import (
+    get_a_share_lhb,
     get_capital_flow,
     get_capital_flow_dashboard,
     get_data_center_dashboard,
     get_earnings_calendar,
     get_economic_calendar_facade,
     get_fed_watch_panel,
+    get_hk_broker_queue,
     get_macro_assets,
     get_macro_calendar,
     get_macro_news,
@@ -34,9 +38,12 @@ from backend.app.macro_app import (
     get_sector_fund_flow,
     get_sentiment_history,
 )
+from backend.core.config import settings
 from backend.core.database import get_db
+from backend.routers.auth import get_current_user
 
 router = APIRouter(prefix="/macro", tags=["Macro"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/calendar")
@@ -46,6 +53,68 @@ async def get_macro_calendar_route(
 ):
     """获取全球核心经济体的宏观日历数据 (支持过去和未来)"""
     return await get_macro_calendar(days_ahead, days_back)
+
+
+class EventInferenceReq(BaseModel):
+    events: list[dict] = []  # 高危事件列表，每项含 title/country/date/impact
+    holdings: list[str] = []  # 可选：持仓标的，增强推演针对性
+
+
+class EventInferenceResp(BaseModel):
+    status: str  # success | warning
+    inference: str | None = None
+    confidence: float | None = None
+    message: str | None = None
+
+
+@router.post("/event-inference", response_model=EventInferenceResp, dependencies=[Depends(get_current_user)])
+async def ai_event_inference(req: EventInferenceReq):
+    """
+    AI-08 宏观事件推演：基于高危宏观事件（可选持仓）生成推演研判。
+    复用 LLMService(STANDARD)；LLM 缺失时诚实降级（不编造推演）。
+    """
+    if not req.events:
+        return EventInferenceResp(status="warning", inference=None, message="暂无高危事件，推演待命中")
+
+    # 取最近 1-2 个高危事件作为推演焦点
+    top = req.events[:2]
+    events_text = "\n".join(f"- {e.get('title', '?')} ({e.get('country', '?')}, {e.get('date', '?')})" for e in top)
+    holdings_text = f"\n持仓标的：{', '.join(req.holdings)}" if req.holdings else ""
+
+    if not settings.llm_model:
+        return EventInferenceResp(status="warning", inference=None, message="LLM 模型未配置，推演暂不可用")
+
+    from backend.bootstrap.lifecycle import global_llm_client
+
+    if global_llm_client is None:
+        return EventInferenceResp(status="warning", inference=None, message="LLM 客户端未初始化，推演暂不可用")
+
+    prompt = (
+        "你是宏观策略推演官。基于以下即将公布的高危宏观事件，给出结构化推演研判。\n"
+        f"事件：\n{events_text}{holdings_text}\n"
+        '仅输出 JSON：{"inference": string(中文推演，含可能方向与幅度区间), '
+        '"confidence": number(0-1)}\n'
+        "无可靠依据时 confidence 取低值，不要编造具体数字。"
+    )
+    try:
+        resp = await global_llm_client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        content = resp.choices[0].message.content
+        if not content:
+            raise ValueError("LLM 返回空内容")
+        parsed = json.loads(content)
+        return EventInferenceResp(
+            status="success",
+            inference=parsed.get("inference"),
+            confidence=parsed.get("confidence"),
+        )
+    except Exception as e:
+        logger.warning(f"AI-08 event-inference LLM 失败: {e}")
+        return EventInferenceResp(status="warning", inference=None, message="LLM 推演失败，暂不可用")
 
 
 @router.get("/series")
@@ -103,6 +172,23 @@ async def get_capital_flow_dashboard_route(
 ):
     """FUNDFLOW-01: 北向/南向资金 + 三市场板块资金流聚合看板"""
     return await get_capital_flow_dashboard(force_refresh)
+
+
+@router.get("/a-share-lhb")
+async def get_a_share_lhb_route(
+    force_refresh: bool = Query(False, description="是否绕过缓存强制刷新"),
+):
+    """FUNDFLOW-02: A股龙虎榜（机构 vs 游资 + 区间净买额）"""
+    return await get_a_share_lhb(force_refresh)
+
+
+@router.get("/hk-broker-queue")
+async def get_hk_broker_queue_route(
+    symbol: str = Query(..., description="港股代码，如 HK.00700"),
+    force_refresh: bool = Query(False, description="是否绕过缓存强制刷新"),
+):
+    """FUNDFLOW-02: 港股指定标的经纪商买卖队列（席位异动）"""
+    return await get_hk_broker_queue(symbol, force_refresh)
 
 
 @router.get("/news")
