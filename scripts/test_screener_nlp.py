@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.services.screener.screener_service import screener_service
+from backend.services.screener.screener_service import screener_service  # noqa: E402
 
 
 async def test_nlp_parsing():

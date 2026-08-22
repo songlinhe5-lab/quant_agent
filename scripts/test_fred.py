@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
 
-from backend.core.redis_client import redis_client
-from backend.services.macro.fred_service import fred_service
+from backend.core.redis_client import redis_client  # noqa: E402
+from backend.services.macro.fred_service import fred_service  # noqa: E402
 
 
 async def main():

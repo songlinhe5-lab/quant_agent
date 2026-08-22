@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     Index,
     String,
     Text,
@@ -63,7 +64,7 @@ class PromptApprovalAudit(Base):
     comment = Column(Text, nullable=True)
 
     # 质量指标快照
-    quality_score_at_approval = Column(SQLAlchemy.Float, nullable=True)  # Score when approved
+    quality_score_at_approval = Column(Float, nullable=True)  # Score when approved
 
     # 部署信息
     deployed_to_staging = Column(Boolean, default=False, nullable=False, index=True)

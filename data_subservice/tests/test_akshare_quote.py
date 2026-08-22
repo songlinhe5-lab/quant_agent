@@ -19,31 +19,38 @@ from data_subservice._internal.akshare.quote import (
     get_us_stock_quote,
 )
 
-
 # ── _build_sina_symbol ────────────────────────────────────────────────
 
-@pytest.mark.parametrize("code,expected", [
-    ("600000", "sh600000"),
-    ("000001", "sz000001"),
-    ("300750", "sz300750"),
-    ("688981", "sh688981"),
-])
+
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        ("600000", "sh600000"),
+        ("000001", "sz000001"),
+        ("300750", "sz300750"),
+        ("688981", "sh688981"),
+    ],
+)
 def test_build_sina_symbol_a_share(code, expected):
     assert _build_sina_symbol(code) == expected
 
 
-@pytest.mark.parametrize("code,expected", [
-    ("HK.00700", "szHK.00700"),
-    ("US.AAPL", "szUS.AAPL"),
-    ("00700.HK", "sz00700.HK"),
-    ("BTCUSDT", "szBTCUSDT"),
-])
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        ("HK.00700", "szHK.00700"),
+        ("US.AAPL", "szUS.AAPL"),
+        ("00700.HK", "sz00700.HK"),
+        ("BTCUSDT", "szBTCUSDT"),
+    ],
+)
 def test_build_sina_symbol_non_a(code, expected):
     # 非 6 位代码: zfill(6) 不生效, 落到 else 分支返回 "sz"+原代码
     assert _build_sina_symbol(code) == expected
 
 
 # ── get_history ──────────────────────────────────────────────────────
+
 
 def test_get_history_a_share(monkeypatch):
     df = pd.DataFrame([{"date": "2024-01-02", "close": 1.0}])
@@ -98,6 +105,7 @@ def test_get_history_exception_returns_empty(monkeypatch):
 
 # ── _parse_company_news ──────────────────────────────────────────────
 
+
 def test_parse_company_news_hk_branch():
     out = _parse_company_news("HK.00700")
     assert out["status"] == "success"
@@ -118,9 +126,17 @@ def test_parse_company_news_us_branch():
 
 
 def test_parse_company_news_a_share_branch(monkeypatch):
-    df = pd.DataFrame([
-        {"新闻标题": "标题1", "新闻内容": "内容1", "新闻链接": "http://x", "文章来源": "新浪", "发布时间": "2024-01-02 10:00:00"},
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "新闻标题": "标题1",
+                "新闻内容": "内容1",
+                "新闻链接": "http://x",
+                "文章来源": "新浪",
+                "发布时间": "2024-01-02 10:00:00",
+            },
+        ]
+    )
     monkeypatch.setattr(qmod, "ak", type("A", (), {"stock_news_em": lambda **k: df}))
 
     out = _parse_company_news("600000")
@@ -142,8 +158,11 @@ def test_parse_company_news_exception_returns_empty(monkeypatch):
 
 # ── get_stock_quote_a_sina ───────────────────────────────────────────
 
+
 def test_stock_quote_a_sina_parse_success(monkeypatch):
-    df = pd.DataFrame([{"date": "2024-01-02", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 100, "amount": 1000}])
+    df = pd.DataFrame(
+        [{"date": "2024-01-02", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 100, "amount": 1000}]
+    )
     monkeypatch.setattr(qmod, "ak", type("A", (), {"stock_zh_a_daily": lambda **k: df}))
 
     out = get_stock_quote_a_sina("600000")
@@ -168,11 +187,14 @@ def test_stock_quote_a_sina_http_error_returns_error(monkeypatch):
 
 # ── get_hk_stock_quote ───────────────────────────────────────────────
 
+
 def test_hk_stock_quote_success(monkeypatch):
-    df = pd.DataFrame([
-        {"代码": "00700", "名称": "腾讯", "最新价": 300.0, "涨跌幅": 1.5},
-        {"代码": "09988", "名称": "阿里", "最新价": 80.0, "涨跌幅": -2.0},
-    ])
+    df = pd.DataFrame(
+        [
+            {"代码": "00700", "名称": "腾讯", "最新价": 300.0, "涨跌幅": 1.5},
+            {"代码": "09988", "名称": "阿里", "最新价": 80.0, "涨跌幅": -2.0},
+        ]
+    )
     df = df.astype({"代码": str})
     monkeypatch.setattr(qmod, "ak", type("A", (), {"stock_hk_spot_em": lambda: df}))
 
@@ -193,6 +215,7 @@ def test_hk_stock_quote_no_match_returns_none(monkeypatch):
 
 
 # ── get_company_news / get_us_stock_quote / get_hk_news ──────────────
+
 
 def test_get_company_news_delegates(monkeypatch):
     df = pd.DataFrame([{"新闻标题": "t", "新闻内容": "c", "新闻链接": "u", "文章来源": "s"}])

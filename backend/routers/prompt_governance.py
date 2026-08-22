@@ -284,7 +284,7 @@ async def get_ab_optimization_suggestions(name: str, request: ABOptimizationRequ
     """获取 A/B 测试优化建议"""
     from hermes_agent.prompt_versioning import ABTestOrchestrator
 
-    orchestrator = ABTestOrchestrator(version_manager=None)  # TODO: initialize
+    ABTestOrchestrator(version_manager=None)  # TODO: initialize
 
     # TODO: Implement A/B analysis logic
     return {

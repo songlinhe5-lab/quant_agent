@@ -39,11 +39,11 @@ async def main():
     print("\nValidating Redis Connection Shutdown...")
     try:
         await redis_client.aclose()
-    except Exception as e:
+    except Exception:
         pass
 
 
-import time
+import time  # noqa: E402
 
 try:
     import yfinance as yf

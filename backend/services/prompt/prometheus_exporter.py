@@ -238,7 +238,6 @@ class PrometheusExporter:
         lines = text.split("\n")
 
         metrics_dict = {}
-        current_metric = None
 
         for line in lines:
             if not line or line.startswith("#"):

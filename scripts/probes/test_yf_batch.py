@@ -48,7 +48,7 @@ for i in range(max_rounds):
         latency = time.time() - start_time
 
         if data is None or data.empty:
-            print(f"  ❌ 警告: 返回了空数据！可能触发了限流 (429)。")
+            print("  ❌ 警告: 返回了空数据！可能触发了限流 (429)。")
             print(f"  🚨 压测中断: 间隔 {test_interval} 秒的高频拉取在第 {i + 1} 轮被雅虎拦截！")
             break
         else:
@@ -63,7 +63,7 @@ for i in range(max_rounds):
                         for t in actual_tickers:
                             try:
                                 prices.append(f"{t}: {data[t]['Close'].dropna().iloc[-1]:.2f}")
-                            except:
+                            except Exception:
                                 pass
                     elif "Close" in data:
                         actual_tickers = list(data.columns.get_level_values(1).unique())
@@ -71,7 +71,7 @@ for i in range(max_rounds):
                         for t in actual_tickers:
                             try:
                                 prices.append(f"{t}: {data['Close'][t].dropna().iloc[-1]:.2f}")
-                            except:
+                            except Exception:
                                 pass
 
                     print(f"  📌 实际拿到的 Tickers 共 {len(actual_tickers)} 个")

@@ -86,7 +86,7 @@ async def main_cli():
                     args_str = chunk.get("input", "{}")
                     try:
                         args_formatted = json.dumps(json.loads(args_str), ensure_ascii=False)
-                    except:
+                    except Exception:
                         args_formatted = args_str
                     agent.console.print(
                         f"\n[bold magenta]🧠 [Agent Plan] 正在调用工具: {chunk['name']}[/bold magenta] [dim]参数: {args_formatted}[/dim]"

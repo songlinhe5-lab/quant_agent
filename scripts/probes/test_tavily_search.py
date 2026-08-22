@@ -34,7 +34,7 @@ def test_tavily_search():
             try:
                 error_data = response.json()
                 print(f"👉 报错信息: {json.dumps(error_data, indent=2, ensure_ascii=False)}")
-            except:
+            except Exception:
                 print(f"👉 原始响应内容: {response.text}")
 
             if response.status_code in (401, 403):

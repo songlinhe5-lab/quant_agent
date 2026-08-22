@@ -6,8 +6,6 @@ mock quote_ctx.set_handler 成功 / 抛异常, 覆盖 register_all_handlers
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from data_subservice.futu_src import push_handler as ph
 
 

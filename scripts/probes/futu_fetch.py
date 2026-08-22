@@ -91,7 +91,7 @@ def try_futu(quote_ctx: OpenQuoteContext, futu_code: str) -> Result | None:
             source="futu (富途)",
             error="",
         )
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -259,7 +259,7 @@ def main():
     print(f"  ❌ 失败:       {total_failed}")
     print(f"  📊 成功率:     {(futu_success + yf_success) / total * 100:.1f}%")
     print(f"\n  数据获取时间: {time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())}")
-    print(f"  数据来源:     futu_fetch.py (Futu OpenD / yfinance)")
+    print("  数据来源:     futu_fetch.py (Futu OpenD / yfinance)")
 
     # 返回非零退出码便于 CI 判断
     return 0 if total_failed == 0 else 1

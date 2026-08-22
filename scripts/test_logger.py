@@ -31,7 +31,6 @@ def test_logging_levels():
     print("\n💣 接下来测试捕获异常时的 Rich Traceback 堆栈渲染...\n")
     try:
         logger.info("正在执行一个可能会触发错误的量化指标计算: 100 / 0")
-        result = 100 / 0
     except Exception:
         logger.exception("捕获到未处理的计算异常！检查下面的优雅堆栈：")
 

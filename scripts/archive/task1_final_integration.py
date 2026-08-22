@@ -110,7 +110,7 @@ def test_engine_integration():
                 print(f"   ✓ CCI computed: {cci_val:.2f}")
                 validations_passed += 1
             else:
-                print(f"   ⚠ CCI is None")
+                print("   ⚠ CCI is None")
 
         # VWMA check
         if "vwma" in result:
@@ -138,7 +138,7 @@ def test_engine_integration():
                 print(f"   ✓ Elder-Ray computed (Bull: {bull_power:.2f}, Bear: {bear_power:.2f})")
                 validations_passed += 1
             else:
-                print(f"   ⚠ Elder-Ray values missing")
+                print("   ⚠ Elder-Ray values missing")
 
         # Keltner check
         if "keltner_channels" in result:
@@ -146,11 +146,11 @@ def test_engine_integration():
             upper = result["keltner_channels"].get("upper")
             lower = result["keltner_channels"].get("lower")
             if middle is not None and upper is not None and lower is not None:
-                print(f"   ✓ Keltner channels computed")
+                print("   ✓ Keltner channels computed")
                 print(f"      • Upper: ${upper:.2f}, Middle: ${middle:.2f}, Lower: ${lower:.2f}")
                 validations_passed += 1
             else:
-                print(f"   ⚠ Keltner channels incomplete")
+                print("   ⚠ Keltner channels incomplete")
 
         total_checks = 6
         success_rate = validations_passed / total_checks * 100
@@ -177,7 +177,7 @@ def test_engine_integration():
 
             return True
         else:
-            print(f"\n⚠️ Some indicators failed integration. Please review above.")
+            print("\n⚠️ Some indicators failed integration. Please review above.")
             return False
 
     except Exception as e:

@@ -13,11 +13,11 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
 from backend.core.redis_client import redis_client
-from backend.services.datasource import ResultStatus
 from backend.core.ticker_format import format_yf_ticker
 
 # Legacy OpenD 健康探测（仅用于 fundamental 端点的 FRED 路由）
 from backend.services.adapters.legacy_market_data import market_data_gateway
+from backend.services.datasource import ResultStatus
 from backend.services.datasource.business import data_service
 
 router = APIRouter(prefix="/market", tags=["Market & Portfolio"])

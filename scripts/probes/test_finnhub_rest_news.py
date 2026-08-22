@@ -40,7 +40,7 @@ async def test_company_news():
                         dt_str = datetime.fromtimestamp(news[0].get("datetime", 0)).strftime("%Y-%m-%d %H:%M")
                         print(f"  📰 最新一条: {headline} ({dt_str})")
                 elif response.status_code == 403:
-                    print(f"  ❌ 失败! HTTP 403 权限拒绝 (提示: 免费版仅支持美股，不支持此市场标的)")
+                    print("  ❌ 失败! HTTP 403 权限拒绝 (提示: 免费版仅支持美股，不支持此市场标的)")
                 else:
                     print(f"  ⚠️ 失败! HTTP {response.status_code}: {response.text}")
             except Exception as e:

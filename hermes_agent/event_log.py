@@ -80,7 +80,7 @@ class SessionEventLog:
     AGENT-15: 新增 RolloutStorage 持久化层（JSONL 追加文件）
     """
 
-    def __init__(self, session_id: str = "", rollout_storage: Optional["RolloutStorage"] = None):
+    def __init__(self, session_id: str = "", rollout_storage: Optional["RolloutStorage"] = None):  # noqa: F821  (RolloutStorage lazily imported in _import_rollout to avoid circular import)
         self.session_id = session_id
         self._events: List[SessionEvent] = []
         self._seq = 0

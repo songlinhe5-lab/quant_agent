@@ -156,7 +156,7 @@ class SlackWebhookSender(BaseWebhookSender):
 
     def send(self, message: Dict[str, Any]) -> bool:
         if not self.validate_config():
-            print(f"⚠️ [SlackWebhook] Not configured, skipping")
+            print("⚠️ [SlackWebhook] Not configured, skipping")
             return False
 
         try:
@@ -239,7 +239,7 @@ class FeishuWebhookSender(BaseWebhookSender):
             )
 
             if response.json().get("StatusCode") == 0:
-                print(f"✅ [FeishuWebhook] Sent successfully")
+                print("✅ [FeishuWebhook] Sent successfully")
                 return True
             else:
                 print(f"❌ [FeishuWebhook] Failed: {response.json()}")
@@ -382,7 +382,7 @@ async def initialize_webhook_notifications():
     from backend.services.prompt.governance_service import get_prompt_governance_service
 
     service = get_prompt_governance_service()
-    manager = get_webhook_manager()
+    get_webhook_manager()
 
     # Check if any webhooks are configured
     has_slack = bool(service.version_manager.templates)  # Has prompts to monitor

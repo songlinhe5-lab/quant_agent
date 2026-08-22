@@ -126,7 +126,7 @@ class TestHandlerFactories:
         assert ctx.set_handler.call_count == 5 if False else ctx.set_handler.call_count >= 5
 
     def test_quote_handler_on_recv_rsp_bad_ret(self):
-        ctx = self._fake_ctx()
+        self._fake_ctx()
         h = ph._make_quote_handler()
         # 模拟 ret_code != RET_OK
         h.on_recv_rsp = lambda rsp: (1, None)
@@ -135,8 +135,8 @@ class TestHandlerFactories:
 
     def test_quote_handler_publishes_on_valid_df(self):
 
-        ctx = self._fake_ctx()
-        h = ph._make_quote_handler()
+        self._fake_ctx()
+        ph._make_quote_handler()
 
         # 用真实基类行为不易 mock，直接测内部逻辑分支：构造 DataFrame 调用压缩+调度
         row = pd.Series({"code": "HK.00700", "last_price": 100.0, "prev_close_price": 90.0, "volume": 1000})
@@ -145,7 +145,7 @@ class TestHandlerFactories:
 
     def test_order_book_handler_merge_publishes(self):
 
-        h = ph._make_order_book_handler()
+        ph._make_order_book_handler()
         # 模拟 on_recv_rsp 返回 RET_OK + dict
         fake_redis = AsyncMock()
         fake_redis.hget.return_value = None

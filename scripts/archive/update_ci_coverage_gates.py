@@ -99,7 +99,7 @@ def update_backend_ci(content: str, dry_run: bool) -> str:
 
     if old_threshold in content:
         content = content.replace(old_threshold, new_threshold)
-        print(f"✅ 已将后端覆盖率阈值调整为 80%")
+        print("✅ 已将后端覆盖率阈值调整为 80%")
     else:
         print(f"⚠️ 警告：未找到覆盖率阈值配置 {old_threshold},可能已经更新过")
 
@@ -109,9 +109,9 @@ def update_backend_ci(content: str, dry_run: bool) -> str:
     elif content != original:
         print("\n📝 预览模式：以下变更待应用:")
         print("-" * 60)
-        print(f"Backend.yml will be updated:")
-        print(f"  • Remove main branch exclusion from test/security jobs")
-        print(f"  • Update coverage threshold: 70% → 80%")
+        print("Backend.yml will be updated:")
+        print("  • Remove main branch exclusion from test/security jobs")
+        print("  • Update coverage threshold: 70% → 80%")
 
     return content
 
@@ -147,9 +147,9 @@ def update_frontend_vitest(content: str, dry_run: bool) -> str:
     elif content != original:
         print("\n📝 预览模式：以下变更待应用:")
         print("-" * 60)
-        print(f"Vitest config will be updated:")
-        print(f"  • Enable thresholds configuration")
-        print(f"  • Set global coverage requirement: 60%")
+        print("Vitest config will be updated:")
+        print("  • Enable thresholds configuration")
+        print("  • Set global coverage requirement: 60%")
 
     return content
 
@@ -231,9 +231,9 @@ jobs:
         write_file(frontend_yml, frontend_ci_content)
         print(f"✅ 已创建前端 CI 配置：{frontend_yml}")
     else:
-        print(f"📝 预览模式：以下新文件待创建:")
+        print("📝 预览模式：以下新文件待创建:")
         print(f"   • {frontend_yml}")
-        print(f"     (包含：Lint + Build + Test + Coverage Gateway)")
+        print("     (包含：Lint + Build + Test + Coverage Gateway)")
 
     return True
 

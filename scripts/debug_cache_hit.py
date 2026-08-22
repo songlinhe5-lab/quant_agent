@@ -75,8 +75,8 @@ async def check_yfinance_memory_cache():
 
         print(f"\nYFinance Service 实例：{yf_service}")
         print(f"主缓存条目数：{len(yf_service._cache)}")
-        print(f"主缓存最大容量：500 (硬编码)")
-        print(f"主缓存 TTL: 600s (10 分钟)")
+        print("主缓存最大容量：500 (硬编码)")
+        print("主缓存 TTL: 600s (10 分钟)")
         print(f"错误黑名单条目数：{len(yf_service._error_cache)}")
 
         # 显示缓存中的 key
@@ -95,7 +95,7 @@ async def check_yfinance_memory_cache():
                 ts, data = yf_service._cache[key]
                 print(f"   - {key[:60]}... (年龄：{time.time() - ts:.1f}s)")
         else:
-            print(f"\n❌ 未发现 AAPL 缓存条目")
+            print("\n❌ 未发现 AAPL 缓存条目")
 
     except Exception as e:
         print(f"❌ YFinance 缓存检查失败：{e}")
@@ -156,7 +156,7 @@ async def simulate_test_link():
 
         # 记录调用前的 Redis 计数
         before_metrics = await call_metrics.get_today("yfinance")
-        print(f"\n调用前 Redis 计数:")
+        print("\n调用前 Redis 计数:")
         if before_metrics:
             print(f"   calls: {before_metrics.get('calls', 0)}")
             print(f"   probe_calls: {before_metrics.get('probe_calls', 0)}")
@@ -165,7 +165,7 @@ async def simulate_test_link():
 
         # 发起 test-link 探测
         print("\n发起 test-link 探测...")
-        start = time.perf_counter()
+        time.perf_counter()
 
         # 模拟 test-link 的逻辑
         caps = getattr(source, "capabilities", [])
@@ -182,13 +182,13 @@ async def simulate_test_link():
             result = await source.fetch(probe_action, probe_params)
             latency_ms = round((time.perf_counter() - probe_start) * 1000, 2)
 
-            print(f"\n✅ 探测完成")
+            print("\n✅ 探测完成")
             print(f"   延迟：{latency_ms}ms")
             print(f"   结果状态：{result.get('status', 'unknown')}")
 
         # 记录调用后的 Redis 计数
         after_metrics = await call_metrics.get_today("yfinance")
-        print(f"\n调用后 Redis 计数:")
+        print("\n调用后 Redis 计数:")
         if after_metrics:
             print(f"   calls: {after_metrics.get('calls', 0)}")
             print(f"   probe_calls: {after_metrics.get('probe_calls', 0)}")
@@ -201,7 +201,7 @@ async def simulate_test_link():
             calls_diff = after_metrics.get("calls", 0) - before_metrics.get("calls", 0)
             probe_diff = after_metrics.get("probe_calls", 0) - before_metrics.get("probe_calls", 0)
 
-            print(f"\n📊 变化分析:")
+            print("\n📊 变化分析:")
             print(f"   业务 calls 增量：{calls_diff} (应该=0，test-link 不计入)")
             print(f"   探针 calls 增量：{probe_diff} (应该=1)")
 

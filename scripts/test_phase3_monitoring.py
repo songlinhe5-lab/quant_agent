@@ -53,7 +53,7 @@ async def test_error_rate_trend():
 
     # 获取错误率趋势
     trend = await call_metrics.get_error_rate_trend("finnhub", hours=24)
-    print(f"✓ 错误率趋势：")
+    print("✓ 错误率趋势：")
     print(f"  - 数据源：{trend['source']}")
     print(f"  - 时间点数量：{len(trend['time_series'])}")
     print(f"  - 总调用：{trend['summary']['total_calls']}")
@@ -73,7 +73,7 @@ async def test_rate_limit_heatmap():
 
     # 获取热力图数据
     heatmap = await call_metrics.get_rate_limit_heatmap(sources=["finnhub", "yfinance"], days=7)
-    print(f"✓ 限流热力图：")
+    print("✓ 限流热力图：")
     print(f"  - 数据源：{heatmap['sources']}")
     print(f"  - 统计天数：{heatmap['days']}")
     print(f"  - 数据点数量：{len(heatmap['heatmap'])}")
@@ -87,7 +87,7 @@ async def test_availability_timeline():
 
     # 获取可用性时间线
     timeline = await call_metrics.get_availability_timeline("finnhub", hours=24)
-    print(f"✓ 可用性时间线：")
+    print("✓ 可用性时间线：")
     print(f"  - 数据源：{timeline['source']}")
     print(f"  - 时间点数量：{len(timeline['timeline'])}")
     print(f"  - 总时长：{timeline['summary']['total_hours']} 小时")

@@ -171,9 +171,9 @@ class TestAdvancedIndicatorsIntegration:
 
         # Bull/Bear power 可正可负，只检查是否为数字
         if bull_power is not None:
-            assert isinstance(bull_power, (int, float)), f"Bull Power 应为数字类型"
+            assert isinstance(bull_power, (int, float)), "Bull Power 应为数字类型"
         if bear_power is not None:
-            assert isinstance(bear_power, (int, float)), f"Bear Power 应为数字类型"
+            assert isinstance(bear_power, (int, float)), "Bear Power 应为数字类型"
 
     def test_keltner_channels_returns_complete_channels(self, engine, sample_klines):
         """测试 Keltner Channels 返回完整的通道值"""
@@ -218,7 +218,7 @@ class TestAdvancedIndicatorsIntegration:
         ]
 
         start_time = time.time()
-        result = engine.calculate(sample_klines, indicators=indicator_configs, return_history=False)
+        engine.calculate(sample_klines, indicators=indicator_configs, return_history=False)
         elapsed_ms = (time.time() - start_time) * 1000
 
         # 性能阈值：< 50ms (考虑到 6 个指标)

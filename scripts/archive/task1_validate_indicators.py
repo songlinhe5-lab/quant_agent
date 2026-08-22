@@ -55,7 +55,7 @@ def test_adx_dmi():
     engine = TechnicalIndicatorsEngine(auto_calculate_signals=True)
     result = engine.calculate(klines, indicators=[adx_config], return_history=False)
 
-    print(f"\n✅ ADX Calculation Complete:")
+    print("\n✅ ADX Calculation Complete:")
 
     if "error" in result:
         print(f"❌ Error: {result['error']}")
@@ -159,7 +159,7 @@ def test_cci():
     engine = TechnicalIndicatorsEngine(auto_calculate_signals=True)
     result = engine.calculate(klines, indicators=[cci_config], return_history=False)
 
-    print(f"\n✅ CCI Calculation Complete:")
+    print("\n✅ CCI Calculation Complete:")
 
     if "error" in result:
         print(f"❌ Error: {result['error']}")
@@ -226,7 +226,7 @@ def test_vwma():
     engine = TechnicalIndicatorsEngine()
     result = engine.calculate(klines, indicators=[vwma_config], return_history=False)
 
-    print(f"\n✅ VWMA Calculation Complete:")
+    print("\n✅ VWMA Calculation Complete:")
 
     if "error" in result:
         print(f"❌ Error: {result['error']}")
@@ -296,7 +296,7 @@ def main():
             print("\n🎉 ALL TESTS PASSED! ✅")
             print("Task 1 implementation verified successfully!")
         else:
-            print(f"\n⚠️ Some tests failed. Please review the logs.")
+            print("\n⚠️ Some tests failed. Please review the logs.")
 
         print("=" * 60)
 

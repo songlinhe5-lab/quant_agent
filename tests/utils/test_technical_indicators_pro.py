@@ -74,7 +74,7 @@ class TestTechnicalIndicatorsEngine:
         from backend.utils.technical_indicators_pro import TechnicalIndicatorsEngine
 
         engine = TechnicalIndicatorsEngine(auto_calculate_signals=True)
-        assert engine.auto_calculate_signals == True
+        assert engine.auto_calculate_signals
 
         stats = engine.get_statistics()
         assert "total_runs" in stats
@@ -172,7 +172,7 @@ class TestTechnicalIndicatorsEngine:
         assert "vwap" in result
         assert "vwap" in result["vwap"]
         # VWAP 应该在数据范围内，且为有效数值
-        typical_price_range = max(k["high"] for k in sample_klines) - min(k["low"] for k in sample_klines)
+        max(k["high"] for k in sample_klines) - min(k["low"] for k in sample_klines)
         vwap_value = result["vwap"]["vwap"]
         # VWAP 应该在典型价格范围内
         assert min(k["low"] for k in sample_klines) <= vwap_value <= max(k["high"] for k in sample_klines)
@@ -271,14 +271,14 @@ class TestCacheDecorator:
             return x * 2
 
         # 第一次调用
-        result1 = expiring_function(5)
+        expiring_function(5)
         assert call_count == 1
 
         # 等待过期
         time.sleep(0.15)
 
         # 再次调用 (应该重新计算)
-        result2 = expiring_function(5)
+        expiring_function(5)
         assert call_count == 2
 
 

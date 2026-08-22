@@ -70,7 +70,7 @@ class TestADXXAccuracy:
 
         # 计算 TR 和 ATR
         tr = calculate_true_range(df)
-        atr = smooth_ema(tr, 3).iloc[-1]
+        smooth_ema(tr, 3).iloc[-1]
 
         # ADX 应该在合理范围内
         result = calculate_adx(df, period=3)

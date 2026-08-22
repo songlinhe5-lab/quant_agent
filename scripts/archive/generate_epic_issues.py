@@ -221,7 +221,7 @@ class GitHubAPI:
 
     def __init__(self, token: str, owner: str, repo: str):
         self.token = token
-        self.base_url = f"https://api.github.com"
+        self.base_url = "https://api.github.com"
         self.repo_url = f"{self.base_url}/repos/{owner}/{repo}"
 
         self.headers = {
@@ -432,7 +432,7 @@ def main():
 
         # 预览模式
         if args.dry_run:
-            print(f"\n📄 预览 Issue 内容:")
+            print("\n📄 预览 Issue 内容:")
             print("-" * 60)
             print(f"Title: {title}")
             print(f"Labels: {', '.join(labels)}")

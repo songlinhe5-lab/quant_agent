@@ -34,7 +34,7 @@ class SessionMeta:
         return f"# {json.dumps({'session_id': self.session_id, 'model': self.model, 'created_at': self.created_at, 'event_count': self.event_count}, ensure_ascii=False)}"
 
     @classmethod
-    def from_comment_line(cls, line: str) -> cls:
+    def from_comment_line(cls, line: str) -> RolloutStorage:
         data = json.loads(line[2:].strip())  # 去掉 '# '
         return cls(
             session_id=data["session_id"],

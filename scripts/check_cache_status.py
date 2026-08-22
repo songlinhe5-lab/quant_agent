@@ -30,7 +30,7 @@ async def check():
                 ttl = exp - time.time()
                 print(f"      - {k[:50]}... (TTL 剩余：{ttl:.1f}s)")
         else:
-            print(f"   ❌ 无 AAPL 缓存")
+            print("   ❌ 无 AAPL 缓存")
 
     # 2. YFinance Cache
     print("\n📦 YFinance 内存缓存")
@@ -43,7 +43,7 @@ async def check():
             age = time.time() - ts
             print(f"      - {k[:50]}... (年龄：{age:.1f}s)")
     else:
-        print(f"   ❌ 无 AAPL 缓存")
+        print("   ❌ 无 AAPL 缓存")
 
     # 3. Redis Call Metrics
     print("\n📊 Redis 调用计数 (今日)")

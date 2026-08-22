@@ -9,7 +9,6 @@ import pandas as pd
 import pytest
 
 from data_subservice._internal.akshare import service as ak_svc
-from data_subservice._internal.akshare import quote as qmod
 
 
 @pytest.fixture
@@ -17,11 +16,15 @@ def svc(monkeypatch):
     async def _fake_call(self, key, fn):
         return fn()
 
-    fake_cb = type("CB", (), {
-        "call": _fake_call,
-        "record_success": lambda *a, **k: None,
-        "record_failure": lambda *a, **k: None,
-    })()
+    fake_cb = type(
+        "CB",
+        (),
+        {
+            "call": _fake_call,
+            "record_success": lambda *a, **k: None,
+            "record_failure": lambda *a, **k: None,
+        },
+    )()
     monkeypatch.setattr(ak_svc, "circuit_breaker", fake_cb)
     return ak_svc.AKShareService()
 
@@ -57,7 +60,9 @@ class TestFetchAkDataRouting:
 
     @pytest.mark.asyncio
     async def test_cal(self, svc, monkeypatch):
-        monkeypatch.setattr(ak_svc, "get_economic_calendar", lambda **k: {"status": "success", "data": [], "source": "akshare_calendar"})
+        monkeypatch.setattr(
+            ak_svc, "get_economic_calendar", lambda **k: {"status": "success", "data": [], "source": "akshare_calendar"}
+        )
         res = await svc.fetch_ak_data("cal")
         assert res["status"] == "success"
         assert res["data"] == []
@@ -112,7 +117,9 @@ class TestGetMethods:
 
     @pytest.mark.asyncio
     async def test_get_econ_cal(self, svc, monkeypatch):
-        monkeypatch.setattr(ak_svc, "get_economic_calendar", lambda **k: {"status": "success", "data": [], "source": "akshare_calendar"})
+        monkeypatch.setattr(
+            ak_svc, "get_economic_calendar", lambda **k: {"status": "success", "data": [], "source": "akshare_calendar"}
+        )
         res = await svc.get_econ_cal()
         assert res["status"] == "success"
         assert res["data"] == []
