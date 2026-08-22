@@ -74,6 +74,15 @@ class FutuDataSource:
             "OPTION_STRATEGY",  # F3: 期权策略组合
             "OPTION_STRATEGY_ANALYSIS",  # P0.2: 期权损益分析(盈亏平衡点/最大盈亏/Greeks)
             "OPTION_QUOTE",  # P0.2: 期权快照(组合腿实时行情+Greeks)
+            # ── P0.5 期权全维数据 ──────────────────────────────────────
+            "OPTION_UNDERLYING_HIS_VOL",  # P0.5.2: 标的已实现波动率HV(时间序列)
+            "OPTION_UNDERLYING_OVERVIEW",  # P0.5.2: 标的期权总览(IV/IV_RANK/HV多周期)
+            "OPTION_MARKET_STATISTIC",  # P0.5.3: 期权市场Put/Call比(市场级)
+            "OPTION_ZERO_DTE_SCREENER",  # P0.5.4: 0DTE末日期权筛选器
+            "OPTION_ZERO_DTE_CONTRACT",  # P0.5.4: 0DTE合约明细
+            "OPTION_EARNINGS_SCREENER",  # P0.5.5: 财报期权筛选器
+            "OPTION_SELLER_SCREENER",  # P0.5.6: 卖方策略筛选器
+            "OPTION_EXERCISE_PROBABILITY",  # P0.5.7: 行权概率
             "OPTION_VOLATILITY",  # F3: 期权波动率
             "CAPITAL_DISTRIBUTION",  # F4-1: 主力筹码分层(支撑G3)
             "ANALYST_CONSENSUS",  # F4-4: 分析师共识(卖方观点,支撑G7)

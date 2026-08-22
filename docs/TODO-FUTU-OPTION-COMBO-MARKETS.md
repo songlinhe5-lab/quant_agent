@@ -65,15 +65,15 @@
 
 > 来源：Futu 行情接口总览 `get_option_*` 系列，补齐现有单腿期权链缺失的专业维度。
 
-- [ ] **P0.5.1** 验证权限：确认 OpenD 账户开通对应期权数据权限。
-- [ ] **P0.5.2** 波动率：`get_option_volatility`（IV）+ `get_option_underlying_his_volatility`（HV）+ `get_option_underlying_overview`（标的总览）。
-- [ ] **P0.5.3** Put/Call 比：`get_option_market_statistic`（市场整体指标，含 P/C 比），对标 AGENTS.md 期权多空比情绪指标。
-- [ ] **P0.5.4** 末日期权：`get_option_zero_dte_screener` + `get_option_zero_dte_contract`（0DTE）。
-- [ ] **P0.5.5** 财报期权：`get_option_earnings_screener`。
-- [ ] **P0.5.6** 卖方策略：`get_option_seller_screener`。
-- [ ] **P0.5.7** 行权概率：`get_option_exercise_probability`。
-- [ ] **P0.5.8** 接入 `futu_worker.py` + 主服务 `capabilities`/`router.py` 路由 + `@with_global_retry` 缓存。
-- [ ] **P0.5.9** 单测 + 提交 PR。
+- [x] **P0.5.1** 验证权限：✅ 2026-08-22 全部 8 接口 OpenD 在线实跑通过，无需额外权限卡。**枚举值修正**（SDK 10.10）：`OptionMarket`=US_SECURITY/HK_SECURITY/US_INDEX/HK_INDEX；`OptionStatisticDataType`=VOLUME/OPEN_INTEREST；`SellerType`=COVERED_CALL/CASH_SECURED_PUT。
+- [x] **P0.5.2** 波动率：✅ `get_option_volatility`(IV) 此前已实现；本次补 `get_option_underlying_his_volatility`(HV，实测 250 条 iv/hv/underlying_price) + `get_option_underlying_overview`(标的总览，实测 20 列：iv/iv_rank/iv_percentile/hv_30d~365d+percentile/call·put量仓)。
+- [x] **P0.5.3** Put/Call 比：✅ `get_option_market_statistic`（实测 250 条，put_call_ratio=0.636，time/call_value/put_value/total_value）。
+- [x] **P0.5.4** 末日期权：✅ `get_option_zero_dte_screener`（实测 item_list.owner+chain_info/next_page）+ `get_option_zero_dte_contract`（实测 510 条 0DTE 合约：option/iv/delta/buy_break_even_point/sell_profit_probability）。
+- [x] **P0.5.5** 财报期权：✅ `get_option_earnings_screener`（实测 owner/name/estimate_revenue_yoy/expected_move_ratio/all_count）。
+- [x] **P0.5.6** 卖方策略：✅ `get_option_seller_screener`（实测 1000 条：option/premium/otm_degree/iv/interval_return/annualized_return/itm_probability）。
+- [x] **P0.5.7** 行权概率：✅ `get_option_exercise_probability`（实测 5 条：date_str/security_price/strike_probability）。
+- [x] **P0.5.8** 接入链路：✅ 8 个新方法均带 `@with_global_retry`；worker 新增 8 个 action（OPTION_UNDERLYING_HIS_VOL/OVERVIEW、OPTION_MARKET_STATISTIC、OPTION_ZERO_DTE_SCREENER/CONTRACT、OPTION_EARNINGS_SCREENER、OPTION_SELLER_SCREENER、OPTION_EXERCISE_PROBABILITY）+ adapter capabilities + router 映射，全链路打通。
+- [x] **P0.5.9** 单测 + 提交 PR：✅ 新增 `TestOptionFullDim` 10 例，`test_option_fund_handler.py` 共 **60 例全过**；worker/service 61 例全过无回归。
 
 ### 阶段 P1：组合期权交易（预留，待 OMS 实装）
 

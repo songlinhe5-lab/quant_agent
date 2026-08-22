@@ -555,3 +555,129 @@ class TestGetWarrantChain:
         conn = _make_conn_mgr(quote_ctx=qctx)
         res = await OptionFundHandler(conn, CacheManager()).get_warrant_chain("HK.00700")
         assert res["status"] == "error"
+
+
+# ── P0.5 期权全维数据（IV/HV/Put-Call/0DTE/财报/卖方/行权概率）────────────
+class TestOptionFullDim:
+    """P0.5.2~P0.5.7 期权全维接口族"""
+
+    async def test_his_volatility_success(self):
+        qctx = MagicMock()
+        qctx.get_option_underlying_his_volatility = lambda *a, **k: (
+            RET_OK,
+            pd.DataFrame([{"time": "2026-08-21", "iv": 26.2, "hv": 34.4, "underlying_price": 309.35}]),
+            None,
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_underlying_his_volatility("US.AAPL")
+        assert res["status"] == "success"
+        assert res["data"][0]["hv"] == 34.4
+
+    async def test_his_volatility_unsupported(self):
+        conn = _make_conn_mgr()
+        res = await OptionFundHandler(conn, CacheManager()).get_option_underlying_his_volatility(
+            "GC=F", is_unsupported_func=lambda t: t.startswith("GC"), format_ticker_func=lambda t: t
+        )
+        assert res["status"] == "error"
+
+    async def test_underlying_overview_success(self):
+        qctx = MagicMock()
+        qctx.get_option_underlying_overview = lambda *a, **k: (
+            RET_OK,
+            pd.DataFrame([{"code": "US.AAPL", "name": "苹果", "iv": 26.2, "iv_rank": 44.05, "put_volume": 610806}]),
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_underlying_overview("US.AAPL")
+        assert res["status"] == "success"
+        assert res["data"][0]["iv_rank"] == 44.05
+
+    async def test_market_statistic_put_call_ratio(self):
+        qctx = MagicMock()
+        qctx.get_option_market_statistic = lambda *a, **k: (
+            RET_OK,
+            pd.DataFrame([{"time": "2026-08-21", "call_value": 42794088, "put_value": 27230135, "ratio": 0.6363}]),
+            None,
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_market_statistic("US_SECURITY", "VOLUME")
+        assert res["status"] == "success"
+        assert abs(res["data"][0]["put_call_ratio"] - 0.6363) < 1e-3
+
+    async def test_zero_dte_screener_success(self):
+        qctx = MagicMock()
+        qctx.get_option_zero_dte_screener = lambda *a, **k: (
+            RET_OK,
+            {"item_list": pd.DataFrame([{"owner": "US.QQQ", "chain_info": {"product_code": "QQQ"}}]), "next_page": 2},
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_zero_dte_screener(
+            "US_SECURITY", None, None, 1, 1
+        )
+        assert res["status"] == "success"
+        assert res["data"][0]["owner"] == "US.QQQ"
+
+    async def test_zero_dte_contract_success(self):
+        qctx = MagicMock()
+        qctx.get_option_zero_dte_contract = lambda *a, **k: (
+            RET_OK,
+            pd.DataFrame([{"option": "US.QQQ260821C714000", "name": "QQQ 260821 714.00C", "iv": 60.6, "delta": 0.044}]),
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_zero_dte_contract(
+            "US.QQQ", {"product_code": "QQQ"}, 1787288400
+        )
+        assert res["status"] == "success"
+        assert res["data"][0]["iv"] == 60.6
+
+    async def test_earnings_screener_success(self):
+        qctx = MagicMock()
+        qctx.get_option_earnings_screener = lambda *a, **k: (
+            RET_OK,
+            {
+                "item_list": pd.DataFrame([{"owner": "US.PDD", "name": "拼多多", "expected_move_ratio": 7.056}]),
+                "all_count": 10,
+            },
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_earnings_screener(
+            "US_SECURITY", None, None, 1, 1
+        )
+        assert res["status"] == "success"
+        assert res["data"][0]["expected_move_ratio"] == 7.056
+
+    async def test_seller_screener_success(self):
+        qctx = MagicMock()
+        qctx.get_option_seller_screener = lambda *a, **k: (
+            RET_OK,
+            pd.DataFrame(
+                [
+                    {
+                        "option": "US.SOXL260826C121000",
+                        "name": "SOXL 260826 121.00C",
+                        "premium": 592.5,
+                        "otm_degree": 0.515,
+                    }
+                ]
+            ),
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_seller_screener("US_SECURITY", "COVERED_CALL")
+        assert res["status"] == "success"
+        assert res["data"][0]["premium"] == 592.5
+
+    async def test_exercise_probability_success(self):
+        qctx = MagicMock()
+        qctx.get_option_exercise_probability = lambda *a, **k: (
+            RET_OK,
+            pd.DataFrame([{"timestamp_str": "2026-08-22", "security_price": 309.35, "strike_probability": 98.9}]),
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_exercise_probability("US.AAPL260824C205000")
+        assert res["status"] == "success"
+        assert res["data"][0]["strike_probability"] == 98.9
+
+    async def test_p0_5_disconnected(self):
+        conn = _make_conn_mgr(quote_ctx=None)
+        res = await OptionFundHandler(conn, CacheManager()).get_option_market_statistic()
+        assert res["status"] == "error"
+        assert "未连接" in res["message"]

@@ -333,6 +333,185 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    # ── P0.5 期权全维数据 ────────────────────────────────────────────────
+    async def get_option_underlying_his_volatility(
+        self, ticker: str, begin_time: Optional[str] = None, end_time: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """P0.5.2 标的已实现波动率 HV（时间序列）。"""
+        return await self._route(
+            "fetch_option_underlying_his_volatility",
+            {"ticker": ticker, "begin_time": begin_time, "end_time": end_time},
+            self.option_fund_handler.get_option_underlying_his_volatility,
+            ticker=ticker,
+            begin_time=begin_time,
+            end_time=end_time,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_underlying_overview(self, ticker: str) -> Dict[str, Any]:
+        """P0.5.2 标的期权总览（IV/IV_RANK/HV 多周期）。"""
+        return await self._route(
+            "fetch_option_underlying_overview",
+            {"ticker": ticker},
+            self.option_fund_handler.get_option_underlying_overview,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_market_statistic(
+        self,
+        option_market: str = "US_SECURITY",
+        data_type: str = "VOLUME",
+        begin_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """P0.5.3 期权市场 Put/Call 比（市场级情绪指标）。"""
+        return await self._route(
+            "fetch_option_market_statistic",
+            {"option_market": option_market, "data_type": data_type, "begin_time": begin_time, "end_time": end_time},
+            self.option_fund_handler.get_option_market_statistic,
+            option_market=option_market,
+            data_type=data_type,
+            begin_time=begin_time,
+            end_time=end_time,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_zero_dte_screener(
+        self,
+        market: str = "US_SECURITY",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        count: int = 20,
+        page: int = 1,
+        filter_list: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """P0.5.4 0DTE 末日期权筛选器。"""
+        return await self._route(
+            "fetch_option_zero_dte_screener",
+            {
+                "market": market,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "count": count,
+                "page": page,
+                "filter_list": filter_list,
+            },
+            self.option_fund_handler.get_option_zero_dte_screener,
+            market=market,
+            sort_type=sort_type,
+            is_asc=is_asc,
+            count=count,
+            page=page,
+            filter_list=filter_list,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_zero_dte_contract(
+        self,
+        owner: str,
+        chain_info: Any,
+        strike_date_timestamp: Optional[int] = None,
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        filter_list: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """P0.5.4 0DTE 合约明细。"""
+        return await self._route(
+            "fetch_option_zero_dte_contract",
+            {
+                "owner": owner,
+                "chain_info": chain_info,
+                "strike_date_timestamp": strike_date_timestamp,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "filter_list": filter_list,
+            },
+            self.option_fund_handler.get_option_zero_dte_contract,
+            owner=owner,
+            chain_info=chain_info,
+            strike_date_timestamp=strike_date_timestamp,
+            sort_type=sort_type,
+            is_asc=is_asc,
+            filter_list=filter_list,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_earnings_screener(
+        self,
+        market: str = "US_SECURITY",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        count: int = 20,
+        page: int = 1,
+        filter_list: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """P0.5.5 财报期权筛选器。"""
+        return await self._route(
+            "fetch_option_earnings_screener",
+            {
+                "market": market,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "count": count,
+                "page": page,
+                "filter_list": filter_list,
+            },
+            self.option_fund_handler.get_option_earnings_screener,
+            market=market,
+            sort_type=sort_type,
+            is_asc=is_asc,
+            count=count,
+            page=page,
+            filter_list=filter_list,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_seller_screener(
+        self,
+        market: str = "US_SECURITY",
+        seller_type: str = "COVERED_CALL",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        filter_list: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """P0.5.6 卖方策略筛选器（备兑看涨/现金担保卖沽）。"""
+        return await self._route(
+            "fetch_option_seller_screener",
+            {
+                "market": market,
+                "seller_type": seller_type,
+                "sort_type": sort_type,
+                "is_asc": is_asc,
+                "filter_list": filter_list,
+            },
+            self.option_fund_handler.get_option_seller_screener,
+            market=market,
+            seller_type=seller_type,
+            sort_type=sort_type,
+            is_asc=is_asc,
+            filter_list=filter_list,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_exercise_probability(self, ticker: str) -> Dict[str, Any]:
+        """P0.5.7 行权概率（入参须为期权合约代码）。"""
+        return await self._route(
+            "fetch_option_exercise_probability",
+            {"ticker": ticker},
+            self.option_fund_handler.get_option_exercise_probability,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
     async def get_option_volatility(self, ticker: str) -> Dict[str, Any]:
         """F3 期权波动率（入参必须为期权合约代码）。"""
         return await self._route(

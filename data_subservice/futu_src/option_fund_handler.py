@@ -426,6 +426,178 @@ class OptionFundHandler:
             logger.error("❌ get_option_volatility 失败 %s: %s", market_ticker, e)
             return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
 
+    # ── P0.5.2: 标的已实现波动率 HV（正股/ETF 代码）──────────────────────────
+    @with_global_retry
+    async def get_option_underlying_his_volatility(
+        self,
+        ticker: str,
+        begin_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.2 标的已实现波动率 HV（时间序列，正股/ETF/指数代码入参）。
+
+        get_option_underlying_his_volatility(code, begin_time, end_time) → (ret, df1, df2)。
+        实测 df1 列: code/name/time/timestamp/iv/hv/underlying_price。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": code,
+            }
+        try:
+            ret, data, _ = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_underlying_his_volatility, code, "NORMAL", begin_time, end_time, None
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"HV 获取失败: {data}",
+                    "code": code,
+                }
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "time": r.get("time"),
+                    "iv": safe_float(r.get("iv")),
+                    "hv": safe_float(r.get("hv")),
+                    "underlying_price": safe_float(r.get("underlying_price")),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_underlying_his_volatility 失败 %s: %s", code, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
+    # ── P0.5.2: 标的总览（IV/IV_RANK/HV 多周期，Put/Call 量仓）───────────────
+    @with_global_retry
+    async def get_option_underlying_overview(
+        self,
+        ticker: str,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.2 标的期权总览（正股/ETF 代码）。
+
+        get_option_underlying_overview(code_list) → (ret, DataFrame)。
+        实测列: code/name/call_volume/put_volume/call_open_interest/put_open_interest/
+        iv/iv_rank/iv_percentile/pre_iv/hv_30d~hv_365d(+percentile)。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": code,
+            }
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_option_underlying_overview, [code])
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"标的总览获取失败: {data}",
+                    "code": code,
+                }
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: (safe_float(v) if isinstance(v, (int, float)) else v) for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_underlying_overview 失败 %s: %s", code, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
+    # ── P0.5.3: 期权市场统计（Put/Call 比，市场级）──────────────────────────
+    @with_global_retry
+    async def get_option_market_statistic(
+        self,
+        option_market: str = "US_SECURITY",
+        data_type: str = "VOLUME",
+        begin_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.3 期权市场 Put/Call 比（市场级情绪指标）。
+
+        get_option_market_statistic(option_market, data_type, begin_time, end_time)
+        → (ret, df1, df2)。实测 df1 列: time/timestamp/call_value/put_value/total_value/ratio。
+        option_market 有效值: US_SECURITY/HK_SECURITY/US_INDEX/HK_INDEX；
+        data_type 有效值: VOLUME/OPEN_INTEREST。
+        """
+        from futu import OptionMarket, OptionStatisticDataType
+
+        mkt = getattr(OptionMarket, str(option_market).upper(), OptionMarket.US_SECURITY)
+        dtyp = getattr(OptionStatisticDataType, str(data_type).upper(), OptionStatisticDataType.VOLUME)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data, _ = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_market_statistic, mkt, dtyp, begin_time, end_time, None
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"期权市场统计获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "time": r.get("time"),
+                    "call_value": safe_float(r.get("call_value")),
+                    "put_value": safe_float(r.get("put_value")),
+                    "total_value": safe_float(r.get("total_value")),
+                    "put_call_ratio": safe_float(r.get("ratio")),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "option_market": str(option_market).upper(),
+                "data_type": str(data_type).upper(),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_market_statistic 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
     async def _enrich_option_chain_snapshot(self, market_ticker: str, chain_data: pd.DataFrame) -> tuple:
         """用 get_market_snapshot 为期权链补充 IV / Greeks / 买卖价 / 量仓。
 
@@ -2235,4 +2407,302 @@ class OptionFundHandler:
             }
         except Exception as e:  # noqa: BLE001
             logger.error("❌ get_corporate_actions_stock_splits 失败 %s: %s", code, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
+    # ── P0.5.4: 0DTE 末日期权筛选器（市场级）────────────────────────────────
+    @with_global_retry
+    async def get_option_zero_dte_screener(
+        self,
+        market: str = "US_SECURITY",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        count: int = 20,
+        page: int = 1,
+        filter_list: Optional[Any] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.4 0DTE 末日期权筛选器（市场级列表）。
+
+        get_option_zero_dte_screener(market, sort_type, is_asc, count, page, filter_list)
+        → (ret, dict)。实测 dict 含 item_list(owner/chain_info 嵌套)/next_page/update_timestamp。
+        market 有效值: US_SECURITY/HK_SECURITY/US_INDEX/HK_INDEX。
+        """
+        from futu import OptionMarket
+
+        mkt = getattr(OptionMarket, str(market).upper(), OptionMarket.US_SECURITY)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_zero_dte_screener,
+                mkt,
+                sort_type,
+                is_asc,
+                int(count),
+                int(page),
+                filter_list,
+            )
+            if ret != RET_OK or not isinstance(data, dict):
+                return {"status": "error", "source": "futu", "message": f"0DTE 筛选器获取失败: {data}"}
+            item_list = data.get("item_list")
+            items = []
+            if isinstance(item_list, pd.DataFrame) and not item_list.empty:
+                for _, r in item_list.iterrows():
+                    items.append(
+                        {
+                            "owner": r.get("owner"),
+                            "chain_info": r.get("chain_info"),
+                        }
+                    )
+            return {
+                "status": "success",
+                "source": "futu",
+                "market": str(market).upper(),
+                "count": len(items),
+                "next_page": data.get("next_page"),
+                "update_timestamp": data.get("update_timestamp"),
+                "data": items,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_zero_dte_screener 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── P0.5.4: 0DTE 合约明细（需 chain_info）────────────────────────────────
+    @with_global_retry
+    async def get_option_zero_dte_contract(
+        self,
+        owner: str,
+        chain_info: Any,
+        strike_date_timestamp: Optional[int] = None,
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        filter_list: Optional[Any] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.4 0DTE 合约明细（从 zero_dte_screener 的 item.chain_info 取入参）。
+
+        get_option_zero_dte_contract(owner, strike_date_timestamp, chain_info, sort_type, is_asc, filter_list)
+        → (ret, DataFrame)。实测列: option/name/option_type/option_price/iv/delta/gamma/vega/theta/
+        buy_break_even_point/buy_profit_probability/sell_profit_probability。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_zero_dte_contract,
+                owner,
+                strike_date_timestamp,
+                chain_info,
+                sort_type,
+                is_asc,
+                filter_list,
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"0DTE 合约获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "option": r.get("option"),
+                    "name": r.get("name"),
+                    "option_type": r.get("option_type"),
+                    "option_price": safe_float(r.get("option_price")),
+                    "iv": safe_float(r.get("iv")),
+                    "delta": safe_float(r.get("delta")),
+                    "buy_break_even_point": safe_float(r.get("buy_break_even_point")),
+                    "buy_profit_probability": safe_float(r.get("buy_profit_probability")),
+                    "sell_profit_probability": safe_float(r.get("sell_profit_probability")),
+                }
+                for r in rows
+            ]
+            return {"status": "success", "source": "futu", "owner": owner, "count": len(clean), "data": clean}
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_zero_dte_contract 失败 %s: %s", owner, e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── P0.5.5: 财报期权筛选器（市场级）─────────────────────────────────────
+    @with_global_retry
+    async def get_option_earnings_screener(
+        self,
+        market: str = "US_SECURITY",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        count: int = 20,
+        page: int = 1,
+        filter_list: Optional[Any] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.5 财报期权筛选器（财报公布标的期权数据）。
+
+        get_option_earnings_screener(market, sort_type, is_asc, count, page, filter_list)
+        → (ret, dict)。实测 dict 含 item_list(owner/name/estimate_revenue_yoy/expected_move_ratio)/next_page/all_count。
+        """
+        from futu import OptionMarket
+
+        mkt = getattr(OptionMarket, str(market).upper(), OptionMarket.US_SECURITY)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_earnings_screener,
+                mkt,
+                sort_type,
+                is_asc,
+                int(count),
+                int(page),
+                filter_list,
+            )
+            if ret != RET_OK or not isinstance(data, dict):
+                return {"status": "error", "source": "futu", "message": f"财报期权筛选器获取失败: {data}"}
+            item_list = data.get("item_list")
+            items = []
+            if isinstance(item_list, pd.DataFrame) and not item_list.empty:
+                for _, r in item_list.iterrows():
+                    items.append(
+                        {
+                            "owner": r.get("owner"),
+                            "name": r.get("name"),
+                            "estimate_revenue_yoy": safe_float(r.get("estimate_revenue_yoy")),
+                            "expected_move_ratio": safe_float(r.get("expected_move_ratio")),
+                        }
+                    )
+            return {
+                "status": "success",
+                "source": "futu",
+                "market": str(market).upper(),
+                "count": len(items),
+                "next_page": data.get("next_page"),
+                "all_count": data.get("all_count"),
+                "data": items,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_earnings_screener 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── P0.5.6: 卖方策略筛选器（市场级，备兑看涨/现金担保卖沽）───────────────
+    @with_global_retry
+    async def get_option_seller_screener(
+        self,
+        market: str = "US_SECURITY",
+        seller_type: str = "COVERED_CALL",
+        sort_type: Optional[str] = None,
+        is_asc: Optional[bool] = None,
+        filter_list: Optional[Any] = None,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.6 卖方策略筛选器（备兑看涨 COVERED_CALL / 现金担保卖沽 CASH_SECURED_PUT）。
+
+        get_option_seller_screener(market, seller_type, sort_type, is_asc, filter_list)
+        → (ret, DataFrame)。实测列: option/name/premium/otm_degree/iv/interval_return/
+        annualized_return/itm_probability/owner。
+        """
+        from futu import OptionMarket, SellerType
+
+        mkt = getattr(OptionMarket, str(market).upper(), OptionMarket.US_SECURITY)
+        st = getattr(SellerType, str(seller_type).upper(), SellerType.COVERED_CALL)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+        try:
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_seller_screener, mkt, st, sort_type, is_asc, filter_list
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"卖方策略筛选器获取失败: {data}"}
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "option": r.get("option"),
+                    "name": r.get("name"),
+                    "option_type": r.get("option_type"),
+                    "owner": r.get("owner"),
+                    "strike_price": safe_float(r.get("strike_price")),
+                    "premium": safe_float(r.get("premium")),
+                    "otm_degree": safe_float(r.get("otm_degree")),
+                    "iv": safe_float(r.get("iv")),
+                    "interval_return": safe_float(r.get("interval_return")),
+                    "annualized_return": safe_float(r.get("annualized_return")),
+                    "itm_probability": safe_float(r.get("itm_probability")),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "market": str(market).upper(),
+                "seller_type": str(seller_type).upper(),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_seller_screener 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── P0.5.7: 行权概率（期权合约代码）─────────────────────────────────────
+    @with_global_retry
+    async def get_option_exercise_probability(
+        self,
+        ticker: str,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """P0.5.7 行权概率（入参须为期权合约代码）。
+
+        get_option_exercise_probability(code) → (ret, DataFrame)。
+        实测列: timestamp/timestamp_str/security_price/strike_probability。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": code,
+            }
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_option_exercise_probability, code)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"行权概率获取失败: {data}",
+                    "code": code,
+                }
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [
+                {
+                    "date_str": r.get("timestamp_str"),
+                    "security_price": safe_float(r.get("security_price")),
+                    "strike_probability": safe_float(r.get("strike_probability")),
+                }
+                for r in rows
+            ]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_exercise_probability 失败 %s: %s", code, e)
             return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}

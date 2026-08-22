@@ -95,6 +95,62 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         elif action == "OPTION_QUOTE":
             # P0.2 期权快照（组合腿实时行情 + Greeks）
             return await futu_service.get_option_quote(params.get("legs"))
+        elif action == "OPTION_UNDERLYING_HIS_VOL":
+            # P0.5.2 标的已实现波动率 HV（时间序列）
+            return await futu_service.get_option_underlying_his_volatility(
+                params.get("symbol") or params.get("ticker"),
+                begin_time=params.get("begin_time"),
+                end_time=params.get("end_time"),
+            )
+        elif action == "OPTION_UNDERLYING_OVERVIEW":
+            # P0.5.2 标的期权总览（IV/IV_RANK/HV 多周期）
+            return await futu_service.get_option_underlying_overview(params.get("symbol") or params.get("ticker"))
+        elif action == "OPTION_MARKET_STATISTIC":
+            # P0.5.3 期权市场 Put/Call 比
+            return await futu_service.get_option_market_statistic(
+                option_market=params.get("option_market", "US_SECURITY"),
+                data_type=params.get("data_type", "VOLUME"),
+                begin_time=params.get("begin_time"),
+                end_time=params.get("end_time"),
+            )
+        elif action == "OPTION_ZERO_DTE_SCREENER":
+            # P0.5.4 0DTE 末日期权筛选器
+            return await futu_service.get_option_zero_dte_screener(
+                market=params.get("market", "US_SECURITY"),
+                sort_type=params.get("sort_type"),
+                is_asc=params.get("is_asc"),
+                count=int(params.get("count", 20)),
+                page=int(params.get("page", 1)),
+            )
+        elif action == "OPTION_ZERO_DTE_CONTRACT":
+            # P0.5.4 0DTE 合约明细
+            return await futu_service.get_option_zero_dte_contract(
+                params.get("owner"),
+                params.get("chain_info"),
+                strike_date_timestamp=params.get("strike_date_timestamp"),
+                sort_type=params.get("sort_type"),
+                is_asc=params.get("is_asc"),
+            )
+        elif action == "OPTION_EARNINGS_SCREENER":
+            # P0.5.5 财报期权筛选器
+            return await futu_service.get_option_earnings_screener(
+                market=params.get("market", "US_SECURITY"),
+                sort_type=params.get("sort_type"),
+                is_asc=params.get("is_asc"),
+                count=int(params.get("count", 20)),
+                page=int(params.get("page", 1)),
+            )
+        elif action == "OPTION_SELLER_SCREENER":
+            # P0.5.6 卖方策略筛选器
+            return await futu_service.get_option_seller_screener(
+                market=params.get("market", "US_SECURITY"),
+                seller_type=params.get("seller_type", "COVERED_CALL"),
+                sort_type=params.get("sort_type"),
+                is_asc=params.get("is_asc"),
+            )
+        elif action == "OPTION_EXERCISE_PROBABILITY":
+            # P0.5.7 行权概率
+            return await futu_service.get_option_exercise_probability(params.get("symbol") or params.get("ticker"))
         elif action == "OPTION_VOLATILITY":
             return await futu_service.get_option_volatility(
                 params.get("symbol") or params.get("ticker"),
