@@ -239,10 +239,23 @@ _service_instance: Optional[ExpertTeamService] = None
 
 
 def get_expert_team_service(tool_registry: Optional[ToolRegistry] = None) -> ExpertTeamService:
-    """获取专家团服务单例"""
+    """获取专家团服务单例
+
+    tool_registry 兜底：若调用方未显式传入，则尝试从全局生命周期注入的
+    global_registry 获取（App 启动时构建），确保共享数据采集能真正调用工具，
+    避免所有数据项因 registry=None 被 skip 为"工具不可用"。
+    """
     global _service_instance
+    resolved = tool_registry
+    if resolved is None:
+        try:
+            from backend.bootstrap.lifecycle import global_registry
+
+            resolved = global_registry
+        except Exception:  # noqa: BLE001
+            resolved = None
     if _service_instance is None:
-        _service_instance = ExpertTeamService(tool_registry=tool_registry)
-    elif tool_registry and _service_instance.orchestrator.tool_registry is None:
-        _service_instance.orchestrator.tool_registry = tool_registry
+        _service_instance = ExpertTeamService(tool_registry=resolved)
+    elif resolved and _service_instance.orchestrator.tool_registry is None:
+        _service_instance.orchestrator.tool_registry = resolved
     return _service_instance
