@@ -33,6 +33,10 @@ export interface DataCollectEvent extends BaseEvent {
     key?: string
     status?: 'success' | 'error' | 'timeout' | 'skipped' | string
     message?: string
+    /** 协议请求参数（如 {ticker, action}） */
+    request?: Record<string, unknown> | null
+    /** 协议响应内容摘要 */
+    response?: string | null
   }
 }
 

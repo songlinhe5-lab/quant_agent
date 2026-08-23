@@ -12,10 +12,13 @@ if TYPE_CHECKING:
     pass
 
 # 数据类型 → 采集工具映射
+# param_key: 标的代码映射（'ticker' 时从请求 ticker 传入；None 表示该工具不需要 ticker）
+# default_kwargs: 工具的固定参数（如 BrokerMarketTool 需要 action）
 _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
     "quote": {
         "tool": "get_broker_market_data",
         "param_key": "ticker",
+        "default_kwargs": {"action": "QUOTE"},
         "description": "实时行情报价",
     },
     "fundamental": {
@@ -84,6 +87,7 @@ async def collect_shared_data(
     """
     shared_data: dict[str, Any] = {}
     tasks: list[tuple[str, asyncio.Task]] = []
+    kwargs_for_tasks: dict[asyncio.Task, dict[str, Any]] = {}
 
     for req in data_requirements:
         collector = _DATA_COLLECTORS.get(req)
@@ -108,37 +112,58 @@ async def collect_shared_data(
                 await on_progress({"key": req, "status": "skipped", "message": "工具不可用"})
             continue
 
-        # 构建参数
-        kwargs: dict[str, Any] = {}
-        if collector["param_key"] == "ticker" and ticker:
+        # 构建参数：固定参数(default_kwargs) + ticker（若工具需要且提供了）
+        kwargs: dict[str, Any] = dict(collector.get("default_kwargs") or {})
+        if collector["param_key"] == "ticker":
+            if not ticker:
+                # 无标的（自由提问/市场级场景）：需要 ticker 的项优雅跳过，而非报错
+                shared_data[req] = {"status": "skipped", "reason": "当前问题未绑定具体标的，跳过个股数据"}
+                if on_progress:
+                    await on_progress({"key": req, "status": "skipped", "message": "未绑定标的，跳过个股数据"})
+                continue
             kwargs["ticker"] = ticker
 
-        # 创建异步采集任务
+        # 创建异步采集任务（记录请求参数，供折叠展示请求内容）
         task = asyncio.create_task(_safe_collect(tool_registry, tool_name, req, kwargs))
         tasks.append((req, task))
+        kwargs_for_tasks[task] = kwargs
 
     # 并行等待所有采集任务：每完成一个即回调，实现逐步透传（FIRST_COMPLETED 逐步取）
     if tasks:
         pending: set[asyncio.Task] = set(t for _, t in tasks)
         task_to_key = {t: r for r, t in tasks}
+        task_to_kwargs = {t: kwargs_for_tasks.get(t) for t in tasks}
         while pending:
             done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
             for coro in done:
                 req = task_to_key.get(coro)
+                if req is None:
+                    continue
                 try:
                     result = coro.result()
                 except Exception as e:  # noqa: BLE001
                     result = {"status": "error", "message": f"采集异常: {str(e)}"}
-                if req is None:
-                    continue
                 shared_data[req] = result
                 if on_progress:
-                    if isinstance(result, dict) and result.get("status") in ("error", "timeout", "skipped"):
-                        await on_progress(
-                            {"key": req, "status": result.get("status"), "message": result.get("message", "")}
-                        )
-                    else:
-                        await on_progress({"key": req, "status": "success", "message": f"{req} 采集完成"})
+                    req_kwargs = task_to_kwargs.get(coro) or {}
+                    # 携带请求参数与响应摘要，供前端折叠展示"请求/响应内容"
+                    await on_progress(
+                        {
+                            "key": req,
+                            "status": "success"
+                            if not (
+                                isinstance(result, dict) and result.get("status") in ("error", "timeout", "skipped")
+                            )
+                            else result.get("status"),
+                            "message": (
+                                result.get("message")
+                                if isinstance(result, dict) and result.get("message")
+                                else f"{req} 采集完成"
+                            ),
+                            "request": req_kwargs,
+                            "response": _summarize_result(result),
+                        }
+                    )
 
     # 合并额外上下文
     if extra_context:
@@ -171,6 +196,27 @@ async def _safe_collect(
             "status": "error",
             "message": f"{data_type} 采集失败: {str(e)}",
         }
+
+
+def _summarize_result(result: Any, max_chars: int = 600) -> str:
+    """把工具返回结果摘要成短文本（供前端折叠展示响应内容），避免把超大数据整包透传。"""
+    import json as _json
+
+    try:
+        if isinstance(result, dict):
+            # 错误/超时：返回 message
+            if result.get("status") in ("error", "timeout", "skipped"):
+                return str(result.get("message", ""))[:max_chars]
+            # 成功：返回关键字段摘要
+            data = result.get("data", result)
+            if isinstance(data, (dict, list)):
+                return _json.dumps(data, ensure_ascii=False, default=str)[:max_chars]
+            return str(data)[:max_chars]
+        if isinstance(result, (list, dict)):
+            return _json.dumps(result, ensure_ascii=False, default=str)[:max_chars]
+        return str(result)[:max_chars]
+    except Exception:  # noqa: BLE001
+        return str(result)[:max_chars]
 
 
 def format_shared_data_for_prompt(shared_data: dict[str, Any], max_chars: int = 8000) -> str:

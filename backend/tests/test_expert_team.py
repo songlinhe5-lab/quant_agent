@@ -269,7 +269,8 @@ class TestDataCollector:
             ticker="AAPL",
         )
         assert result["quote"] == {"price": 150.0}
-        mock_registry.execute.assert_called_once_with("get_broker_market_data", ticker="AAPL")
+        # quote 工具的 BrokerMarketTool 需要 action 参数（QUOTE=实时报价），断言含 action
+        mock_registry.execute.assert_called_once_with("get_broker_market_data", action="QUOTE", ticker="AAPL")
 
     @pytest.mark.asyncio
     @pytest.mark.slow
