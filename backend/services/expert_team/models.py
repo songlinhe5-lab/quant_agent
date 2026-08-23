@@ -116,6 +116,7 @@ class StreamEvent(BaseModel):
 
     type: Literal[
         "status",  # 状态变更
+        "data_collect",  # 数据采集过程（逐项进度，供前端折叠思考过程展示）
         "expert_opinion",  # 专家观点输出
         "round_complete",  # 某轮完成
         "chief_report",  # 首席报告
