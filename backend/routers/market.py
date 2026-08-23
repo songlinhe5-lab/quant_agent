@@ -1227,15 +1227,23 @@ async def search_tickers(q: str):
 
     # 2. 本地 miss → Futu 实时联想（补名称→代码盲区，支持中文名）
     #    注意: search_quote 在 DataServiceFacade(data_service) 上，不在 MarketDataService(_facade_market)
+    #    关键: Futu 远端节点(OpenD)可能波动/挂起，必须加超时保护，避免联想搜索卡死/不稳定。
     if res.get("status") == "success" and not res.get("data"):
         try:
-            futu_res = await data_service.search_quote(keyword=q, max_count=10)
+            import asyncio
+
+            futu_res = await asyncio.wait_for(
+                data_service.search_quote(keyword=q, max_count=10),
+                timeout=2.5,
+            )
             if futu_res.is_success and futu_res.data:
                 return {
                     "data": futu_res.data,
                     "source": f"futu_search_quote+{futu_res.source}",
                     "degraded": futu_res.status == ResultStatus.DEGRADED,
                 }
+        except asyncio.TimeoutError:
+            print(f"⚠️ [Search] Futu get_search_quote 超时(2.5s)跳过, 降级本地结果: {q}")
         except Exception as e:  # noqa: BLE001
             print(f"⚠️ [Search] Futu get_search_quote 降级失败: {e}")
 

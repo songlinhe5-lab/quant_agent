@@ -135,24 +135,77 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
                     candidates = res.data if isinstance(res.data, list) else []
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[expert-team] Futu search_quote 降级失败 ({keyword}): {e}")
-        if not candidates:
-            return None
-        # 优先 STOCK 类型
-        for c in candidates:
-            if str(c.get("sec_type") or c.get("type") or "").upper() == "STOCK":
-                code = c.get("code") or c.get("symbol") or c.get("ticker")
-                if code:
-                    return format_ticker(code)
-        # 无 STOCK 时，取名称含 keyword 的候选（如中文名联想）
-        for c in candidates:
-            name = str(c.get("name", ""))
-            if name and keyword in name:
-                code = c.get("code") or c.get("symbol") or c.get("ticker")
-                if code:
-                    return format_ticker(code)
+        if candidates:
+            # 优先 STOCK 类型
+            for c in candidates:
+                if str(c.get("sec_type") or c.get("type") or "").upper() == "STOCK":
+                    code = c.get("code") or c.get("symbol") or c.get("ticker")
+                    if code:
+                        return format_ticker(code)
+            # 无 STOCK 时，取名称含 keyword 的候选（如中文名联想）
+            for c in candidates:
+                name = str(c.get("name", ""))
+                if name and keyword in name:
+                    code = c.get("code") or c.get("symbol") or c.get("ticker")
+                    if code:
+                        return format_ticker(code)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[expert-team] 问题文本解析 ticker 失败: {e}")
+
+    # 4) 规则全失败 → LLM 语义推导兜底：从命题文本推导候选标的（如"白酒龙头"→贵州茅台）
+    #    仅在确有中文名输入（keyword 非空）时触发，避免空问题误调用 LLM。
+    if keyword:
+        try:
+            llm_ticker = await _resolve_ticker_via_llm(question, keyword)
+            if llm_ticker:
+                return llm_ticker
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[expert-team] LLM 推导 ticker 失败 ({keyword}): {e}")
     return None
+
+
+async def _resolve_ticker_via_llm(question: str, keyword: str) -> Optional[str]:
+    """LLM 语义推导兜底：从投研命题文本中抽取/推导出标准标的。
+
+    适用于规则匹配与词库/Futu 联想均失败的情况，例如：
+      - 词库未覆盖的中文名（阅文集团）→ LLM 直接返回 HK.00772
+      - 语义化表述（"白酒龙头"、"腾讯"）→ LLM 映射为标准代码
+    返回经 format_ticker 标准化的 ticker，或 None。
+    """
+    from pydantic import BaseModel, Field
+
+    from backend.core.ticker_format import format_ticker
+    from backend.services.ai_narrator.llm_service import ModelTier, llm_service
+
+    class TickerExtraction(BaseModel):
+        ticker: Optional[str] = Field(
+            default=None,
+            description="命题中明确或隐含分析的标准标的代码，如 US.AAPL / HK.00700 / 600519.SH；若无法推断则留空",
+        )
+        confidence: float = Field(default=0.0, description="推断置信度 0~1")
+
+    try:
+        resp = await llm_service.generate_pydantic(
+            prompt=f"从以下投研命题中抽取被分析的具体标的（股票/ETF）。命题：{question}\n已识别的中文线索：{keyword}",
+            response_model=TickerExtraction,
+            system_prompt=(
+                "你是金融标的识别助手。从用户命题中识别被分析的具体证券标的，"
+                "返回其标准代码（格式：美股 US.AAPL、港股 HK.00700、A股 600519.SH / 000001.SZ）。"
+                "只返回一个最相关的标的；若命题不涉及具体标的（纯宏观/主题）则返回空。"
+            ),
+            tier=ModelTier.LIGHTWEIGHT,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[expert-team] LLM generate_pydantic 失败: {e}")
+        return None
+
+    raw = getattr(resp, "ticker", None) or None
+    if not raw:
+        return None
+    try:
+        return format_ticker(raw.strip())
+    except Exception:  # noqa: BLE001
+        return raw.strip()
 
 
 # ─── 双层持久化配置 ─────────────────────────────────────────────
@@ -179,19 +232,38 @@ class ExpertTeamService:
         """
         final_session: Optional[DebateSession] = None
 
-        # 未绑定标的时，参考 Research 流程：从问题文本解析 ticker（Futu SEARCH_QUOTE）
+        # 未绑定标的时，参考 Research 流程：从问题文本解析 ticker（Futu SEARCH_QUOTE / LLM 推导兜底）
         resolved_ticker = request.ticker
+        # 命题声明的分析标的（symbols）作为解析主目标：优先用其补全 ticker
+        declared_symbols = list(request.symbols or [])
+        if not resolved_ticker and declared_symbols:
+            # 取首个声明标的尝试标准化（支持中文名/标准代码混合）
+            first_sym = declared_symbols[0]
+            try:
+                from backend.core.ticker_format import format_ticker
+
+                resolved_ticker = format_ticker(first_sym)
+            except Exception:  # noqa: BLE001
+                resolved_ticker = await _resolve_ticker_from_question(first_sym)
         if not resolved_ticker:
             resolved_ticker = await _resolve_ticker_from_question(request.question)
             if resolved_ticker and resolved_ticker != request.ticker:
                 logger.info(f"[expert-team] 从问题解析出标的: {request.question[:30]} -> {resolved_ticker}")
+
+        # 完整标的集（声明式 symbols + 解析出的 ticker）注入 extra_context，供专家参考
+        analysis_symbols = list(
+            dict.fromkeys([s for s in declared_symbols] + ([resolved_ticker] if resolved_ticker else []))
+        )
+        extra_context = dict(request.extra_context or {})
+        if analysis_symbols:
+            extra_context.setdefault("analysis_symbols", analysis_symbols)
 
         async for event in self.orchestrator.run_debate_stream(
             scenario_id=request.scenario,
             question=request.question,
             ticker=resolved_ticker,
             code_context=request.code_context,
-            extra_context=request.extra_context,
+            extra_context=extra_context,
             rounds=request.rounds,
             expert_ids=request.expert_ids,
         ):

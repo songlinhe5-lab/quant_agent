@@ -18,6 +18,8 @@ export interface TeamConfig {
   ticker?: string
   /** 绑定标的的展示名 */
   tickerName?: string
+  /** 声明式分析标的列表（投研命题携带，如 ["阅文集团","腾讯"]） */
+  symbols?: string[]
 }
 
 interface RosterPanelProps {

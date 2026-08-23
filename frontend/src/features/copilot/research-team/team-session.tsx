@@ -100,6 +100,8 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
         rounds: config.rounds,
         // 显式绑定的标的 → 传 ticker，使个股数据可采集
         ticker: config.ticker,
+        // 声明式分析标的（命题携带），与 ticker 合并供后端解析/LLM 推导
+        symbols: config.symbols,
       },
       {
         onEvent: (e: TeamStreamEvent) => {
