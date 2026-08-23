@@ -220,8 +220,45 @@ export async function fetchSessionHistory(limit = 20): Promise<SessionSummary[]>
   return []
 }
 
+/** 单个投研会完整辩论记录（后端 DebateSession.model_dump() 的结构化字段） */
+export interface SessionDetail {
+  session_id: string
+  scenario: string
+  question: string
+  status: string
+  error_message?: string
+  created_at?: string
+  completed_at?: string
+  round1_opinions?: HistoricalOpinion[]
+  round2_opinions?: HistoricalOpinion[]
+  chief_report?: {
+    final_recommendation?: string
+    probability_assessment?: number
+    full_report?: string
+    minority_opinion?: string
+    risk_warnings?: string[]
+    consensus_areas?: string[]
+    divergence_areas?: string[]
+    strongest_bull_case?: string
+    strongest_bear_case?: string
+  } | null
+}
+
+/** 后端 ExpertOpinion.model_dump()（历史记录里的单轮意见） */
+export interface HistoricalOpinion {
+  expert_id: string
+  round: number
+  stance: string
+  confidence: number
+  key_evidence: string[]
+  reasoning: string
+  challenges: string[]
+  confidence_delta: number
+  revised_stance: string
+}
+
 /** 获取单个投研会完整辩论记录 */
-export async function fetchSession(sessionId: string): Promise<Record<string, unknown> | null> {
+export async function fetchSession(sessionId: string): Promise<SessionDetail | null> {
   try {
     const res = await apiClient.get(`/expert-team/sessions/${sessionId}`)
     return res.data ?? null

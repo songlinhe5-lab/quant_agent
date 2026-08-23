@@ -20,6 +20,120 @@ from hermes_agent.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
+
+async def _resolve_ticker_from_question(question: str) -> Optional[str]:
+    """参考 Research 流程：未绑定标的时，从问题文本解析出标准 ticker 编码，
+    供后续个股数据采集使用（quote/fundamental/technicals）。
+
+    关键设计（get_search_quote 是联想搜索，非精确查单个代码）：
+      1. 若问题含**标准代码**（US.AAPL / 00700.HK / AAPL / 00700）→ 直接 format_ticker
+         标准化，不经过 search_quote（避免联想搜索返回多个相关标的导致误匹配）。
+      2. 仅当是**中文名/非标输入**时才走 Futu SEARCH_QUOTE 联想，并精确筛选候选：
+         优先选 sec_type=STOCK 且名称匹配的标的，而非盲目取第一个候选。
+    """
+    import re
+
+    if not question:
+        return None
+    from backend.core.ticker_format import format_ticker
+
+    # 1) 显式标准代码 → 直接标准化，不查联想
+    m_code = re.search(r"(?:US\.|HK\.)?[A-Za-z]{1,5}(?:\.[A-Z]{2})?|\d{4,5}\.HK", question)
+    if m_code:
+        try:
+            return format_ticker(m_code.group(0))
+        except Exception:  # noqa: BLE001
+            return m_code.group(0)
+
+    # 2) 中文股票名：剔除常见动词/语气词后，取第一个中文片段
+    _STOP = (
+        "分析",
+        "请问",
+        "如何",
+        "怎样",
+        "怎么样",
+        "怎么",
+        "看待",
+        "当前",
+        "最新",
+        "走势",
+        "行情",
+        "价格",
+        "建议",
+        "评估",
+        "评价",
+        "研判",
+        "投研",
+        "可以",
+        "给我",
+        "看看",
+        "关注",
+        "看好",
+        "能否",
+        "是否",
+        "市场",
+        "股票",
+        "未来",
+        "一下",
+        "一个",
+        "这家",
+        "那只",
+        "现在",
+        "最近",
+        "对",
+        "关于",
+        "吗",
+        "呢",
+    )
+    _clean = question
+    for w in sorted(_STOP, key=len, reverse=True):
+        _clean = re.sub(w, "", _clean)
+    _frag = re.search(r"[\u4e00-\u9fa5]{2,6}", _clean)
+    keyword = None
+    if _frag:
+        _kw = _frag.group(0)
+        for w in ("吗", "呢", "怎么样", "怎么"):
+            if _kw.endswith(w):
+                _kw = _kw[: -len(w)]
+                break
+        keyword = _kw if len(_kw) >= 2 else None
+    if not keyword:
+        return None
+
+    # 3) 中文名 → 统一模糊匹配（复用 /market/search 级联：本地词库 → Futu SEARCH_QUOTE）
+    #    精确筛选候选（优先 STOCK 类型，其次名称匹配）
+    try:
+        from backend.services.datasource.business import market_data_service
+        from backend.services.fund_flow.ticker import ticker_service
+
+        candidates: list[dict] = []
+        local = await ticker_service.search_tickers(keyword)
+        if local.get("status") == "success" and local.get("data"):
+            candidates = local["data"]
+        else:
+            res = await market_data_service.search_quote(keyword=keyword, max_count=10)
+            if res.is_success and res.data:
+                candidates = res.data if isinstance(res.data, list) else []
+        if not candidates:
+            return None
+        # 优先 STOCK 类型
+        for c in candidates:
+            if str(c.get("sec_type") or c.get("type") or "").upper() == "STOCK":
+                code = c.get("code") or c.get("symbol") or c.get("ticker")
+                if code:
+                    return format_ticker(code)
+        # 无 STOCK 时，取名称含 keyword 的候选（如中文名联想）
+        for c in candidates:
+            name = str(c.get("name", ""))
+            if name and keyword in name:
+                code = c.get("code") or c.get("symbol") or c.get("ticker")
+                if code:
+                    return format_ticker(code)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[expert-team] 问题文本解析 ticker 失败: {e}")
+    return None
+
+
 # ─── 双层持久化配置 ─────────────────────────────────────────────
 REDIS_KEY_PREFIX = "quant:expert_team:"
 REDIS_TTL = 12 * 3600  # 12 小时
@@ -44,10 +158,17 @@ class ExpertTeamService:
         """
         final_session: Optional[DebateSession] = None
 
+        # 未绑定标的时，参考 Research 流程：从问题文本解析 ticker（Futu SEARCH_QUOTE）
+        resolved_ticker = request.ticker
+        if not resolved_ticker:
+            resolved_ticker = await _resolve_ticker_from_question(request.question)
+            if resolved_ticker and resolved_ticker != request.ticker:
+                logger.info(f"[expert-team] 从问题解析出标的: {request.question[:30]} -> {resolved_ticker}")
+
         async for event in self.orchestrator.run_debate_stream(
             scenario_id=request.scenario,
             question=request.question,
-            ticker=request.ticker,
+            ticker=resolved_ticker,
             code_context=request.code_context,
             extra_context=request.extra_context,
             rounds=request.rounds,

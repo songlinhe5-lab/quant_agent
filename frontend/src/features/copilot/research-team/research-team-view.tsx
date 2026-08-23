@@ -13,7 +13,8 @@ import { Play, Crown, History, Inbox, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RosterPanel, type TeamConfig } from './roster-panel'
 import { TeamSession } from './team-session'
-import { fetchSessionHistory, type SessionSummary } from './expert-team-client'
+import { SessionDetailView } from './session-detail-view'
+import { fetchSessionHistory, fetchSession, type SessionSummary, type SessionDetail } from './expert-team-client'
 
 export function ResearchTeamView() {
   const [question, setQuestion] = useState('')
@@ -29,8 +30,19 @@ export function ResearchTeamView() {
   // COPILOT-05: 真实历史会话列表
   const [history, setHistory] = useState<SessionSummary[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
+  // 打开的历史会话详情（点击历史记录项加载）
+  const [viewingSession, setViewingSession] = useState<SessionDetail | null>(null)
+  const [historyDetailLoading, setHistoryDetailLoading] = useState(false)
 
   const canRun = question.trim().length > 0 && !running
+
+  // 打开历史记录：加载完整辩论记录并显示在右侧
+  const openHistory = useCallback(async (sessionId: string) => {
+    setHistoryDetailLoading(true)
+    const detail = await fetchSession(sessionId)
+    setHistoryDetailLoading(false)
+    setViewingSession(detail)
+  }, [])
 
   const onRun = () => {
     if (!canRun) return
@@ -90,9 +102,11 @@ export function ResearchTeamView() {
             {hasHistory ? (
               <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
                 {history.map((s) => (
-                  <div
+                  <button
                     key={s.session_id}
-                    className="flex items-center gap-2 rounded-lg border border-border/30 bg-secondary/20 px-2.5 py-2 text-[11px] hover:bg-secondary/40 transition-colors cursor-default"
+                    type="button"
+                    onClick={() => openHistory(s.session_id)}
+                    className="flex items-center gap-2 rounded-lg border border-border/30 bg-secondary/20 px-2.5 py-2 text-[11px] hover:bg-secondary/40 transition-colors cursor-pointer text-left"
                   >
                     <span className={cn(
                       'h-1.5 w-1.5 rounded-full shrink-0',
@@ -109,7 +123,7 @@ export function ResearchTeamView() {
                         {s.probability_assessment}%
                       </span>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : !historyLoading ? (
@@ -145,15 +159,33 @@ export function ResearchTeamView() {
         </div>
       </div>
 
-      {/* 右：会话流 */}
-      <div className="min-w-0 flex-1">
-        <TeamSession
-          question={question}
-          config={config}
-          customMode={customMode}
-          runToken={runToken}
-          onRunningChange={setRunning}
-        />
+      {/* 右：历史详情 or 会话流 */}
+      <div className="relative min-w-0 flex-1">
+        {viewingSession ? (
+          <>
+            {/* 关闭历史详情，回到会话流 */}
+            <button
+              type="button"
+              onClick={() => setViewingSession(null)}
+              className="absolute right-3 top-2 z-10 rounded-full border border-border/40 bg-background/80 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary/40 hover:text-foreground transition-colors"
+            >
+              {historyDetailLoading ? '加载中…' : '✕ 关闭历史'}
+            </button>
+            {historyDetailLoading && !viewingSession ? (
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载历史记录…</div>
+            ) : viewingSession ? (
+              <SessionDetailView session={viewingSession} />
+            ) : null}
+          </>
+        ) : (
+          <TeamSession
+            question={question}
+            config={config}
+            customMode={customMode}
+            runToken={runToken}
+            onRunningChange={setRunning}
+          />
+        )}
       </div>
     </div>
   )

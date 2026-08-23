@@ -1209,7 +1209,12 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
 @router.get("/search")
 async def search_tickers(q: str):
     """
-    股票代码模糊搜索 (优先本地词库，降级 YFinance)
+    统一模糊匹配底层接口：股票代码/名称模糊搜索（三级降级）
+      1. 本地词库（Futu get_security_list/STOCK_BASICINFO 同步，pg_trgm 相似度，毫秒级）
+      2. Futu get_search_quote（实时联想，补新上市/中文名盲区，自带 10min L1 缓存）
+      3. YFinance（最后兜底）
+
+    前端 OmniSearch 与投研会 ticker 解析均复用此接口。
 
     Args:
         q: 搜索关键词
@@ -1217,12 +1222,25 @@ async def search_tickers(q: str):
     Returns:
         dict: {"status": "success", "data": [SearchResult]}
     """
-    # 1. 优先在本地词库中极速检索
+    # 1. 本地词库极速检索
     res = await ticker_service.search_tickers(q)
 
-    # 2. 如果本地词库为空，降级使用 YFinance 搜索
+    # 2. 本地 miss → Futu 实时联想（补名称→代码盲区，支持中文名）
     if res.get("status") == "success" and not res.get("data"):
-        print(f"⚠️ [Search] 本地词库暂无 '{q}'，降级使用 Facade 搜索...")
+        try:
+            futu_res = await _facade_market.search_quote(keyword=q, max_count=10)
+            if futu_res.is_success and futu_res.data:
+                return {
+                    "data": futu_res.data,
+                    "source": f"futu_search_quote+{futu_res.source}",
+                    "degraded": futu_res.status == ResultStatus.DEGRADED,
+                }
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ [Search] Futu get_search_quote 降级失败: {e}")
+
+    # 3. Futu 也 miss → YFinance 兜底
+    if res.get("status") == "success" and not res.get("data"):
+        print(f"⚠️ [Search] 本地词库+富途均无 '{q}'，降级 YFinance...")
         facade_res = await data_service.get_quote(q, prefer_sources=["yfinance"])
         if facade_res.is_success:
             # BE-13 方案 B：扁平 payload（data 为 SearchResult 列表，包入 data 键）
