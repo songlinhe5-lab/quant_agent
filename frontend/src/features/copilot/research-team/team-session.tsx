@@ -98,6 +98,8 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
         scenario: config.scenario,
         expert_ids: customMode ? config.expertIds : undefined,
         rounds: config.rounds,
+        // 显式绑定的标的 → 传 ticker，使个股数据可采集
+        ticker: config.ticker,
       },
       {
         onEvent: (e: TeamStreamEvent) => {

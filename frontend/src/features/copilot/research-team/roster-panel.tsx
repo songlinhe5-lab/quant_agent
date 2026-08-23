@@ -5,14 +5,19 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { ChevronDown, Users, Sparkles } from 'lucide-react'
+import { ChevronDown, Users, Sparkles, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TEAM_GROUPS, SCENARIOS, expertById, type ExpertProfile } from './expert-roster'
+import { AssetSearchBind } from './asset-search-bind'
 
 export interface TeamConfig {
   scenario: string
   expertIds: string[]
   rounds: number
+  /** 显式绑定的分析标的（标准 ticker，如 US.AAPL / HK.00700） */
+  ticker?: string
+  /** 绑定标的的展示名 */
+  tickerName?: string
 }
 
 interface RosterPanelProps {
@@ -212,6 +217,17 @@ export function RosterPanel({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 标的绑定：显式指定分析标的，使 quote/fundamental/technicals 可采集 */}
+      <div>
+        <label className="mb-1 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <Target className="h-3 w-3" /> 分析标的
+        </label>
+        <AssetSearchBind
+          value={config.ticker ?? ''}
+          onChange={(ticker, name) => onConfigChange({ ...config, ticker, tickerName: name })}
+        />
       </div>
 
       {/* 投研问题 */}
