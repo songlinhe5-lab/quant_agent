@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { RosterPanel, type TeamConfig } from './roster-panel'
 import { TeamSession } from './team-session'
 import { SessionDetailView } from './session-detail-view'
-import { fetchSessionHistory, fetchSession, type SessionSummary, type SessionDetail } from './expert-team-client'
+import { fetchSessionHistory, fetchSession, deleteSession, type SessionSummary, type SessionDetail } from './expert-team-client'
 
 export function ResearchTeamView() {
   const [question, setQuestion] = useState('')
@@ -44,8 +44,24 @@ export function ResearchTeamView() {
     setViewingSession(detail)
   }, [])
 
+  // 删除历史记录：确认后从后端删除并从列表移除
+  const onDeleteHistory = useCallback(async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (!window.confirm('确定删除这条投研会记录吗？此操作不可恢复。')) return
+    const ok = await deleteSession(sessionId)
+    if (ok) {
+      setHistory((prev) => prev.filter((s) => s.session_id !== sessionId))
+      setViewingSession((cur) => (cur && cur.session_id === sessionId ? null : cur))
+    } else {
+      window.alert('删除失败，请重试')
+    }
+  }, [])
+
   const onRun = () => {
     if (!canRun) return
+    // 发起新投研会时，若正停留在历史详情，切回投研过程视图
+    setViewingSession(null)
     setRunToken((t) => t + 1)
   }
 
@@ -102,10 +118,12 @@ export function ResearchTeamView() {
             {hasHistory ? (
               <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
                 {history.map((s) => (
-                  <button
+                  <div
                     key={s.session_id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => openHistory(s.session_id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') openHistory(s.session_id) }}
                     className="flex items-center gap-2 rounded-lg border border-border/30 bg-secondary/20 px-2.5 py-2 text-[11px] hover:bg-secondary/40 transition-colors cursor-pointer text-left"
                   >
                     <span className={cn(
@@ -123,7 +141,15 @@ export function ResearchTeamView() {
                         {s.probability_assessment}%
                       </span>
                     )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={(e) => onDeleteHistory(e, s.session_id)}
+                      className="shrink-0 rounded px-1 text-[10px] text-muted-foreground/50 hover:bg-red-500/10 hover:text-red-400"
+                      title="删除记录"
+                    >
+                      清理
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : !historyLoading ? (

@@ -276,6 +276,52 @@ class ExpertTeamService:
         # Layer 3: 内存
         return _memory_sessions.get(session_id)
 
+    async def delete_session(self, session_id: str) -> bool:
+        """删除历史会话（Redis 热 + PG 冷 + 内存兜底），返回是否删除成功。"""
+        deleted = False
+        # Layer 1: Redis
+        try:
+            from backend.core.redis_client import redis_client
+
+            removed = await asyncio.wait_for(
+                redis_client.delete(f"{REDIS_KEY_PREFIX}{session_id}"),
+                timeout=2.0,
+            )
+            if removed:
+                deleted = True
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[ExpertTeam] Redis DELETE 失败: {e}")
+
+        # Layer 2: PostgreSQL
+        try:
+
+            def del_pg():
+                from backend.core.database import SessionLocal
+                from backend.core.models import ExpertTeamSession
+
+                with SessionLocal() as db:
+                    row = db.query(ExpertTeamSession).filter(ExpertTeamSession.session_id == session_id).first()
+                    if row:
+                        db.delete(row)
+                        db.commit()
+                        return True
+                    return False
+
+            try:
+                pg_del = await asyncio.wait_for(asyncio.to_thread(del_pg), timeout=2.0)
+            except Exception:  # noqa: BLE001
+                pg_del = False
+            if pg_del:
+                deleted = True
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[ExpertTeam] PG DELETE 失败: {e}")
+
+        # Layer 3: 内存兜底
+        if _memory_sessions.pop(session_id, None) is not None:
+            deleted = True
+
+        return deleted
+
     async def save_session(self, session: DebateSession) -> None:
         """保存会话: Redis 热 + 异步 PG 冷 + 内存兜底"""
         # Layer 3: 内存始终写入 (本地降级兜底)
