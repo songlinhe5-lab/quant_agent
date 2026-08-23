@@ -35,8 +35,10 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const [currentRound, setCurrentRound] = useState(0)
   const [chief, setChief] = useState<ChiefReportEvent | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
-  // 数据采集过程（折叠思考过程展示）：{ key, status, message }
-  const [collectSteps, setCollectSteps] = useState<{ key: string; status: string; message: string }[]>([])
+  // 数据采集过程（折叠思考过程展示）：{ key, status, message, request, response }
+  const [collectSteps, setCollectSteps] = useState<
+    { key: string; status: string; message: string; request?: Record<string, unknown> | null; response?: string | null }[]
+  >([])
   const [collectOpen, setCollectOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -100,13 +102,13 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               setStatusText(e.message)
               break
             case 'data_collect': {
-              // 数据采集过程：追加到折叠思考过程列表
+              // 数据采集过程：追加到折叠思考过程列表（含协议请求/响应）
               const d = e.data
               if (d?.key) {
                 const k = d.key
                 setCollectSteps((prev) => [
                   ...prev.filter((s) => s.key !== k),
-                  { key: k, status: d.status ?? 'running', message: d.message ?? '' },
+                  { key: k, status: d.status ?? 'running', message: d.message ?? '', request: d.request, response: d.response },
                 ])
               }
               break
@@ -234,6 +236,27 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                         </span>
                       </div>
                       {s.message && <div className="truncate text-[10px] text-muted-foreground/70">{s.message}</div>}
+                      {(s.request || s.response) && (
+                        <details className="group ml-1 mt-0.5 rounded border border-border/30 bg-secondary/10 px-1.5 py-0.5">
+                          <summary className="cursor-pointer select-none text-[10px] text-muted-foreground hover:text-foreground">
+                            协议 请求/响应
+                          </summary>
+                          <div className="space-y-1 pt-1 text-[10px] leading-relaxed">
+                            {s.request && (
+                              <div className="text-foreground/70">
+                                <span className="text-muted-foreground/70">请求 </span>
+                                <code className="break-all font-mono">{JSON.stringify(s.request)}</code>
+                              </div>
+                            )}
+                            {s.response && (
+                              <div className="text-foreground/70">
+                                <span className="text-muted-foreground/70">响应 </span>
+                                <code className="break-all whitespace-pre-wrap font-mono">{s.response}</code>
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   </div>
                 )

@@ -115,7 +115,14 @@ class DebateOrchestrator:
                     yield StreamEvent(
                         type="data_collect",
                         message=f"采集 {item.get('key')}: {item.get('status')}",
-                        data={"key": item.get("key"), "status": item.get("status"), "message": item.get("message", "")},
+                        data={
+                            "key": item.get("key"),
+                            "status": item.get("status"),
+                            "message": item.get("message", ""),
+                            # 协议请求/响应内容（供前端折叠展示）
+                            "request": item.get("request"),
+                            "response": item.get("response"),
+                        },
                     )
                 except asyncio.TimeoutError:
                     # 无新进度，等待采集任务完成
