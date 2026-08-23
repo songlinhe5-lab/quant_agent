@@ -163,37 +163,6 @@ services:
         reservations:
           memory: 256M
 
-  # 💡 SEC-17: 私有镜像中转 Registry，仅绑定 loopback + Tailscale 内网，不暴露公网。
-  # 用途: 北京等国内节点经 Tailscale 内网拉取镜像，避免跨洋直连 GHCR 龟速。
-  # 绑定 127.0.0.1 (CI push) + TAILSCALE_IP (bj 节点 pull)。Tailscale 网络本身是隔离的 tailnet。
-  registry:
-    image: registry:2
-    restart: always
-    ports:
-      - "127.0.0.1:5000:5000"
-      - "${TAILSCALE_IP:-127.0.0.1}:5000:5000"
-    # SEC-17: 内网私有 registry, 仅 bind 到 loopback + Tailscale 内网 IP (不暴露公网)。
-    # 同 tailnet 即视为可信, 挂载 config 完全不配置 auth 中间件 (registry:2 无 auth 时匿名 push/pull 均放行),
-    # 免去 htpasswd / token issuer 运维负担。安全边界由网络层 (仅 loopback + TS IP) 保证。
-    # 北京节点 docker daemon 需将 ${TAILSCALE_IP}:5000 加入 insecure-registries (HTTP 拉取)。
-    command: ["serve", "/etc/registry/config.yml"]
-    volumes:
-      - registry_data:/var/lib/registry
-      - ./registry-config.yml:/etc/registry/config.yml:ro
-    deploy:
-      resources:
-        limits:
-          # REG-02(2026-08-12 实战): 此前 512M 内存在北京节点经 Tailscale 拉取
-          # data-subservice:us (全量 SDK) 时 OOM, registry 容器被
-          # docker 杀掉 → 客户端拉 manifest 报 "connection reset by peer"。
-          # registry:2 传输/解压大镜像官方建议 ≥1G, 此处提至 1G 并预留 reservations。
-          memory: 1G
-          cpus: '1.0'
-        reservations:
-          memory: 256M
-    networks:
-      - quant-internal
-
   prometheus:
     image: prom/prometheus:v2.45.0
     restart: always
@@ -271,5 +240,3 @@ volumes:
     name: quant_master_prometheus_data
   grafana_data:
     name: quant_master_grafana_data
-  registry_data:
-    name: quant_master_registry_data

@@ -1226,9 +1226,10 @@ async def search_tickers(q: str):
     res = await ticker_service.search_tickers(q)
 
     # 2. 本地 miss → Futu 实时联想（补名称→代码盲区，支持中文名）
+    #    注意: search_quote 在 DataServiceFacade(data_service) 上，不在 MarketDataService(_facade_market)
     if res.get("status") == "success" and not res.get("data"):
         try:
-            futu_res = await _facade_market.search_quote(keyword=q, max_count=10)
+            futu_res = await data_service.search_quote(keyword=q, max_count=10)
             if futu_res.is_success and futu_res.data:
                 return {
                     "data": futu_res.data,

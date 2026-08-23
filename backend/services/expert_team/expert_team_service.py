@@ -117,7 +117,8 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
     # 3) 中文名 → 统一模糊匹配（复用 /market/search 级联：本地词库 → Futu SEARCH_QUOTE）
     #    精确筛选候选（优先 STOCK 类型，其次名称匹配）
     try:
-        from backend.services.datasource.business import market_data_service
+        # 注意: search_quote 在 DataServiceFacade(data_service) 上，不在 MarketDataService(market_data_service)
+        from backend.services.datasource.business import data_service
         from backend.services.fund_flow.ticker import ticker_service
 
         candidates: list[dict] = []
@@ -125,7 +126,7 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
         if local.get("status") == "success" and local.get("data"):
             candidates = local["data"]
         else:
-            res = await market_data_service.search_quote(keyword=keyword, max_count=10)
+            res = await data_service.search_quote(keyword=keyword, max_count=10)
             if res.is_success and res.data:
                 candidates = res.data if isinstance(res.data, list) else []
         if not candidates:

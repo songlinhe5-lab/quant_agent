@@ -170,6 +170,11 @@ async def collect_shared_data(
                 shared_data[req] = result
                 if on_progress:
                     req_kwargs = task_to_kwargs.get(coro) or {}
+                    # 请求内容：补工具名，避免无参工具显示空 {}（如 macro_news/fed_watch）
+                    _collector = _DATA_COLLECTORS.get(req, {})
+                    req_show = {"tool": _collector.get("tool", req)}
+                    if req_kwargs:
+                        req_show.update(req_kwargs)
                     # 携带请求参数与响应摘要，供前端折叠展示"请求/响应内容"
                     await on_progress(
                         {
@@ -184,7 +189,7 @@ async def collect_shared_data(
                                 if isinstance(result, dict) and result.get("message")
                                 else f"{req} 采集完成"
                             ),
-                            "request": req_kwargs,
+                            "request": req_show,
                             "response": _summarize_result(result),
                         }
                     )
