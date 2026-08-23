@@ -38,15 +38,24 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
     from backend.core.ticker_format import format_ticker
 
     # 1) 显式标准代码 → 直接标准化，不查联想
-    m_code = re.search(r"(?:US\.|HK\.)?[A-Za-z]{1,5}(?:\.[A-Z]{2})?|\d{4,5}\.HK", question)
+    # 覆盖: US.AAPL / HK.00700 / HK.0772 / 00700.HK / AAPL / 00700
+    m_code = re.search(
+        r"(?:US\.|HK\.)[A-Za-z0-9]{1,5}"
+        r"|\d{4,5}\.HK"
+        r"|\b[A-Za-z]{1,5}(?:\.[A-Z]{2})?\b",
+        question,
+    )
     if m_code:
-        try:
-            return format_ticker(m_code.group(0))
-        except Exception:  # noqa: BLE001
-            return m_code.group(0)
+        raw = m_code.group(0).strip()
+        if raw:
+            try:
+                return format_ticker(raw)
+            except Exception:  # noqa: BLE001
+                return raw
 
     # 2) 中文股票名：剔除常见动词/语气词后，取第一个中文片段
     _STOP = (
+        "研究",
         "分析",
         "请问",
         "如何",
@@ -64,6 +73,9 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
         "评价",
         "研判",
         "投研",
+        "基本面",
+        "技术面",
+        "深度",
         "可以",
         "给我",
         "看看",
@@ -82,6 +94,8 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
         "最近",
         "对",
         "关于",
+        "以及",
+        "和",
         "吗",
         "呢",
     )

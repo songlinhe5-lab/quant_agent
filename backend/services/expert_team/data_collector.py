@@ -94,7 +94,15 @@ async def collect_shared_data(
         if not collector:
             shared_data[req] = {"status": "skipped", "reason": f"未知数据类型: {req}"}
             if on_progress:
-                await on_progress({"key": req, "status": "skipped", "message": f"未知数据类型: {req}"})
+                await on_progress(
+                    {
+                        "key": req,
+                        "status": "skipped",
+                        "message": f"未知数据类型: {req}",
+                        "request": {"data_type": req},
+                        "response": f"未知数据类型: {req}",
+                    }
+                )
             continue
 
         # code_context 直接从请求获取
@@ -109,7 +117,15 @@ async def collect_shared_data(
         if not tool_name or not tool_registry:
             shared_data[req] = {"status": "skipped", "reason": "工具不可用"}
             if on_progress:
-                await on_progress({"key": req, "status": "skipped", "message": "工具不可用"})
+                await on_progress(
+                    {
+                        "key": req,
+                        "status": "skipped",
+                        "message": "工具不可用",
+                        "request": {"tool": tool_name},
+                        "response": "工具不可用",
+                    }
+                )
             continue
 
         # 构建参数：固定参数(default_kwargs) + ticker（若工具需要且提供了）
@@ -119,7 +135,15 @@ async def collect_shared_data(
                 # 无标的（自由提问/市场级场景）：需要 ticker 的项优雅跳过，而非报错
                 shared_data[req] = {"status": "skipped", "reason": "当前问题未绑定具体标的，跳过个股数据"}
                 if on_progress:
-                    await on_progress({"key": req, "status": "skipped", "message": "未绑定标的，跳过个股数据"})
+                    await on_progress(
+                        {
+                            "key": req,
+                            "status": "skipped",
+                            "message": "未绑定标的，跳过个股数据",
+                            "request": dict(collector.get("default_kwargs") or {}),
+                            "response": "未绑定标的（ticker 缺失），跳过个股数据",
+                        }
+                    )
                 continue
             kwargs["ticker"] = ticker
 
