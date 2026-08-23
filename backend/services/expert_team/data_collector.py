@@ -132,16 +132,16 @@ async def collect_shared_data(
         kwargs: dict[str, Any] = dict(collector.get("default_kwargs") or {})
         if collector["param_key"] == "ticker":
             if not ticker:
-                # 无标的（自由提问/市场级场景）：需要 ticker 的项优雅跳过，而非报错
-                shared_data[req] = {"status": "skipped", "reason": "当前问题未绑定具体标的，跳过个股数据"}
+                # 无标的但该项需要个股代码：明确报错，而非静默跳过，避免后续流程误以为数据可用
+                shared_data[req] = {"status": "error", "reason": "未绑定标的（ticker 缺失），个股数据无法采集"}
                 if on_progress:
                     await on_progress(
                         {
                             "key": req,
-                            "status": "skipped",
-                            "message": "未绑定标的，跳过个股数据",
+                            "status": "error",
+                            "message": "未绑定标的，个股数据无法采集",
                             "request": dict(collector.get("default_kwargs") or {}),
-                            "response": "未绑定标的（ticker 缺失），跳过个股数据",
+                            "response": "未绑定标的（ticker 缺失），个股数据无法采集",
                         }
                     )
                 continue
