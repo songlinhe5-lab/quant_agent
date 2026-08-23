@@ -88,9 +88,21 @@ class DebateOrchestrator:
                 data={"experts": [e.model_dump() for e in experts], "rounds": rounds},
             )
 
-            # ─── 阶段 1: 采集共享数据（逐步透传，供前端折叠思考过程展示）──────────
+            # ─── 阶段 1: 查询标的 + 采集共享数据（逐步透传，供前端折叠思考过程展示）────
             session.status = "collecting"
-            yield StreamEvent(type="status", message="正在采集共享数据包...")
+            yield StreamEvent(type="status", message="正在查询标的并采集数据...")
+
+            # 第一步：查询标的 —— 展示解析结果（已绑定/自动解析/未识别）
+            yield StreamEvent(
+                type="data_collect",
+                message="查询标的",
+                data={
+                    "key": "查询标的",
+                    "status": "success" if ticker else "skipped",
+                    "message": f"标的: {ticker}" if ticker else "未识别到标的，跳过个股数据",
+                    "response": ticker or None,
+                },
+            )
 
             # 用队列接收 collect_shared_data 内部逐步完成的数据项，边采边 yield data_collect 事件
             progress_q: "asyncio.Queue[dict[str, Any]]" = asyncio.Queue()
@@ -706,22 +718,71 @@ class DebateOrchestrator:
             "你的判断应当客观、全面，既尊重多数派共识，也保留有价值的少数派意见。"
         )
 
-        result = await asyncio.wait_for(
-            self._generate_with_retry(
-                lambda: llm_service.generate_pydantic(
-                    prompt=user_prompt,
-                    response_model=ChiefReport,
-                    system_prompt=chief_system,
-                    tier=ModelTier.FLAGSHIP,
-                    temperature=0.2,
+        try:
+            result = await asyncio.wait_for(
+                self._generate_with_retry(
+                    lambda: llm_service.generate_pydantic(
+                        prompt=user_prompt,
+                        response_model=ChiefReport,
+                        system_prompt=chief_system,
+                        tier=ModelTier.FLAGSHIP,
+                        temperature=0.2,
+                    )
+                ),
+                timeout=_EXPERT_TIMEOUT,
+            )
+            # 数据缺失时兜底：即便 LLM 违反规则，也把概率收敛到 40-60 不确定区间
+            if data_missing and result.probability_assessment is not None:
+                result.probability_assessment = min(max(result.probability_assessment, 40), 60)
+            return result
+        except Exception as e:  # noqa: BLE001
+            # FIX: 首席收敛必须降级，绝不能抛异常中断整个辩论 SSE 流（前端会显示"辩论流程异常"）。
+            print(f"⚠️ [Orchestrator] 首席收敛结构化失败，降级为纯文本: {e}")
+            try:
+                raw = await asyncio.wait_for(
+                    llm_service.generate(
+                        user_prompt=user_prompt,
+                        system_prompt=chief_system,
+                        tier=ModelTier.FLAGSHIP,
+                        temperature=0.2,
+                    ),
+                    timeout=_EXPERT_TIMEOUT,
                 )
-            ),
-            timeout=_EXPERT_TIMEOUT,
-        )
-        # 数据缺失时兜底：即便 LLM 违反规则，也把概率收敛到 40-60 不确定区间
-        if data_missing and result.probability_assessment is not None:
-            result.probability_assessment = min(max(result.probability_assessment, 40), 60)
-        return result
+                text = (raw or "").strip()
+                if text:
+                    # 尽力从纯文本解析关键字段；解析不到就用整段作为 full_report
+                    import re as _re
+
+                    m_prob = _re.search(r"(\d{1,3})\s*%", text)
+                    prob = int(m_prob.group(1)) if m_prob else 50
+                    prob = min(max(prob, 0), 100)
+                    if data_missing:
+                        prob = min(max(prob, 40), 60)
+                    return ChiefReport(
+                        probability_assessment=prob,
+                        final_recommendation=text[:300],
+                        full_report=text,
+                        risk_warnings=[],
+                        minority_opinion="",
+                        consensus_areas=[],
+                        divergence_areas=[],
+                        strongest_bull_case="",
+                        strongest_bear_case="",
+                    )
+            except Exception as e2:  # noqa: BLE001
+                print(f"⚠️ [Orchestrator] 首席收敛纯文本降级也失败: {e2}")
+            # 最终兜底：返回明确"收敛失败"的最简报告，仍不中断流程
+            return ChiefReport(
+                probability_assessment=50,
+                final_recommendation="首席收敛报告生成异常，无法给出明确结论，建议稍后重试。",
+                full_report="> ⚠️ 首席收敛报告生成异常，本轮无法完成最终研判。请稍后重试。",
+                risk_warnings=["模型输出异常，未能生成完整收敛报告"],
+                minority_opinion="",
+                consensus_areas=[],
+                divergence_areas=[],
+                strongest_bull_case="",
+                strongest_bear_case="",
+            )
 
 
 # ─── LLM 结构化输出中间模型 ────────────────────────────────────

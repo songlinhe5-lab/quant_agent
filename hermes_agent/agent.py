@@ -417,7 +417,8 @@ class HermesAgent(MemoryOperationsMixin):
 
         for i in range(max_iterations):
             # AGENT-12: 停滞检测 — 在每轮开始前检查是否陷入死循环
-            stuck_result = await repetition_guard.check_stuck(
+            # 注意: check_stuck 是同步方法，不能 await
+            stuck_result = repetition_guard.check_stuck(
                 current_iteration=i,
                 max_iterations=max_iterations,
             )
