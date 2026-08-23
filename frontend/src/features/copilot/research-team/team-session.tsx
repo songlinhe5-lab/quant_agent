@@ -9,6 +9,7 @@ import { Loader2, Crown, AlertTriangle, Square, Database, ChevronRight } from 'l
 import { cn } from '@/lib/utils'
 import { BriefingMarkdown } from '@/features/briefing/briefing-markdown'
 import { ExpertOpinionCard, type ExpertOpinionState } from './expert-opinion-card'
+import { expertById } from './expert-roster'
 import {
   startTeamAnalysis,
   type TeamStreamEvent,
@@ -40,6 +41,8 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     { key: string; status: string; message: string; request?: Record<string, unknown> | null; response?: string | null }[]
   >([])
   const [collectOpen, setCollectOpen] = useState(false)
+  // 角色 tab：当前选中的专家（展示该专家的全部轮次意见）
+  const [activeExpertId, setActiveExpertId] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const reset = useCallback(() => {
@@ -50,6 +53,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setErrorMsg('')
     setCollectSteps([])
     setCollectOpen(false)
+    setActiveExpertId(null)
   }, [])
 
   const run = useCallback(() => {
@@ -162,6 +166,17 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setStatusText('已中止')
   }
 
+  // 角色 tab：从已到意见里按 expertId 去重得到专家列表
+  const expertList = Array.from(new Set(opinions.map((o) => o.expertId)))
+  // 首个专家意见到达时自动选中该角色
+  useEffect(() => {
+    if (!activeExpertId && expertList.length > 0) {
+      setActiveExpertId(expertList[0])
+    }
+  }, [expertList, activeExpertId])
+  const activeExpert = activeExpertId ?? expertList[0] ?? null
+  const activeExpertOpinions = activeExpert ? opinions.filter((o) => o.expertId === activeExpert) : []
+
   return (
     <div className="flex h-full flex-col">
       {/* 进度条 / 状态 */}
@@ -265,14 +280,40 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           </details>
         )}
 
-        {/* 专家研判卡片网格 */}
+        {/* 研究员研判：角色 tab，逐专家展示意见 */}
         {opinions.length > 0 && (
           <div className="space-y-2">
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              研究员研判 {currentRound > 0 && `· 当前第 ${currentRound} 轮`}
+              研究员研判 {currentRound > 0 && `· 第 ${currentRound} 轮`}
             </div>
-            {opinions.map((o, i) => (
-              <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} />
+            {/* 角色 tab 栏 */}
+            <div className="flex gap-1 overflow-x-auto pb-1">
+              {expertList.map((eid) => {
+                const p = expertById(eid)
+                const isActive = eid === activeExpert
+                const rounds = opinions.filter((o) => o.expertId === eid)
+                return (
+                  <button
+                    key={eid}
+                    type="button"
+                    onClick={() => setActiveExpertId(eid)}
+                    className={cn(
+                      'flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] transition-colors',
+                      isActive
+                        ? 'border-scene/50 bg-scene/15 text-foreground'
+                        : 'border-border/40 text-muted-foreground hover:bg-secondary/40 hover:text-foreground',
+                    )}
+                  >
+                    <span className="text-xs">{p?.glyph ?? '🧑'}</span>
+                    <span className="max-w-[90px] truncate">{p?.name ?? eid}</span>
+                    <span className="text-[10px] text-muted-foreground/70">R{rounds.length}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {/* 当前选中角色的意见（含其全部轮次） */}
+            {activeExpertOpinions.map((o, i) => (
+              <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
             ))}
           </div>
         )}
