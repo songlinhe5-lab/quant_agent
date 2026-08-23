@@ -80,12 +80,13 @@ jobs:
       # 合入阶段 (push main)：真实 build + --push，一次打 :<DEPLOY_SHA> 与 :latest 两标签。
       - name: Build backend image
         id: build
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          retry_on: error
-          command: |
+        # 替代 nick-fields/retry@v3（声明 node20 运行时，触发 GitHub Node20 deprecation 警告）
+        # 原生重试：最多 3 次，成功即停；timeout-minutes = 3×30 分钟总预算
+        timeout-minutes: 90
+        shell: bash
+        run: |
+          set +e
+          for attempt in 1 2 3; do
             if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
               # 合入 main：build + push，双标签
               docker buildx build \
@@ -108,6 +109,15 @@ jobs:
                 --file ./Dockerfile \
                 .
             fi
+            status=$?
+            if [ $status -eq 0 ]; then
+              exit 0
+            fi
+            echo "::warning::backend image build attempt $attempt failed (exit $status), retrying..."
+            sleep 10
+          done
+          echo "::error::backend image build failed after 3 attempts"
+          exit 1
 
   # ----------------------------------------------------------------
   # 单元回归测试: 主服务 backend/tests
@@ -243,12 +253,13 @@ jobs:
       #                 （节点 compose 引用固定 :us 标签，由本次 build 直接打出，杜绝标签断链）。
       - name: Build data-subservice image
         id: build
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          retry_on: error
-          command: |
+        # 替代 nick-fields/retry@v3（声明 node20 运行时，触发 GitHub Node20 deprecation 警告）
+        # 原生重试：最多 3 次，成功即停；timeout-minutes = 3×30 分钟总预算
+        timeout-minutes: 90
+        shell: bash
+        run: |
+          set +e
+          for attempt in 1 2 3; do
             if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
               # 合入 main：build + push，一次打 :<DEPLOY_SHA> 与 :us 双标签
               docker buildx build \
@@ -273,6 +284,15 @@ jobs:
                 --file ./data_subservice/Dockerfile \
                 .
             fi
+            status=$?
+            if [ $status -eq 0 ]; then
+              exit 0
+            fi
+            echo "::warning::data-subservice image build attempt $attempt failed (exit $status), retrying..."
+            sleep 10
+          done
+          echo "::error::data-subservice image build failed after 3 attempts"
+          exit 1
 
   # ----------------------------------------------------------------
   # 部署 US-MASTER (主节点)
