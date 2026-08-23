@@ -98,8 +98,8 @@ class DebateOrchestrator:
                 message="查询标的",
                 data={
                     "key": "查询标的",
-                    "status": "success" if ticker else "skipped",
-                    "message": f"标的: {ticker}" if ticker else "未识别到标的，跳过个股数据",
+                    "status": "success" if ticker else "error",
+                    "message": f"标的: {ticker}" if ticker else "未识别到标的，无法采集个股数据",
                     "response": ticker or None,
                 },
             )

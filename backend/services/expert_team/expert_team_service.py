@@ -123,12 +123,18 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
 
         candidates: list[dict] = []
         local = await ticker_service.search_tickers(keyword)
-        if local.get("status") == "success" and local.get("data"):
+        # 本地词库命中（无论 success/error，只要 data 非空即采用）
+        if local.get("data"):
             candidates = local["data"]
-        else:
-            res = await data_service.search_quote(keyword=keyword, max_count=10)
-            if res.is_success and res.data:
-                candidates = res.data if isinstance(res.data, list) else []
+        # 兜底降级：本地词库未覆盖该标的（data 为空，含 success 空结果或异常）时，
+        # 主动走 Futu SEARCH_QUOTE 实时联想，避免词库不全导致解析失败（如港股小票）。
+        if not candidates:
+            try:
+                res = await data_service.search_quote(keyword=keyword, max_count=10)
+                if res.is_success and res.data:
+                    candidates = res.data if isinstance(res.data, list) else []
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[expert-team] Futu search_quote 降级失败 ({keyword}): {e}")
         if not candidates:
             return None
         # 优先 STOCK 类型
