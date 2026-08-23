@@ -360,12 +360,7 @@ jobs:
             fi
             echo "✅ node-s1 compose 仓库名合规 (下划线版 quant_agent-)"
 
-            sed -i "s|ghcr.io/songlinhe5-lab/quant_agent-data-subservice:[a-z-]*|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us|g" docker-compose.node-s1.yml
-
-            if ! grep -q "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" docker-compose.node-s1.yml; then
-              echo "❌ node-s1 compose 镜像地址未被替换 (sed 模式失配)，中止"
-              exit 1
-            fi
+            # node-s1 子服务镜像直连 ghcr.io 拉取 (不再经 S1 本机 registry 中转)，故无需 sed 替换
             echo "✅ 模板文件已拉取完毕 (compose + .env.example + .env.data-node.example)"
 
             if [ ! -f .env ]; then
@@ -390,7 +385,7 @@ jobs:
 
               if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ] && ! grep -q '^TAILSCALE_IP=' .env 2>/dev/null; then
                 printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
-                echo "🔧 已存在 .env 缺少 TAILSCALE_IP，已自动补入 (registry 端口绑定必需)"
+                echo "🔧 已存在 .env 缺少 TAILSCALE_IP，已自动补入 (内网服务 redis/postgres 绑定必需)"
               fi
             fi
 
@@ -400,9 +395,9 @@ jobs:
             fi
             if [ -n "$TS_VAL" ]; then
               TS_PREFIX=$(echo "$TS_VAL" | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')
-              echo "✅ TAILSCALE_IP 已配置 (脱敏: ${TS_PREFIX})，registry 将绑定该 TS IP 供北京节点经内网拉取"
+              echo "✅ TAILSCALE_IP 已配置 (脱敏: ${TS_PREFIX})，内网服务将绑定该 TS IP 供从节点经内网访问"
             else
-              echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。如需内网拉取，请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
+              echo "⚠️ 警告: TAILSCALE_IP 为空！内网服务将仅绑定 127.0.0.1，从节点无法经内网访问。如需内网访问，请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
             fi
 
             if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ]; then
@@ -412,17 +407,17 @@ jobs:
               else
                 printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
               fi
-              echo "🔧 已强制将 TAILSCALE_IP 覆盖为真实值 (供 registry 端口绑定)，脱敏: $(echo ${{ secrets.VPS_S1_TAILSCALE_IP }} | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')"
+              echo "🔧 已强制将 TAILSCALE_IP 覆盖为真实值 (供内网服务绑定)，脱敏: $(echo ${{ secrets.VPS_S1_TAILSCALE_IP }} | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')"
             fi
 
             TS_IFACE_IP=$(ip -4 addr show tailscale0 2>/dev/null | grep -oP 'inet \K[\d.]+' || true)
             if [ -n "$TS_IFACE_IP" ]; then
               export TAILSCALE_IP="$TS_IFACE_IP"
               sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=$TS_IFACE_IP|" .env
-              echo "🔧 主节点 tailscale0 接口检测到真实 TS IP: $TS_IFACE_IP，已用于 registry 端口绑定"
+              echo "🔧 主节点 tailscale0 接口检测到真实 TS IP: $TS_IFACE_IP，已用于内网服务绑定"
             else
-              echo "⚠️ 主节点无 tailscale0 接口！registry 将无法在 TS IP 上监听，北京节点经内网拉取会失败。"
-              echo "   若需内网拉取，请在主节点启动 Tailscale (tailscale up) 后重跑。当前仅绑定 127.0.0.1。"
+              echo "⚠️ 主节点无 tailscale0 接口！内网服务将无法在 TS IP 上监听，从节点经内网访问会失败。"
+              echo "   若需内网访问，请在主节点启动 Tailscale (tailscale up) 后重跑。当前仅绑定 127.0.0.1。"
             fi
 
             echo "🧹 部署前自动清理悬空 docker 资源..."
@@ -465,51 +460,8 @@ jobs:
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
 
-            docker compose -f docker-compose.master.yml --env-file .env up -d registry \
-              || { echo "❌ 主节点 up -d registry 执行失败 (registry 未创建)，中止避免北京节点拉到空 registry"; exit 1; }
-
-            echo "🔍 等待 registry 容器就绪 (最多 30s)..."
-            REGISTRY_READY=0
-            for i in $(seq 1 30); do
-              REGISTRY_CID=$(docker compose -f docker-compose.master.yml --env-file .env ps -q registry 2>/dev/null || true)
-              if [ -n "${REGISTRY_CID}" ] && [ "$(docker inspect -f '{{.State.Running}}' "${REGISTRY_CID}" 2>/dev/null)" = "true" ]; then
-                echo "✅ registry 容器已运行 (${REGISTRY_CID})"
-                REGISTRY_READY=1
-                break
-              fi
-              echo "  ⏳ 等待 registry 容器启动... ($i/30)"
-              sleep 1
-            done
-            if [ "${REGISTRY_READY}" -ne 1 ] || [ -z "${REGISTRY_CID}" ]; then
-              echo "❌ registry 容器未能在 30s 内启动！请检查主节点:"
-              echo "   docker compose -f docker-compose.master.yml --env-file .env logs registry"
-              echo "   docker compose -f docker-compose.master.yml --env-file .env up -d registry"
-              exit 1
-            fi
-
-            if ! (ss -tlnp 2>/dev/null | grep -q ':5000' || docker exec "${REGISTRY_CID}" wget -qO- http://localhost:5000/v2/ >/dev/null 2>&1); then
-              echo "❌ registry 容器已运行但 5000 端口未监听！请检查端口绑定 (TAILSCALE_IP/loopback)。"
-              echo "   ss -tlnp | grep 5000   # 应见 127.0.0.1:5000 与 \${TAILSCALE_IP}:5000"
-              exit 1
-            fi
-            echo "✅ registry 已就绪，5000 端口监听正常，北京节点可经内网拉取"
-
-            REGISTRY_IMAGE="127.0.0.1:5000/quant-agent:latest"
-            docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
-            docker push "${REGISTRY_IMAGE}"
-
-            # S1→GHCR 慢链路: 加 timeout 防止无限制卡死(曾因 containerd 死锁挂起), 放宽到 2400s。
-            timeout 2400 docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" \
-              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:${DEPLOY_SHA} 超时或失败 (2400s)，中止"; exit 1; }
-            docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" "127.0.0.1:5000/quant-agent-data-subservice:us"
-            docker push "127.0.0.1:5000/quant-agent-data-subservice:us" \
-              || { echo "❌ data-subservice:us 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
-            echo "✅ data-subservice:${DEPLOY_SHA} 已中转为 :us 推送至本机 registry，北京节点可经内网拉取"
-
-            curl -sSL -o scripts/registry-gc-install.sh "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/scripts/registry-gc-install.sh" 2>/dev/null \
-              && chmod +x scripts/registry-gc-install.sh \
-              && GC_SCRIPT_REF="${{ github.repository }}/${{ github.sha }}" scripts/registry-gc-install.sh \
-              || echo "⚠️ registry-gc-install.sh 拉取/执行失败 (非致命)，下次部署重试；registry 与 cron 不受影响"
+            # 注意: 已移除 S1 本机私有 registry 中转链路 (北京/node-s1 均直连 ghcr.io)。
+            # node-s1 子服务镜像直拉 ghcr.io/...-data-subservice:us (见下方 docker-compose.node-s1.yml)。
 
             if [ ! -f .env.data-node ]; then
               if [ ! -f .env.data-node.example ]; then
@@ -542,13 +494,7 @@ jobs:
             fi
 
             docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --remove-orphans
-            echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001"
-
-            if docker manifest inspect "${DS_REGISTRY_IMAGE}" >/dev/null 2>&1; then
-              echo "✅ registry 内 data-subservice manifest 可被 manifest inspect 解析"
-            else
-              echo "⚠️ docker manifest inspect 解析失败 (registry:2 默认可能不支持 tag 路由)，但 push 已成功，北京节点应可正常拉取"
-            fi
+            echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001 (直连 ghcr.io 拉取镜像)"
           EOF
 
   # ----------------------------------------------------------------
@@ -574,7 +520,7 @@ jobs:
             ds-id: bj-slave
             ds-region: cn
             ds-caps: "tushare,akshare,yfinance"
-            ds-tag: us  # 全量镜像合并后统一 :us，经内网 registry 中转
+            ds-tag: us  # 全量镜像合并后统一 :us，经本机 daemon 代理直连 ghcr.io 拉取
             tz: Asia/Shanghai
             creds: true
             compose: docker-compose.node-bj.yml
@@ -691,54 +637,12 @@ jobs:
 
             NODE="${{ matrix.node }}"
             DS_TAG="${{ matrix.ds-tag }}"
-            if [ "$NODE" = "bj" ]; then
-              IMAGE="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000/quant-agent-data-subservice:${DS_TAG}"
-            else
-              IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
-            fi
+            # 北京节点 (bj) 经本机 docker daemon 代理 (HTTPS_PROXY→S1 tinyproxy US 出口) 直拉 ghcr.io，
+            # 不再经 S1 本机 registry 中转 (insecure-registries 特判逻辑已移除，简化部署链路)。
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
 
-            if [ "$NODE" = "bj" ]; then
-
-              if ! sudo -n true 2>/dev/null; then
-                echo "⚠️ SUDO_BLOCKED: 当前用户无免密 sudo，无法在 CI 内自动配置 insecure-registries"
-              fi
-              DAEMON_CFG="/etc/docker/daemon.json"
-              TS_REG="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"
-
-              daemon_has_insecure() {
-                docker info --format '{{json .RegistryConfig.InsecureRegistryCIDRs}} {{json .RegistryConfig.IndexConfigs}}' 2>/dev/null \
-                  | grep -q "$TS_REG"
-              }
-              if [ -f "$DAEMON_CFG" ] && grep -q "$TS_REG" "$DAEMON_CFG" && daemon_has_insecure; then
-                echo "✅ insecure-registries 已在运行 daemon 生效 (含 $TS_REG)，跳过"
-              else
-                if ! sudo -n true 2>/dev/null; then
-                  echo "❌ 当前用户无免密 sudo，无法确保 insecure-registries 生效，请在节点手动执行:"
-                  echo "   echo '{ \"insecure-registries\": [\"$TS_REG\"] }' | sudo tee /etc/docker/daemon.json && sudo systemctl restart docker"
-                  exit 1
-                fi
-
-                if [ ! -f "$DAEMON_CFG" ] || ! grep -q "$TS_REG" "$DAEMON_CFG"; then
-                  echo "🔧 写入 insecure-registries 配置: $TS_REG"
-                  sudo mkdir -p /etc/docker
-                  echo "{ \"insecure-registries\": [\"$TS_REG\"] }" | sudo tee "$DAEMON_CFG" >/dev/null
-                fi
-                echo "🔄 重启 docker daemon 使 insecure-registries 配置生效..."
-                sudo systemctl restart docker
-
-                for i in $(seq 1 30); do
-                  if daemon_has_insecure; then break; fi
-                  sleep 1
-                done
-                if ! daemon_has_insecure; then
-                  echo "❌ docker daemon 重启后仍未加载 insecure-registries ($TS_REG)，请在节点手动排查 systemctl status docker"
-                  exit 1
-                fi
-                echo "✅ insecure-registries 已写入并重启生效 (含 $TS_REG)"
-              fi
-            else
-              echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
-            fi
+            # 所有节点 (含 bj) 统一 docker login ghcr.io 后直连拉取；bj 的拉取流量由 daemon 级代理加速
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
             if [ ! -f "${{ matrix.env-file}}" ]; then
               if [ -f .env.data-node.example ]; then
@@ -834,39 +738,6 @@ jobs:
               exit 1
             fi
 
-            if [ "$NODE" = "bj" ]; then
-              if grep -q "ghcr.io/songlinhe5-lab/quant_agent-data-subservice:" ${{ matrix.compose }}; then
-                echo "❌ compose 中 data-subservice 镜像未被替换为内网 registry 地址 (${IMAGE})，中止"
-                exit 1
-              fi
-              echo "✅ 北京节点镜像已指向内网 registry: ${IMAGE}"
-
-              REGISTRY_HOST="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"
-              echo "🔍 预检主节点 registry 可达性: http://${REGISTRY_HOST}/v2/"
-              if ! curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/" >/dev/null 2>&1; then
-                echo "❌ 主节点 registry 不可达 (http://${REGISTRY_HOST}/v2/ 探测失败)！"
-                echo "   可能原因与排查:"
-                echo "   1) 主节点 registry 容器未运行 → 主节点执行: docker compose -f docker-compose.master.yml --env-file .env up -d registry"
-                echo "   2) Tailscale 未连通 → 主/从节点: tailscale status 确认双方在同一 tailnet"
-                echo "   3) 主节点 .env 的 TAILSCALE_IP 与 Secrets 的 VPS_S1_TAILSCALE_IP 不一致 → 主节点 ss -tlnp | grep 5000 核对监听 IP"
-                echo "   4) 北京节点 docker 未配 insecure-registries → 见上方 CI 提示手动配置"
-                exit 1
-              fi
-              echo "✅ 主节点 registry 可达 (HTTP 200 on /v2/)"
-
-              DS_TAG="${{ matrix.ds-tag }}"
-              if ! curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/quant-agent-data-subservice/tags/list" | grep -q "\"${DS_TAG}\""; then
-                echo "❌ 主节点 registry 内缺失 data-subservice:${DS_TAG}！从节点将拉取 not found。"
-                echo "   排查: 主节点 deploy-master 应已将 data-subservice:us 推入内网 registry，"
-                echo "   请确认主节点 job 是否成功执行镜像搬运 (grep 'data-subservice:${DS_TAG} 已推送至本机 registry')。"
-                echo "   可手动在主节点执行: docker pull ghcr.io/songlinhe5-lab/quant_agent-data-subservice:${DS_TAG} && docker tag \\"
-                echo "     ghcr.io/songlinhe5-lab/quant_agent-data-subservice:${DS_TAG} 127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG} && \\"
-                echo "     docker push 127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG}"
-                exit 1
-              fi
-              echo "✅ registry 内 data-subservice:${DS_TAG} 已就位，北京节点可经内网拉取"
-            fi
-
             echo "🧹 部署前自动清理悬空 docker 资源 (节点 ${{ matrix.node }})..."
             docker system prune -af >/dev/null 2>&1 || true
             journalctl --vacuum-size=200M >/dev/null 2>&1 || true
@@ -890,7 +761,7 @@ jobs:
             fi
 
             timeout 600 docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull \
-              || { echo "❌ docker compose pull 超时或失败 (600s)，疑似主节点 registry 不可达或 Tailscale 未连通"; exit 1; }
+              || { echo "❌ docker compose pull 超时或失败 (600s)，疑似 ghcr.io 不可达 (bj 节点请检查 daemon 代理 HTTPS_PROXY 是否生效)"; exit 1; }
 
             OLD_NODE_ORPHANS=$(docker ps -a --filter name='quant-data-subservice-node-' --format '{{.Names}}' | grep -E '^quant-data-subservice-node-(s1|bj|s2|s3|s4)$' || true)
             if [ -n "${OLD_NODE_ORPHANS}" ]; then
