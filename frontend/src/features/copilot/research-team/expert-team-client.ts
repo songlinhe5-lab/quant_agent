@@ -266,3 +266,13 @@ export async function fetchSession(sessionId: string): Promise<SessionDetail | n
     return null
   }
 }
+
+/** 删除历史投研会记录 */
+export async function deleteSession(sessionId: string): Promise<boolean> {
+  try {
+    const res = await apiClient.delete(`/expert-team/sessions/${sessionId}`)
+    return res?.data?.status === 'success' || res?.status === 200
+  } catch {
+    return false
+  }
+}

@@ -101,3 +101,13 @@ async def get_session(session_id: str, username: str = Depends(get_current_usern
     if not session:
         raise HTTPException(status_code=404, detail=f"会话不存在: {session_id}")
     return session.model_dump()
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str, username: str = Depends(get_current_username)):
+    """删除历史投研会记录 (Redis 热 + PG 冷 + 内存兜底三级清理)"""
+    service = get_expert_team_service()
+    deleted = await service.delete_session(session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"会话不存在或删除失败: {session_id}")
+    return {"status": "success", "deleted": session_id}
