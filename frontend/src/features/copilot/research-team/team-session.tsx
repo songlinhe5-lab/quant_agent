@@ -5,7 +5,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, Crown, AlertTriangle, Square } from 'lucide-react'
+import { Loader2, Crown, AlertTriangle, Square, Database, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { BriefingMarkdown } from '@/features/briefing/briefing-markdown'
 import { ExpertOpinionCard, type ExpertOpinionState } from './expert-opinion-card'
@@ -13,6 +13,7 @@ import {
   startTeamAnalysis,
   type TeamStreamEvent,
   type ChiefReportEvent,
+  type ExpertOpinionData,
 } from './expert-team-client'
 import type { TeamConfig } from './roster-panel'
 
@@ -34,6 +35,9 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const [currentRound, setCurrentRound] = useState(0)
   const [chief, setChief] = useState<ChiefReportEvent | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
+  // 数据采集过程（折叠思考过程展示）：{ key, status, message }
+  const [collectSteps, setCollectSteps] = useState<{ key: string; status: string; message: string }[]>([])
+  const [collectOpen, setCollectOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   const reset = useCallback(() => {
@@ -42,6 +46,8 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setStatusText('')
     setCurrentRound(0)
     setErrorMsg('')
+    setCollectSteps([])
+    setCollectOpen(false)
   }, [])
 
   const run = useCallback(() => {
@@ -52,7 +58,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     onRunningChange?.(true)
     setStatusText('专家团已就位，等待首席召集…')
 
-    const appendOrUpdate = (expertId: string, round: number, content: string, streaming: boolean) => {
+    const appendOrUpdate = (expertId: string, round: number, content: string, streaming: boolean, data?: ExpertOpinionData) => {
       setOpinions((prev) => {
         const idx = prev.findIndex((o) => o.expertId === expertId && o.round === round)
         if (idx >= 0) {
@@ -61,10 +67,22 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
             ...next[idx],
             content: next[idx].content + content,
             streaming,
+            // 结构化观点判断：首片 data 补齐后持久化
+            stance: data?.stance ?? next[idx].stance,
+            confidence: data?.confidence ?? next[idx].confidence,
+            keyEvidence: data?.key_evidence ?? next[idx].keyEvidence,
+            confidenceDelta: data?.confidence_delta ?? next[idx].confidenceDelta,
+            revisedStance: data?.revised_stance ?? next[idx].revisedStance,
           }
           return next
         }
-        return [...prev, { expertId, round, content, streaming }]
+        return [{ expertId, round, content, streaming, ...(data ? {
+          stance: data.stance,
+          confidence: data.confidence,
+          keyEvidence: data.key_evidence,
+          confidenceDelta: data.confidence_delta,
+          revisedStance: data.revised_stance,
+        } : {}) }]
       })
     }
 
@@ -81,8 +99,20 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
             case 'status':
               setStatusText(e.message)
               break
+            case 'data_collect': {
+              // 数据采集过程：追加到折叠思考过程列表
+              const d = e.data
+              if (d?.key) {
+                const k = d.key
+                setCollectSteps((prev) => [
+                  ...prev.filter((s) => s.key !== k),
+                  { key: k, status: d.status ?? 'running', message: d.message ?? '' },
+                ])
+              }
+              break
+            }
             case 'expert_opinion':
-              appendOrUpdate(e.expert_id, e.round, e.content, true)
+              appendOrUpdate(e.expert_id, e.round, e.content, true, e.data)
               break
             case 'round_complete':
               setCurrentRound(e.round)
@@ -167,6 +197,49 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-2 text-[11px] text-red-300">
             {errorMsg}
           </div>
+        )}
+
+        {/* 数据采集过程：折叠思考过程（复用 Research 折叠形态） */}
+        {collectSteps.length > 0 && (
+          <details
+            open={collectOpen}
+            onToggle={(e) => setCollectOpen((e.target as HTMLDetailsElement).open)}
+            className="group rounded-xl border border-border/40 bg-white/[0.03]"
+          >
+            <summary className="flex cursor-pointer items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground select-none">
+              <Database className="h-3.5 w-3.5 text-scene" />
+              <span>数据采集过程</span>
+              <span className="ml-auto text-[10px] text-muted-foreground/70">
+                {collectSteps.length} 项 · {collectSteps.filter((s) => s.status === 'success').length} 完成
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="max-h-56 overflow-y-auto border-t border-border/30 px-3 py-2">
+              {collectSteps.map((s) => {
+                const isErr = s.status === 'error' || s.status === 'timeout' || s.status === 'skipped'
+                return (
+                  <div key={s.key} className="flex items-start gap-2 py-1 text-[11px]">
+                    <span className={cn(
+                      'mt-1 h-1.5 w-1.5 shrink-0 rounded-full',
+                      isErr ? 'bg-red-400' : s.status === 'success' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse',
+                    )} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-foreground/80">{s.key}</span>
+                        <span className={cn(
+                          'text-[10px] px-1 rounded',
+                          isErr ? 'text-red-300' : s.status === 'success' ? 'text-emerald-300' : 'text-amber-300',
+                        )}>
+                          {s.status}
+                        </span>
+                      </div>
+                      {s.message && <div className="truncate text-[10px] text-muted-foreground/70">{s.message}</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </details>
         )}
 
         {/* 专家研判卡片网格 */}

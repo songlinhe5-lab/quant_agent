@@ -65,6 +65,7 @@ async def collect_shared_data(
     ticker: Optional[str] = None,
     code_context: Optional[str] = None,
     extra_context: Optional[dict[str, Any]] = None,
+    on_progress: Optional[Any] = None,
 ) -> dict[str, Any]:
     """
     并行采集共享数据包。
@@ -75,6 +76,8 @@ async def collect_shared_data(
         ticker: 金融域标的代码
         code_context: 代码域代码片段
         extra_context: 额外上下文
+        on_progress: 可选回调 (async callable)，每个数据项采集完成时调用
+            on_progress({key, status, message})，用于逐步透传采集进度（如前端折叠思考过程）。
 
     Returns:
         dict: { data_type: result_or_error }
@@ -86,17 +89,23 @@ async def collect_shared_data(
         collector = _DATA_COLLECTORS.get(req)
         if not collector:
             shared_data[req] = {"status": "skipped", "reason": f"未知数据类型: {req}"}
+            if on_progress:
+                await on_progress({"key": req, "status": "skipped", "message": f"未知数据类型: {req}"})
             continue
 
         # code_context 直接从请求获取
         if req == "code_context":
             shared_data["code_context"] = code_context or ""
+            if on_progress:
+                await on_progress({"key": req, "status": "success", "message": "已注入代码上下文"})
             continue
 
         # 需要工具采集
         tool_name = collector["tool"]
         if not tool_name or not tool_registry:
             shared_data[req] = {"status": "skipped", "reason": "工具不可用"}
+            if on_progress:
+                await on_progress({"key": req, "status": "skipped", "message": "工具不可用"})
             continue
 
         # 构建参数
@@ -108,17 +117,28 @@ async def collect_shared_data(
         task = asyncio.create_task(_safe_collect(tool_registry, tool_name, req, kwargs))
         tasks.append((req, task))
 
-    # 并行等待所有采集任务
+    # 并行等待所有采集任务：每完成一个即回调，实现逐步透传（FIRST_COMPLETED 逐步取）
     if tasks:
-        results = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
-        for (req, _), result in zip(tasks, results):
-            if isinstance(result, Exception):
-                shared_data[req] = {
-                    "status": "error",
-                    "message": f"采集异常: {str(result)}",
-                }
-            else:
+        pending: set[asyncio.Task] = set(t for _, t in tasks)
+        task_to_key = {t: r for r, t in tasks}
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for coro in done:
+                req = task_to_key.get(coro)
+                try:
+                    result = coro.result()
+                except Exception as e:  # noqa: BLE001
+                    result = {"status": "error", "message": f"采集异常: {str(e)}"}
+                if req is None:
+                    continue
                 shared_data[req] = result
+                if on_progress:
+                    if isinstance(result, dict) and result.get("status") in ("error", "timeout", "skipped"):
+                        await on_progress(
+                            {"key": req, "status": result.get("status"), "message": result.get("message", "")}
+                        )
+                    else:
+                        await on_progress({"key": req, "status": "success", "message": f"{req} 采集完成"})
 
     # 合并额外上下文
     if extra_context:

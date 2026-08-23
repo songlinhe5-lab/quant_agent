@@ -88,17 +88,40 @@ class DebateOrchestrator:
                 data={"experts": [e.model_dump() for e in experts], "rounds": rounds},
             )
 
-            # ─── 阶段 1: 采集共享数据 ──────────────────────────
+            # ─── 阶段 1: 采集共享数据（逐步透传，供前端折叠思考过程展示）──────────
             session.status = "collecting"
             yield StreamEvent(type="status", message="正在采集共享数据包...")
 
-            shared_data = await collect_shared_data(
-                data_requirements=template.data_requirements,
-                tool_registry=self.tool_registry,
-                ticker=ticker,
-                code_context=code_context,
-                extra_context=extra_context,
+            # 用队列接收 collect_shared_data 内部逐步完成的数据项，边采边 yield data_collect 事件
+            progress_q: "asyncio.Queue[dict[str, Any]]" = asyncio.Queue()
+
+            async def _report(item: dict[str, Any]) -> None:
+                await progress_q.put(item)
+
+            collect_task = asyncio.create_task(
+                collect_shared_data(
+                    data_requirements=template.data_requirements,
+                    tool_registry=self.tool_registry,
+                    ticker=ticker,
+                    code_context=code_context,
+                    extra_context=extra_context,
+                    on_progress=_report,
+                )
             )
+
+            while not collect_task.done() or not progress_q.empty():
+                try:
+                    item = await asyncio.wait_for(progress_q.get(), timeout=0.3)
+                    yield StreamEvent(
+                        type="data_collect",
+                        message=f"采集 {item.get('key')}: {item.get('status')}",
+                        data={"key": item.get("key"), "status": item.get("status"), "message": item.get("message", "")},
+                    )
+                except asyncio.TimeoutError:
+                    # 无新进度，等待采集任务完成
+                    await asyncio.sleep(0.05)
+
+            shared_data = await collect_task
             session.shared_data = shared_data
 
             yield StreamEvent(
@@ -227,6 +250,67 @@ class DebateOrchestrator:
             chunks.append(buf)
         return chunks or [text]
 
+    @staticmethod
+    def _shared_data_missing(shared_text: str) -> bool:
+        """检测共享数据包是否大面积缺失（所有数据源不可用）。
+
+        当 collect_shared_data 各 section 返回 status=error/skipped/timeout 时，
+        format_shared_data_for_prompt 会拼成 `[数据不可用: ...]`。若占比过高视为数据缺失。
+        """
+        if not shared_text or len(shared_text) < 50:
+            return True
+        missing = shared_text.count("[数据不可用") + shared_text.count("[数据缺失") + shared_text.count("无可用数据")
+        # 粗略：出现 ≥3 处缺失标记或缺失密度高，视为数据缺失
+        return missing >= 3 or (missing >= 1 and missing / max(shared_text.count("## "), 1) >= 0.5)
+
+    @staticmethod
+    async def _generate_with_retry(
+        llm_call,
+        retries: int = 2,
+    ) -> Any:
+        """对 generate_pydantic 加简单重试：JSON 被截断/解析失败时重试，成功即返回。"""
+        last_exc: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                return await llm_call()
+            except Exception as e:  # noqa: BLE001
+                last_exc = e
+                if attempt < retries:
+                    await asyncio.sleep(0.6 * (attempt + 1))
+        raise last_exc  # type: ignore[misc]
+
+    @staticmethod
+    def _parse_text_fallback(text: str, round_index: int) -> ExpertOpinion:
+        """纯文本降级：从 LLM 自由文本中尽力解析 stance/confidence，避免把报错串当观点。
+
+        解析不到时用保守默认（置信度 0 + 明确"无法判断"），绝不暴露底层报错给用户。
+        """
+        import re as _re
+
+        stance = "数据不足，无法给出明确研判，建议等待数据补充后再作判断。"
+        confidence = 0
+        evidence: list[str] = []
+        reasoning = text.strip()[:500] if text else ""
+
+        m = _re.search(r"置信度[：:\s]*(\d{1,3})", text)
+        if m:
+            try:
+                confidence = min(max(int(m.group(1)), 0), 100)
+            except ValueError:
+                confidence = 0
+        m2 = _re.search(r"[【\[]?(核心观点|观点|立场|判断)[】\]】?[：:\s]*(.{5,200})", text)
+        if m2:
+            stance = m2.group(2).strip()[:200]
+
+        return ExpertOpinion(
+            expert_id="unknown",
+            round=round_index,
+            stance=stance,
+            confidence=confidence,
+            key_evidence=evidence,
+            reasoning=reasoning,
+        )
+
     async def _yield_opinion_stream(
         self, opinion: ExpertOpinion, round_index: int
     ) -> "AsyncGenerator[StreamEvent, None]":
@@ -274,11 +358,12 @@ class DebateOrchestrator:
         for expert, result in zip(experts, results):
             if isinstance(result, Exception):
                 print(f"⚠️ [Orchestrator] {expert.id} Round1 异常: {result}")
+                # FIX: 不把底层报错串当观点暴露给用户，返回明确的"无法判断"
                 opinions.append(
                     ExpertOpinion(
                         expert_id=expert.id,
                         round=1,
-                        stance=f"[研判失败: {str(result)[:100]}]",
+                        stance="数据不足或模型输出异常，本轮无法形成有效研判，建议待数据补充后再作判断。",
                         confidence=0,
                     )
                 )
@@ -290,6 +375,16 @@ class DebateOrchestrator:
     async def _call_expert_round1(self, expert: ExpertRole, question: str, shared_text: str) -> Optional[ExpertOpinion]:
         """单个专家的 Round 1 调用"""
         system_prompt = expert.system_prompt or f"你是{expert.name}，{expert.description}。"
+
+        # PERF/FIX: 数据缺失时强制压低置信度，禁止基于行业常识硬给方向性高置信判断
+        data_missing = self._shared_data_missing(shared_text)
+        confidence_rule = (
+            "\n\n⚠️ 注意：以上共享数据包存在大面积缺失/不可用。此时你的判断缺乏数据支撑，"
+            "请严格遵守：confidence 必须 ≤ 30，且 stance 只做审慎的定性风险提示，明确声明'数据不足，不构成配置建议'，"
+            "绝不可给出高置信度的多空判断。"
+            if data_missing
+            else ""
+        )
 
         user_prompt = f"""## 用户问题
 {question}
@@ -305,25 +400,29 @@ class DebateOrchestrator:
   "key_evidence": ["依据1", "依据2", ...],
   "reasoning": "完整推理过程"
 }}
-
+{confidence_rule}
 注意：你正在独立研判，看不到其他专家的观点。请基于数据和你的专业视角给出判断。"""
 
         try:
             result = await asyncio.wait_for(
-                llm_service.generate_pydantic(
-                    prompt=user_prompt,
-                    response_model=_Round1Output,
-                    system_prompt=system_prompt,
-                    tier=ModelTier.STANDARD,
-                    temperature=0.3,
+                self._generate_with_retry(
+                    lambda: llm_service.generate_pydantic(
+                        prompt=user_prompt,
+                        response_model=_Round1Output,
+                        system_prompt=system_prompt,
+                        tier=ModelTier.STANDARD,
+                        temperature=0.3,
+                    )
                 ),
                 timeout=_EXPERT_TIMEOUT,
             )
+            # 数据缺失时，即便 LLM 违反规则给出高置信，也强制压低到 30
+            conf = min(result.confidence, 30) if data_missing else result.confidence
             return ExpertOpinion(
                 expert_id=expert.id,
                 round=1,
                 stance=result.stance,
-                confidence=result.confidence,
+                confidence=conf,
                 key_evidence=result.key_evidence,
                 reasoning=result.reasoning,
             )
@@ -331,8 +430,33 @@ class DebateOrchestrator:
             print(f"⚠️ [Orchestrator] {expert.id} Round1 超时 ({_EXPERT_TIMEOUT}s)")
             return None
         except Exception as e:
-            print(f"⚠️ [Orchestrator] {expert.id} Round1 失败: {e}")
-            raise
+            print(f"⚠️ [Orchestrator] {expert.id} Round1 结构化失败，降级为纯文本: {e}")
+            # P0: 结构化校验失败 → 纯文本降级，避免把报错串当观点
+            try:
+                raw = await asyncio.wait_for(
+                    llm_service.generate(
+                        user_prompt=user_prompt,
+                        system_prompt=system_prompt,
+                        tier=ModelTier.STANDARD,
+                        temperature=0.3,
+                    ),
+                    timeout=_EXPERT_TIMEOUT,
+                )
+                fallback = self._parse_text_fallback(raw or "", 1)
+                fallback.expert_id = expert.id
+                if data_missing:
+                    fallback.confidence = min(fallback.confidence, 30)
+                return fallback
+            except Exception as e2:  # noqa: BLE001
+                print(f"⚠️ [Orchestrator] {expert.id} Round1 纯文本降级也失败: {e2}")
+                # 返回明确"无法判断"，绝不外泄底层报错
+                return ExpertOpinion(
+                    expert_id=expert.id,
+                    round=1,
+                    stance="数据不可用且模型输出异常，本轮无法形成有效研判。",
+                    confidence=0,
+                    reasoning="",
+                )
 
     # ─── Round 2: 交叉辩论 ─────────────────────────────────────
 
@@ -360,11 +484,12 @@ class DebateOrchestrator:
         for expert, result in zip(experts, results):
             if isinstance(result, Exception):
                 print(f"⚠️ [Orchestrator] {expert.id} Round2 异常: {result}")
+                # FIX: 不把底层报错串当观点暴露给用户
                 opinions.append(
                     ExpertOpinion(
                         expert_id=expert.id,
                         round=2,
-                        stance=f"[辩论失败: {str(result)[:100]}]",
+                        stance="交叉辩论阶段数据或模型输出异常，本轮无法形成有效研判。",
                         confidence=0,
                     )
                 )
@@ -400,6 +525,16 @@ class DebateOrchestrator:
                 others_text_parts.append(f"- **{o.expert_id}** (置信度 {o.confidence}): {o.stance}")
         others_text = "\n".join(others_text_parts)
 
+        # FIX: 数据缺失时禁止在交叉辩论中把置信度上调，且新论点必须可验证
+        data_missing = self._shared_data_missing(shared_text)
+        confidence_rule = (
+            "\n\n⚠️ 注意：以上共享数据包存在大面积缺失/不可用。此时："
+            "confidence 必须 ≤ 30 且不得上调（confidence_delta 须 ≤ 0）；"
+            "若其他专家在缺数据下给出高置信度，你应在 challenges 中明确指出其依据不足，而非跟随上调。"
+            if data_missing
+            else ""
+        )
+
         user_prompt = f"""## 用户问题
 {question}
 
@@ -424,36 +559,69 @@ class DebateOrchestrator:
   "challenges": ["对专家X的质疑: ...", ...],
   "confidence_delta": 置信度变化整数(如+5或-10),
   "revised_stance": "如果修正了观点，写修正后的观点；如果坚持，重复stance"
-}}"""
+}}
+{confidence_rule}"""
 
         try:
             result = await asyncio.wait_for(
-                llm_service.generate_pydantic(
-                    prompt=user_prompt,
-                    response_model=_Round2Output,
-                    system_prompt=system_prompt,
-                    tier=ModelTier.STANDARD,
-                    temperature=0.4,
+                self._generate_with_retry(
+                    lambda: llm_service.generate_pydantic(
+                        prompt=user_prompt,
+                        response_model=_Round2Output,
+                        system_prompt=system_prompt,
+                        tier=ModelTier.STANDARD,
+                        temperature=0.4,
+                    )
                 ),
                 timeout=_EXPERT_TIMEOUT,
             )
+            # 数据缺失时：置信度强制 ≤30，且不允许上调（confidence_delta 截为 ≤0）
+            conf = result.confidence
+            conf_delta = result.confidence_delta
+            if data_missing:
+                conf = min(conf, 30)
+                conf_delta = min(conf_delta, 0)
             return ExpertOpinion(
                 expert_id=expert.id,
                 round=2,
                 stance=result.stance,
-                confidence=result.confidence,
+                confidence=conf,
                 key_evidence=result.key_evidence,
                 reasoning=result.reasoning,
                 challenges=result.challenges,
-                confidence_delta=result.confidence_delta,
+                confidence_delta=conf_delta,
                 revised_stance=result.revised_stance,
             )
         except asyncio.TimeoutError:
             print(f"⚠️ [Orchestrator] {expert.id} Round2 超时 ({_EXPERT_TIMEOUT}s)")
             return None
         except Exception as e:
-            print(f"⚠️ [Orchestrator] {expert.id} Round2 失败: {e}")
-            raise
+            print(f"⚠️ [Orchestrator] {expert.id} Round2 结构化失败，降级为纯文本: {e}")
+            # P0: 结构化校验失败 → 纯文本降级，避免把报错串当观点
+            try:
+                raw = await asyncio.wait_for(
+                    llm_service.generate(
+                        user_prompt=user_prompt,
+                        system_prompt=system_prompt,
+                        tier=ModelTier.STANDARD,
+                        temperature=0.4,
+                    ),
+                    timeout=_EXPERT_TIMEOUT,
+                )
+                fallback = self._parse_text_fallback(raw or "", 2)
+                fallback.expert_id = expert.id
+                if data_missing:
+                    fallback.confidence = min(fallback.confidence, 30)
+                return fallback
+            except Exception as e2:  # noqa: BLE001
+                print(f"⚠️ [Orchestrator] {expert.id} Round2 纯文本降级也失败: {e2}")
+                return ExpertOpinion(
+                    expert_id=expert.id,
+                    round=2,
+                    stance="数据不可用且模型输出异常，本轮无法形成有效研判。",
+                    confidence=0,
+                    reasoning="",
+                )
 
     # ─── Round 3: 首席收敛 ─────────────────────────────────────
 
@@ -489,6 +657,21 @@ class DebateOrchestrator:
 
         debate_text = "\n".join(debate_text_parts)
 
+        # FIX: 数据缺失时，首席概率评估应收敛到"不确定"区间，避免伪精确
+        data_missing = False
+        try:
+            shared_text_for_check = format_shared_data_for_prompt(session.shared_data or {})
+            data_missing = self._shared_data_missing(shared_text_for_check)
+        except Exception:  # noqa: BLE001
+            data_missing = False
+        probability_rule = (
+            "\n\n⚠️ 注意：本轮共享数据包存在大面积缺失/不可用，所有专家的判断均缺乏数据支撑。"
+            "因此 probability_assessment 应收敛到 40-60 的'高度不确定'区间，并在 full_report 中明确声明"
+            "'因数据不足，本概率仅为低置信度的情景判断，不构成量化结论'，不可给出远离 50 的精确概率。"
+            if data_missing
+            else ""
+        )
+
         user_prompt = f"""## 用户问题
 {question}
 
@@ -507,7 +690,8 @@ class DebateOrchestrator:
   "risk_warnings": ["风险提示1", "风险提示2", ...],
   "minority_opinion": "少数派意见保留 (如有)",
   "full_report": "完整 Markdown 格式报告"
-}}"""
+}}
+{probability_rule}"""
 
         chief_system = (
             "你是一位资深首席分析师，负责综合多位专家的研判结果，"
@@ -515,13 +699,21 @@ class DebateOrchestrator:
             "你的判断应当客观、全面，既尊重多数派共识，也保留有价值的少数派意见。"
         )
 
-        result = await llm_service.generate_pydantic(
-            prompt=user_prompt,
-            response_model=ChiefReport,
-            system_prompt=chief_system,
-            tier=ModelTier.FLAGSHIP,
-            temperature=0.2,
+        result = await asyncio.wait_for(
+            self._generate_with_retry(
+                lambda: llm_service.generate_pydantic(
+                    prompt=user_prompt,
+                    response_model=ChiefReport,
+                    system_prompt=chief_system,
+                    tier=ModelTier.FLAGSHIP,
+                    temperature=0.2,
+                )
+            ),
+            timeout=_EXPERT_TIMEOUT,
         )
+        # 数据缺失时兜底：即便 LLM 违反规则，也把概率收敛到 40-60 不确定区间
+        if data_missing and result.probability_assessment is not None:
+            result.probability_assessment = min(max(result.probability_assessment, 40), 60)
         return result
 
 

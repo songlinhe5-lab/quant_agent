@@ -9,6 +9,7 @@ import { apiClient, fetchWithAuth, API_BASE_URL, ApiError } from '@/lib/api-clie
 
 export type StreamEventType =
   | 'status'
+  | 'data_collect'
   | 'expert_opinion'
   | 'round_complete'
   | 'chief_report'
@@ -24,6 +25,37 @@ export interface StatusEvent extends BaseEvent {
   message: string
 }
 
+/** 数据采集过程：后端逐项透传（供折叠思考过程展示） */
+export interface DataCollectEvent extends BaseEvent {
+  type: 'data_collect'
+  message: string
+  data?: {
+    key?: string
+    status?: 'success' | 'error' | 'timeout' | 'skipped' | string
+    message?: string
+  }
+}
+
+/** 专家结构化观点判断（后端 ExpertOpinion.model_dump()，随首片 expert_opinion 事件经 data 透传） */
+export interface ExpertOpinionData {
+  expert_id: string
+  round: number
+  /** 核心观点 (<=200字) */
+  stance: string
+  /** 置信度 0-100 */
+  confidence: number
+  /** 关键依据 */
+  key_evidence?: string[]
+  /** 完整推理过程 */
+  reasoning?: string
+  /** Round2: 对其他专家的质疑 */
+  challenges?: string[]
+  /** Round2: 置信度变化 */
+  confidence_delta?: number
+  /** Round2: 修正后观点 */
+  revised_stance?: string
+}
+
 export interface ExpertOpinionEvent extends BaseEvent {
   type: 'expert_opinion'
   expert_id: string
@@ -33,6 +65,8 @@ export interface ExpertOpinionEvent extends BaseEvent {
   content: string
   /** round_complete 时可能带完整文本 */
   full_text?: string
+  /** 结构化观点判断：后端仅首片附带（model_dump），前端据此渲染 stance/confidence */
+  data?: ExpertOpinionData
 }
 
 export interface RoundCompleteEvent extends BaseEvent {
@@ -76,6 +110,7 @@ export interface DoneEvent extends BaseEvent {
 
 export type TeamStreamEvent =
   | StatusEvent
+  | DataCollectEvent
   | ExpertOpinionEvent
   | RoundCompleteEvent
   | ChiefReportEvent
