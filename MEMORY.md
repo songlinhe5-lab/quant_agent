@@ -38,7 +38,7 @@
 
 容器内 `127.0.0.1` 连不上宿主 OpenD；用 `host.docker.internal`，且 OpenD 必须听 `0.0.0.0:11111`。主服务容器打公网 IP:8001 会 `reachable:false` 熔断（Issue #289 已用方案 A 闭环）。
 
-中转 registry **只缓存北京 `:cn`**。主服务 / `:us` / `:us-aux` 走 GHCR。
+原 S1 私有中转 registry 已废弃。所有节点（含北京 bj）统一直连 `ghcr.io` 拉 `:us` 全量镜像。
 
 ## 6. HMAC 403（2026-08-13）
 
@@ -56,9 +56,9 @@ futu / finnhub 的 `health()` **都是**看 `node.status`，不打上游、不�
 
 `VITE_API_BASE_URL` **必须** `https://quant-api.stephenhe.com/api/v1`。写成 `quant.stephenhe.com` → REST 被拦（大盘空白）+ `/auth/refresh` 失败清 token（假踢登录）。仓库无 `.env.production`，只在 Pages 构建变量。改完必须走会 deploy 的 CI（develop push 只 build）。WS 用 `getWsBaseUrl()` 跟 REST origin。
 
-## 9. 北京直连 GHCR 无效（2026-08-15）
+## 9. 北京节点镜像拉取（2026-08-23 实测更新）
 
-MTU=1450 **解决不了**北京拉 GHCR。TLS 握手正常，blob 0 字节（Azure CDN 跨境实质阻断）。北京必须走 S1 registry `100.102.223.44:5000/...:cn`。勿把 BJ 镜像源改回 `ghcr.io`。
+原「北京直连 GHCR 被 Azure CDN 阻断」判断已过时。实测北京 VPS 直连 `ghcr.io` 拉 `quant_agent-data-subservice:us`（408MB）耗时 **~10s（~40MB/s）**，稳定成功。**无需代理/中转**，不要为北京配置 S1 tinyproxy 代理（docker over HTTP 代理拉 ghcr 会出现 `registry: denied` 鉴权问题）。S1 私有中转 registry（`100.102.223.44:5000`）已废弃清理。
 
 ## 10. Futu 基本面接口族（2026-08-22）
 
