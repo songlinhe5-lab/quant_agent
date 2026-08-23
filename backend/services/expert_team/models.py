@@ -87,8 +87,9 @@ class AnalyzeRequest(BaseModel):
     """发起专家团分析请求"""
 
     scenario: str  # 场景模板 ID
-    question: str  # 用户问题
-    ticker: Optional[str] = None  # 金融域: 标的代码
+    question: str  # 用户问题（投研命题文本）
+    ticker: Optional[str] = None  # 金融域: 标的代码（单值，兼容旧调用）
+    symbols: Optional[list[str]] = None  # 声明式分析标的列表（投研命题可结构化携带，如 ["阅文集团","腾讯"]）
     code_context: Optional[str] = None  # 代码域: 代码片段
     extra_context: dict[str, Any] = Field(default_factory=dict)
     rounds: int = Field(default=2, ge=1, le=4)  # 辩论轮数 (1=仅独立研判, 2=交叉辩论, 3-4=多轮深化)

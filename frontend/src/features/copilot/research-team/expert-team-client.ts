@@ -125,6 +125,8 @@ export interface AnalyzeParams {
   question: string
   scenario?: string
   ticker?: string
+  /** 声明式分析标的列表（投研命题可结构化携带，如 ["阅文集团","腾讯"]） */
+  symbols?: string[]
   /** 自定义专家组合（覆盖场景默认阵容） */
   expert_ids?: string[]
   rounds?: number
@@ -150,6 +152,7 @@ export function startTeamAnalysis(params: AnalyzeParams, handlers: TeamStreamHan
     rounds: params.rounds ?? 2,
   }
   if (params.ticker) body.ticker = params.ticker
+  if (params.symbols && params.symbols.length > 0) body.symbols = params.symbols
   if (params.expert_ids && params.expert_ids.length > 0) body.expert_ids = params.expert_ids
   if (params.code_context) body.code_context = params.code_context
 

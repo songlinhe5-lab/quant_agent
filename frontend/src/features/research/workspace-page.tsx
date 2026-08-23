@@ -54,7 +54,7 @@ export function ResearchWorkspacePage() {
     // runToken>0 才触发 TeamSession 的 run()；每次发起递增避免重复 key remount
     setDebateRun((prev) => ({
       question: r.question,
-      config: { scenario: r.scenario, expertIds: r.expertIds, rounds: r.rounds },
+      config: { scenario: r.scenario, expertIds: r.expertIds, rounds: r.rounds, symbols: r.symbols },
       runToken: (prev?.runToken ?? 0) + 1,
     }))
     setB2Mode('debate')

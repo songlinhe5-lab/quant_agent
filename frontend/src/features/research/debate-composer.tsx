@@ -18,6 +18,8 @@ export interface ComposerResult {
   scenario: string
   expertIds: string[]
   rounds: number
+  /** 声明式分析标的（可选，如 ["阅文集团","腾讯"]） */
+  symbols?: string[]
 }
 
 interface DebateComposerProps {
@@ -48,6 +50,12 @@ export function DebateComposer({ onLaunch, onUseHoldings }: DebateComposerProps)
   const [picked, setPicked] = useState<Set<string>>(() => new Set(SCENARIO_DEFAULT_EXPERTS.financial_research))
   const [rounds, setRounds] = useState(2)
   const [apiScenarios, setApiScenarios] = useState<ApiScenario[] | null>(null)
+  // 声明式分析标的（可留空：留空时由后端从命题文本/LLM 推导）
+  const [symbolInput, setSymbolInput] = useState('')
+  const declaredSymbols = useMemo(
+    () => symbolInput.split(/[，,、\s]+/).map((s) => s.trim()).filter(Boolean),
+    [symbolInput],
+  )
 
   // 场景：接口为主，静态镜像兜底
   useEffect(() => {
@@ -130,6 +138,29 @@ export function DebateComposer({ onLaunch, onUseHoldings }: DebateComposerProps)
           >
             <Sparkles className="h-3 w-3" /> 从当前持仓生成 <span className="rounded border border-white/10 px-1 text-[8px]">即将开放</span>
           </button>
+        </div>
+
+        {/* ①-b 分析标的（声明式，可选） */}
+        <div>
+          <label className="mb-1 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <Target className="h-3 w-3" /> 分析标的
+            <span className="text-[9px] normal-case text-muted-foreground/60">（可选，留空则由 AI 从命题推导）</span>
+          </label>
+          <input
+            value={symbolInput}
+            onChange={(e) => setSymbolInput(e.target.value)}
+            placeholder="如：阅文集团, 腾讯, US.AAPL（逗号/空格分隔，可填中文名或代码）"
+            className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-[#A78BFA]/50 focus:outline-none transition-colors"
+          />
+          {declaredSymbols.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {declaredSymbols.map((s) => (
+                <span key={s} className="rounded-full border border-[#A78BFA]/40 bg-[#A78BFA]/10 px-2 py-0.5 text-[10px] text-[#A78BFA]">
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ② 投研场景 4 卡 */}
@@ -219,7 +250,7 @@ export function DebateComposer({ onLaunch, onUseHoldings }: DebateComposerProps)
           <button
             type="button"
             disabled={!canLaunch}
-            onClick={() => onLaunch({ question, scenario, expertIds: effectiveRoster.map((e) => e.id), rounds })}
+            onClick={() => onLaunch({ question, scenario, expertIds: effectiveRoster.map((e) => e.id), rounds, symbols: declaredSymbols })}
             className={cn(
               'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all',
               canLaunch

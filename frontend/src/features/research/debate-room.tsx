@@ -83,6 +83,7 @@ export function DebateRoom({ question, config, runToken, onDone, onRerun, onAskC
         expert_ids: config.expertIds,
         rounds: config.rounds,
         ticker: config.ticker,
+        symbols: config.symbols,
       },
       {
         onEvent: (e: TeamStreamEvent) => {

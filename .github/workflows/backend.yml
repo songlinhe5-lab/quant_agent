@@ -637,11 +637,9 @@ jobs:
 
             NODE="${{ matrix.node }}"
             DS_TAG="${{ matrix.ds-tag }}"
-            # 北京节点 (bj) 经本机 docker daemon 代理 (HTTPS_PROXY→S1 tinyproxy US 出口) 直拉 ghcr.io，
-            # 不再经 S1 本机 registry 中转 (insecure-registries 特判逻辑已移除，简化部署链路)。
+            # 所有节点 (含 bj) 统一 docker login ghcr.io 后直连拉取 (北京节点国际带宽充足, 无需代理/中转)。
             IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
 
-            # 所有节点 (含 bj) 统一 docker login ghcr.io 后直连拉取；bj 的拉取流量由 daemon 级代理加速
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
             if [ ! -f "${{ matrix.env-file}}" ]; then
@@ -761,7 +759,7 @@ jobs:
             fi
 
             timeout 600 docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull \
-              || { echo "❌ docker compose pull 超时或失败 (600s)，疑似 ghcr.io 不可达 (bj 节点请检查 daemon 代理 HTTPS_PROXY 是否生效)"; exit 1; }
+              || { echo "❌ docker compose pull 超时或失败 (600s)，疑似 ghcr.io 不可达"; exit 1; }
 
             OLD_NODE_ORPHANS=$(docker ps -a --filter name='quant-data-subservice-node-' --format '{{.Names}}' | grep -E '^quant-data-subservice-node-(s1|bj|s2|s3|s4)$' || true)
             if [ -n "${OLD_NODE_ORPHANS}" ]; then
