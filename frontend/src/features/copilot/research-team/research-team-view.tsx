@@ -105,6 +105,24 @@ export function ResearchTeamView() {
             onCustomModeChange={setCustomMode}
           />
 
+          {/* 发起投研会按钮（置于历史投研会面板之上） */}
+          <div className="mt-3 border-t border-border/30 pt-3">
+            <button
+              type="button"
+              onClick={onRun}
+              disabled={!canRun}
+              className={cn(
+                'flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors',
+                canRun
+                  ? 'bg-scene text-white hover:bg-scene/90'
+                  : 'cursor-not-allowed bg-white/5 text-muted-foreground',
+              )}
+            >
+              {running ? <Crown className="h-3.5 w-3.5 animate-pulse" /> : <Play className="h-3.5 w-3.5" />}
+              {running ? '投研会进行中…' : '发起投研会'}
+            </button>
+          </div>
+
           {/* COPILOT-05: 历史会话区 */}
           <div className="mt-3 border-t border-border/30 pt-3">
             <div className="flex items-center gap-1.5 px-1 mb-2">
@@ -166,22 +184,6 @@ export function ResearchTeamView() {
               </div>
             ) : null}
           </div>
-        </div>
-        <div className="border-t border-border/40 p-2">
-          <button
-            type="button"
-            onClick={onRun}
-            disabled={!canRun}
-            className={cn(
-              'flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors',
-              canRun
-                ? 'bg-scene text-white hover:bg-scene/90'
-                : 'cursor-not-allowed bg-white/5 text-muted-foreground',
-            )}
-          >
-            {running ? <Crown className="h-3.5 w-3.5 animate-pulse" /> : <Play className="h-3.5 w-3.5" />}
-            {running ? '投研会进行中…' : '发起投研会'}
-          </button>
         </div>
       </div>
 
