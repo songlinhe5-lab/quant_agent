@@ -226,3 +226,41 @@ class TestAsyncTokenBucket:
 
         # 应该有一定等待时间
         assert elapsed >= 0.05
+
+
+# ─── _safe_execute_tool 回归 ────────────────────────────────────
+class TestSafeExecuteTool:
+    """回归：同步的 repetition_guard.record_tool_call 不得被 await。
+
+    修复前：await 同步方法返回 None → TypeError: object NoneType can't be used
+    in 'await' expression，导致所有工具实际执行成功后仍报"工具执行异常"。
+    """
+
+    def _make_agent_stub(self):
+        agent = MagicMock()
+        from hermes_agent.agent import HermesAgent
+
+        agent._safe_execute_tool = HermesAgent._safe_execute_tool.__get__(agent)
+        return agent
+
+    def test_tool_success_not_swallowed(self):
+        """工具执行成功后结果应原样返回，不得被后置记录逻辑的异常吞掉"""
+        agent = self._make_agent_stub()
+        agent.tool_registry = MagicMock()
+        agent.tool_registry.execute = AsyncMock(return_value={"status": "success", "price": 150.5})
+
+        result = asyncio.run(agent._safe_execute_tool("get_broker_market_data", '{"ticker": "US.TSLA"}'))
+
+        assert result.get("status") == "success"
+        assert "工具执行异常" not in result.get("message", "")
+
+    def test_tool_execute_error_still_reported(self):
+        """工具执行本身抛异常时仍返回结构化错误"""
+        agent = self._make_agent_stub()
+        agent.tool_registry = MagicMock()
+        agent.tool_registry.execute = AsyncMock(side_effect=ValueError("boom"))
+
+        result = asyncio.run(agent._safe_execute_tool("get_broker_market_data", "{}"))
+
+        assert result.get("status") == "error"
+        assert "工具执行异常" in result.get("message", "")

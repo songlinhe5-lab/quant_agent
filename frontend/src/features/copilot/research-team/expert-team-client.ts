@@ -23,6 +23,12 @@ export interface BaseEvent {
 export interface StatusEvent extends BaseEvent {
   type: 'status'
   message: string
+  /** 后端 status 事件携带的出战阵容（首个 status 事件含 experts + rounds） */
+  data?: {
+    experts?: { id: string; name: string; domain?: string; team?: string }[]
+    rounds?: number
+    collected_keys?: string[]
+  }
 }
 
 /** 数据采集过程：后端逐项透传（供折叠思考过程展示） */
