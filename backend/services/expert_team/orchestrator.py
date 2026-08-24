@@ -33,11 +33,14 @@ from backend.services.expert_team.models import (
 from hermes_agent.tool_registry import ToolRegistry
 
 # ─── 超时配置 ──────────────────────────────────────────────────
-_EXPERT_TIMEOUT = 60.0  # 单个专家超时（真流式下为整段生成的总时限）
-_ROUND_TIMEOUT = 180.0  # 整轮超时
-_CHIEF_TIMEOUT = 120.0  # 首席报告更长，单独放宽
+_EXPERT_TIMEOUT = 60.0  # 单个专家超时（真流式下为整段生成+限速滴播的总时限）
 _ROUND_TIMEOUT = 180.0  # 整轮超时（与 _EXPERT_TIMEOUT 叠加，双保险）
+_CHIEF_TIMEOUT = 120.0  # 首席报告更长，单独放宽
 _STREAM_CHUNK_DELAY = 0.02  # 打字机效果：切片间隔（秒），仅降级/占位路径使用；真流式无需人造延迟
+# 打字机限速（真流式）：每 _STREAM_EMIT_INTERVAL 秒最多推 _STREAM_CHARS_PER_TICK 字符，
+# 防止快速模型数秒内把全文一次性砸满屏幕来不及阅读；若生成先于节奏结束，剩余缓冲按同速率滴播
+_STREAM_EMIT_INTERVAL = 0.12
+_STREAM_CHARS_PER_TICK = 20
 
 
 class _StreamSplitter:
@@ -464,26 +467,33 @@ class DebateOrchestrator:
                 return None
             return item
 
+        # 按哨兵数终止；跨迭代复用同一个 get 任务（不取消）——
+        # asyncio.wait_for(q.get()) 在超时瞬间可能丢已取到的条目，造成流式帧丢失（专家内容不上屏）
+        remaining_sentinels = len(experts)
+        get_task: Optional[asyncio.Task] = None
         try:
-            while not gather_task.done():
+            while remaining_sentinels > 0:
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     raise asyncio.TimeoutError()
-                try:
-                    item = await asyncio.wait_for(q.get(), timeout=min(remaining, 0.5))
-                except asyncio.TimeoutError:
-                    continue
+                if get_task is None:
+                    get_task = asyncio.ensure_future(q.get())
+                done, _ = await asyncio.wait({get_task}, timeout=min(remaining, 0.5))
+                if get_task not in done:
+                    continue  # 继续等同一个 get，不取消 → 不丢条目
+                item = get_task.result()
+                get_task = None
+                if isinstance(item, _WorkerDone):
+                    remaining_sentinels -= 1
                 ev = _consume_item(item)
-                if ev is not None:
-                    yield ev
-            # gather 结束：消费队列中剩余的事件/哨兵
-            while not q.empty():
-                ev = _consume_item(q.get_nowait())
                 if ev is not None:
                     yield ev
         except asyncio.TimeoutError:
             print(f"⚠️ [Orchestrator] Round {round_index} 整轮超时")
             gather_task.cancel()
+        finally:
+            if get_task is not None and not get_task.done():
+                get_task.cancel()
 
         # 未完成/失败的专家补占位观点，保证出战阵容人人有产出（绝不泄底层报错）
         for expert in experts:
@@ -564,6 +574,8 @@ class DebateOrchestrator:
         splitter = _StreamSplitter()
         deadline = time.monotonic() + _EXPERT_TIMEOUT
         opinion: Optional[ExpertOpinion] = None
+        pending = ""
+        last_emit = 0.0
         try:
             async for chunk in llm_service.generate_stream(
                 user_prompt, system_prompt, tier=ModelTier.STANDARD, temperature=temperature
@@ -572,7 +584,20 @@ class DebateOrchestrator:
                     raise asyncio.TimeoutError()
                 prose = splitter.feed(chunk)
                 if prose:
-                    yield StreamEvent(type="expert_opinion", expert_id=expert.id, round=round_index, content=prose)
+                    pending += prose
+                # 打字机限速：按固定节奏推送，避免快速模型把全文瞬间刷满屏幕
+                now = time.monotonic()
+                if pending and (_STREAM_EMIT_INTERVAL <= 0 or now - last_emit >= _STREAM_EMIT_INTERVAL):
+                    emit, pending = pending[:_STREAM_CHARS_PER_TICK], pending[_STREAM_CHARS_PER_TICK:]
+                    last_emit = now
+                    yield StreamEvent(type="expert_opinion", expert_id=expert.id, round=round_index, content=emit)
+            # 生成先于节奏结束时，剩余缓冲按同速率滴播完毕（仍受专家超时约束）
+            while pending:
+                if time.monotonic() > deadline:
+                    break
+                await asyncio.sleep(_STREAM_EMIT_INTERVAL)
+                emit, pending = pending[:_STREAM_CHARS_PER_TICK], pending[_STREAM_CHARS_PER_TICK:]
+                yield StreamEvent(type="expert_opinion", expert_id=expert.id, round=round_index, content=emit)
             markdown, structured = splitter.finish()
             opinion = self._assemble_opinion(expert, round_index, markdown, structured, output_model, data_missing)
         except asyncio.TimeoutError:
@@ -801,6 +826,8 @@ class DebateOrchestrator:
         splitter = _StreamSplitter()
         deadline = time.monotonic() + _CHIEF_TIMEOUT
         report: Optional[ChiefReport] = None
+        pending = ""
+        last_emit = 0.0
         try:
             async for chunk in llm_service.generate_stream(
                 user_prompt, chief_system, tier=ModelTier.FLAGSHIP, temperature=0.2
@@ -809,7 +836,19 @@ class DebateOrchestrator:
                     raise asyncio.TimeoutError()
                 prose = splitter.feed(chunk)
                 if prose:
-                    yield StreamEvent(type="chief_report", message="首席分析师报告生成中...", content=prose)
+                    pending += prose
+                # 打字机限速：同专家流，按固定节奏推送避免瞬间刷满
+                now = time.monotonic()
+                if pending and (_STREAM_EMIT_INTERVAL <= 0 or now - last_emit >= _STREAM_EMIT_INTERVAL):
+                    emit, pending = pending[:_STREAM_CHARS_PER_TICK], pending[_STREAM_CHARS_PER_TICK:]
+                    last_emit = now
+                    yield StreamEvent(type="chief_report", message="首席分析师报告生成中...", content=emit)
+            while pending:
+                if time.monotonic() > deadline:
+                    break
+                await asyncio.sleep(_STREAM_EMIT_INTERVAL)
+                emit, pending = pending[:_STREAM_CHARS_PER_TICK], pending[_STREAM_CHARS_PER_TICK:]
+                yield StreamEvent(type="chief_report", message="首席分析师报告生成中...", content=emit)
             markdown, structured = splitter.finish()
             report = self._assemble_chief_report(markdown, structured, data_missing)
         except Exception as e:  # noqa: BLE001

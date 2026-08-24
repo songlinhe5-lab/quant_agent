@@ -116,6 +116,8 @@ export interface ErrorEvent extends BaseEvent {
 export interface DoneEvent extends BaseEvent {
   type: 'done'
   session_id?: string
+  /** 后端 done 事件的 session_id 放在 data 里（前端据此拉取持久化会话做补全对账） */
+  data?: { session_id?: string }
 }
 
 export type TeamStreamEvent =
