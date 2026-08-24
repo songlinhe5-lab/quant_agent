@@ -247,7 +247,8 @@ class HermesAgent(MemoryOperationsMixin):
             result = await self.tool_registry.execute(tool_name, **args)
 
             # AGENT-12: 记录工具调用到重复守卫（用于停滞检测）
-            await repetition_guard.record_tool_call(
+            # FIX: record_tool_call 是同步方法，禁止 await（否则报 NoneType can't be used in 'await'）
+            repetition_guard.record_tool_call(
                 tool_name=tool_name,
                 arguments=args,
                 result=result,

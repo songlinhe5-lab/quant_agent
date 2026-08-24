@@ -45,6 +45,8 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const [collectOpen, setCollectOpen] = useState(false)
   // 当前选中的 tab（专家 id 或 '__cio__'）
   const [activeTab, setActiveTab] = useState<TabId | null>(null)
+  // 出战阵容：从首个 status 事件的 data.experts 中预提取，用于在 expert_opinion 到达前预建 tab
+  const [lineupExpertIds, setLineupExpertIds] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
   const reset = useCallback(() => {
@@ -56,6 +58,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setCollectSteps([])
     setCollectOpen(false)
     setActiveTab(null)
+    setLineupExpertIds([])
   }, [])
 
   const run = useCallback(() => {
@@ -110,6 +113,11 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           switch (e.type) {
             case 'status':
               setStatusText(e.message)
+              // 首个 status 事件携带出战阵容 → 预建 tab
+              if (e.data?.experts?.length) {
+                const ids = e.data.experts.map((ex) => ex.id)
+                setLineupExpertIds(ids)
+              }
               break
             case 'data_collect': {
               // 数据采集过程：追加到折叠思考过程列表（含协议请求/响应）
@@ -133,9 +141,18 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               if (e.message) setStatusText(e.message)
               break
             case 'chief_report':
-              setChief(e)
               setActiveTab('__cio__')
               setStatusText('首席投资官正在收敛最终研判…')
+              // 首片（带完整 data）初始化，后续增量片仅追加 content，保留首片结构化字段
+              setChief((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      content: prev.content + (e.content ?? ''),
+                      data: prev.data ?? (e.data && Object.keys(e.data).length ? e.data : undefined),
+                    }
+                  : e,
+              )
               break
             case 'done':
               setPhase('done')
@@ -173,9 +190,11 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setStatusText('已中止')
   }
 
-  // Tab 列表：各专家 + 首席投资官
-  const expertList = Array.from(new Set(opinions.map((o) => o.expertId)))
-  // 首个专家意见到达时自动选中该角色
+  // Tab 列表：出战阵容（status 事件预提取）+ 已有观点的专家（opinions 流式到达）
+  const expertList = Array.from(
+    new Set([...lineupExpertIds, ...opinions.map((o) => o.expertId)]),
+  )
+  // 阵容到达或首个专家意见到达时自动选中该角色
   useEffect(() => {
     if (!activeTab && expertList.length > 0) {
       setActiveTab(expertList[0])
@@ -384,6 +403,13 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
             {activeTab !== '__cio__' && activeExpertOpinions.map((o, i) => (
               <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
             ))}
+            {/* 预建 tab 但意见未到达时的空态占位 */}
+            {activeTab !== '__cio__' && activeExpertOpinions.length === 0 && (
+              <div className="flex items-center gap-2 rounded-xl border border-border/30 bg-white/[0.02] p-4 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-scene" />
+                {phase === 'running' ? '该专家研判中，观点将流式展示…' : '该专家未产出观点'}
+              </div>
+            )}
             {/* 首席投资官数据源总览（展示全部数据采集状态） */}
             {activeTab === '__cio__' && collectSteps.length > 0 && (
               <div className="rounded-lg border border-yellow-300/20 bg-white/[0.02] px-2.5 py-1.5">

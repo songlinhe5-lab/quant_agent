@@ -30,6 +30,7 @@ from hermes_agent.tool_registry import ToolRegistry
 # ─── 超时配置 ──────────────────────────────────────────────────
 _EXPERT_TIMEOUT = 60.0  # 单个专家超时
 _ROUND_TIMEOUT = 180.0  # 整轮超时
+_STREAM_CHUNK_DELAY = 0.02  # 打字机效果：切片间隔（秒）
 
 
 class DebateOrchestrator:
@@ -149,17 +150,15 @@ class DebateOrchestrator:
                 data={"collected_keys": list(shared_data.keys())},
             )
 
-            # ─── 阶段 2: Round 1 独立研判 ──────────────────────
+            # ─── 阶段 2: Round 1 独立研判（先完成先流式）────────
             session.status = "round1"
             yield StreamEvent(type="status", message="Round 1: 各专家独立研判中...")
 
             shared_text = format_shared_data_for_prompt(shared_data)
-            round1_opinions = await self._run_round1(session, experts, question, shared_text)
+            round1_opinions: list[ExpertOpinion] = []
+            async for ev in self._run_round_stream(experts, question, shared_text, 1, round1_opinions, None):
+                yield ev
             session.round1_opinions = round1_opinions
-
-            for opinion in round1_opinions:
-                async for ev in self._yield_opinion_stream(opinion, round_index=1):
-                    yield ev
 
             yield StreamEvent(
                 type="round_complete",
@@ -167,20 +166,20 @@ class DebateOrchestrator:
                 data={"round": 1, "opinion_count": len(round1_opinions)},
             )
 
-            # ─── 阶段 3: Round 2..N 交叉辩论 (多轮深化) ────────
+            # ─── 阶段 3: Round 2..N 交叉辩论 (多轮深化, 先完成先流式) ────
             latest_opinions = round1_opinions
             for r in range(2, rounds + 1):
                 session.status = f"round{r}"
                 yield StreamEvent(type="status", message=f"Round {r}: 交叉辩论中...")
 
-                round_opinions = await self._run_round2(session, experts, question, shared_text, latest_opinions)
+                round_opinions: list[ExpertOpinion] = []
+                async for ev in self._run_round_stream(
+                    experts, question, shared_text, r, round_opinions, latest_opinions
+                ):
+                    yield ev
                 # 用本轮输出覆盖上一轮 (便于合成阶段读取最新观点)
                 self._promote_round(session, round_opinions, round_index=r)
                 latest_opinions = round_opinions
-
-                for opinion in round_opinions:
-                    async for ev in self._yield_opinion_stream(opinion, round_index=r):
-                        yield ev
 
                 yield StreamEvent(
                     type="round_complete",
@@ -195,12 +194,17 @@ class DebateOrchestrator:
             chief_report = await self._run_synthesis(session, question, round1_opinions, latest_opinions)
             session.chief_report = chief_report
 
-            yield StreamEvent(
-                type="chief_report",
-                message="首席分析师报告完成",
-                content=chief_report.full_report,
-                data=chief_report.model_dump(),
-            )
+            # 切片流式输出首席报告（首片带完整结构化数据，后续片仅增量 content）
+            report_parts = self._split_for_stream(chief_report.full_report or "", max_chunk=120)
+            for i, chunk in enumerate(report_parts):
+                if i > 0:
+                    await asyncio.sleep(_STREAM_CHUNK_DELAY)
+                yield StreamEvent(
+                    type="chief_report",
+                    message="首席分析师报告生成中...",
+                    content=chunk,
+                    data=chief_report.model_dump() if i == 0 else {},
+                )
 
             # ─── 完成 ─────────────────────────────────────────
             session.status = "done"
@@ -333,10 +337,15 @@ class DebateOrchestrator:
     async def _yield_opinion_stream(
         self, opinion: ExpertOpinion, round_index: int
     ) -> "AsyncGenerator[StreamEvent, None]":
-        """把单个专家观点切成多片流式 yield (首片带完整 data, 后续仅增量 content)"""
+        """把单个专家观点切成多片流式 yield (首片带完整 data, 后续仅增量 content)
+
+        切片间插入短延迟，制造打字机效果（首片立即到达，卡片先出结构化字段）。
+        """
         full_text = self._opinion_to_text(opinion)
         parts = self._split_for_stream(full_text)
         for i, chunk in enumerate(parts):
+            if i > 0:
+                await asyncio.sleep(_STREAM_CHUNK_DELAY)
             yield StreamEvent(
                 type="expert_opinion",
                 message=f"{opinion.expert_id} 撰写中 ({i + 1}/{len(parts)})",
@@ -344,6 +353,77 @@ class DebateOrchestrator:
                 content=chunk,
                 data=opinion.model_dump() if i == 0 else {},
             )
+
+    async def _run_round_stream(
+        self,
+        experts: list[ExpertRole],
+        question: str,
+        shared_text: str,
+        round_index: int,
+        out_opinions: list[ExpertOpinion],
+        prev_opinions: Optional[list[ExpertOpinion]],
+    ) -> "AsyncGenerator[StreamEvent, None]":
+        """并行调度本轮所有专家，先完成先流式输出其观点（不等整轮 gather）。
+
+        专家完成一个立即流式输出一个，不等整轮结束。
+        round_index == 1 走独立研判；否则走交叉辩论（需传 prev_opinions）。
+        完成顺序追加到 out_opinions（调用方用于持久化与下一轮输入）。
+        """
+        q: "asyncio.Queue[Optional[ExpertOpinion]]" = asyncio.Queue()
+
+        async def _worker(expert: ExpertRole) -> None:
+            if round_index == 1:
+                opinion = await self._call_expert_round1(expert, question, shared_text)
+            else:
+                opinion = await self._call_expert_round2(expert, question, shared_text, prev_opinions or [])
+            await q.put(opinion)
+
+        tasks = [asyncio.create_task(_worker(e)) for e in experts]
+        gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
+
+        served: set[str] = set()
+        deadline = asyncio.get_running_loop().time() + _ROUND_TIMEOUT
+        try:
+            # 边等待边消费：任一专家完成立即流出其观点事件
+            while not gather_task.done():
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise asyncio.TimeoutError()
+                try:
+                    opinion = await asyncio.wait_for(q.get(), timeout=min(remaining, 0.5))
+                except asyncio.TimeoutError:
+                    continue
+                if opinion is not None:
+                    served.add(opinion.expert_id)
+                    out_opinions.append(opinion)
+                    async for ev in self._yield_opinion_stream(opinion, round_index=round_index):
+                        yield ev
+            # gather 结束：消费队列中剩余的观点（超时/异常者可能为 None）
+            while not q.empty():
+                opinion = q.get_nowait()
+                if opinion is None or opinion.expert_id in served:
+                    continue
+                served.add(opinion.expert_id)
+                out_opinions.append(opinion)
+                async for ev in self._yield_opinion_stream(opinion, round_index=round_index):
+                    yield ev
+        except asyncio.TimeoutError:
+            print(f"⚠️ [Orchestrator] Round {round_index} 整轮超时")
+            gather_task.cancel()
+
+        # 未完成/失败的专家补占位观点，保证出战阵容人人有产出（绝不泄底层报错）
+        for expert in experts:
+            if expert.id in served:
+                continue
+            placeholder = ExpertOpinion(
+                expert_id=expert.id,
+                round=round_index,
+                stance="本轮研判超时或异常，未能在时限内产出有效观点。",
+                confidence=0,
+            )
+            out_opinions.append(placeholder)
+            async for ev in self._yield_opinion_stream(placeholder, round_index=round_index):
+                yield ev
 
     @staticmethod
     def _promote_round(session: DebateSession, opinions: list[ExpertOpinion], round_index: int) -> None:
@@ -353,43 +433,6 @@ class DebateOrchestrator:
         session.round2_opinions = opinions
 
     # ─── Round 1: 独立研判 ─────────────────────────────────────
-
-    async def _run_round1(
-        self,
-        session: DebateSession,
-        experts: list[ExpertRole],
-        question: str,
-        shared_text: str,
-    ) -> list[ExpertOpinion]:
-        """并行调度所有专家进行独立研判"""
-        tasks = [self._call_expert_round1(expert, question, shared_text) for expert in experts]
-
-        try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=_ROUND_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            print("⚠️ [Orchestrator] Round 1 整轮超时")
-            results = []
-
-        opinions: list[ExpertOpinion] = []
-        for expert, result in zip(experts, results):
-            if isinstance(result, Exception):
-                print(f"⚠️ [Orchestrator] {expert.id} Round1 异常: {result}")
-                # FIX: 不把底层报错串当观点暴露给用户，返回明确的"无法判断"
-                opinions.append(
-                    ExpertOpinion(
-                        expert_id=expert.id,
-                        round=1,
-                        stance="数据不足或模型输出异常，本轮无法形成有效研判，建议待数据补充后再作判断。",
-                        confidence=0,
-                    )
-                )
-            elif result is not None:
-                opinions.append(result)
-
-        return opinions
 
     async def _call_expert_round1(self, expert: ExpertRole, question: str, shared_text: str) -> Optional[ExpertOpinion]:
         """单个专家的 Round 1 调用"""
@@ -478,44 +521,6 @@ class DebateOrchestrator:
                 )
 
     # ─── Round 2: 交叉辩论 ─────────────────────────────────────
-
-    async def _run_round2(
-        self,
-        session: DebateSession,
-        experts: list[ExpertRole],
-        question: str,
-        shared_text: str,
-        round1_opinions: list[ExpertOpinion],
-    ) -> list[ExpertOpinion]:
-        """并行调度所有专家进行交叉辩论"""
-        tasks = [self._call_expert_round2(expert, question, shared_text, round1_opinions) for expert in experts]
-
-        try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=_ROUND_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            print("⚠️ [Orchestrator] Round 2 整轮超时")
-            results = []
-
-        opinions: list[ExpertOpinion] = []
-        for expert, result in zip(experts, results):
-            if isinstance(result, Exception):
-                print(f"⚠️ [Orchestrator] {expert.id} Round2 异常: {result}")
-                # FIX: 不把底层报错串当观点暴露给用户
-                opinions.append(
-                    ExpertOpinion(
-                        expert_id=expert.id,
-                        round=2,
-                        stance="交叉辩论阶段数据或模型输出异常，本轮无法形成有效研判。",
-                        confidence=0,
-                    )
-                )
-            elif result is not None:
-                opinions.append(result)
-
-        return opinions
 
     async def _call_expert_round2(
         self,
