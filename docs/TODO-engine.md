@@ -59,3 +59,45 @@
 - [x] **[TRADE-01]** 高级期权筛选器：IV Rank、波动率微笑、Greeks (Delta/Gamma/Vega) 筛选 ✅ **2026-07-14**（`options_engine.py` BS定价+Greeks+IV+微笑 · `options_screener.py` 筛选服务 · `routers/options.py` 4端点 · `options-screener-panel.tsx` 前端 · 14 tests）
 - [x] **[TRADE-02]** TWAP / VWAP 算法拆单执行，降低大单冲击成本 ✅ **2026-07-14**（`algo_engine.py` +MarketImpactModel +POV/IS算法 · `algo_analytics.py` 执行分析 · `oms.py` +analytics端点 · `algo-analytics-panel.tsx` 前端 · 41 tests）
 - [x] **[TRADE-03]** 投资组合优化：风险平价 / 马科维茨模型自动输出仓位权重 ✅ **2026-07-14**（`portfolio_optimizer.py` Markowitz+风险平价+MaxSharpe+有效前沿+模型对比 · `routers/portfolio.py` 3端点 · `portfolio-optimizer-panel.tsx` 前端 · 13 tests）
+
+### 量化研究进阶能力（2026-08-23 新增，docs/01 V2.5 业界对标规划）
+
+> 四个新任务序列，产品定义见 `docs/01 §二十五~§二十八`，实现架构见 `docs/24~27`。红线：研究类计算一律绑定 `data_snapshot_id`（禁 live 数据出结论）；数字结论必须可溯源；覆盖率 ≥80%。
+> 优先级：FACT / TCA = P2（下季度）；EVT / RMOD = P3（长期）。
+
+#### 因子研究平台（FACT · P2 · 📐 docs/24）
+
+> 补齐「有因子生产（AI-02/03）、无因子验证」缺口；对标 Alphalens。依赖：01 → 02 → 03 → 04 → 05。
+
+- [ ] **[FACT-01]** 因子面板计算 + IC 分析：`domain/factor_lab/panel.py`（T×N 截面，复用 Alpha158）+ `ic.py`（Pearson/Rank IC × 前向 1/5/20 日 + 累计 IC/IR/胜率 + 截面覆盖率哨兵）（~350 行，测试 ≥80% 含 golden case，依赖 DQ-03 快照读取）
+- [ ] **[FACT-02]** 分层回测 + 中性化：`quantile.py`（等权 5 分位逐日调仓净值 + 多空价差 + 换手率）+ `neutralize.py`（对数市值/行业截面回归取残差）（~300 行，测试 ≥80%，依赖 FACT-01）
+- [ ] **[FACT-03]** 因子库版本化：`factor_registry` PG 表（版本/血缘/IC 摘要）+ `routers/factor_lab.py` 全端点（analyze/report/registry/lineage）（~250 行，测试 ≥80%，依赖 FACT-02）
+- [ ] **[FACT-04]** 前端报告面板：策略实验室新 Tab（IC 时序/分层净值族/相关性热力/中性化对比）+ AG Grid 因子库（~300 行，测试 ≥70%，依赖 FACT-03）
+- [ ] **[FACT-05]** 联动闭环：选股器条件引用已入库因子 + §二十一 挖掘结果一键送分析（~150 行，依赖 FACT-04）
+
+#### 执行质量分析（TCA · P2 · 📐 docs/25）
+
+> 三层账本（回测/纸面 `paper_fills`/实盘 OMS）按 `signal_id` 对齐，量化执行损耗并反向哺回测滑点参数；对标 Bloomberg EMSX。依赖：01 → 02 → 03 → 04；先决：PT-01（✅）+ BT 成交明细。
+
+- [ ] **[TCA-01]** 信号对齐：`signal_id` 规范（策略版本+标的+信号时刻+方向）+ `services/tca/aligner.py`（±5s 容错窗）+ `tca_fills` 派生表迁移（含回测成交补 signal_id）（~300 行，测试 ≥80%）
+- [ ] **[TCA-02]** 指标计算：`domain/tca/metrics.py`（实施缺口/三段分解/机会成本/层间 NAV 偏差，纯函数）（~250 行，测试 ≥90% 含手工样例对照，依赖 TCA-01）
+- [ ] **[TCA-03]** 端点 + 增量触发：`routers/tca.py`（summary/fills/slippage-hist/apply-backtest-default/recompute）+ 增量计算（禁全量重算）+ `REAL_TRADE_EXECUTE` 门禁（L3 未开启显式置空）（~250 行，测试 ≥80%，依赖 TCA-02）
+- [ ] **[TCA-04]** 前端 OMS Tab：三层 NAV 叠加/滑点直方（>3σ 标红）/逐笔偏差 AG Grid + 实测滑点一键设为回测默认参数（留审计）（~300 行，测试 ≥70%，依赖 TCA-03）
+
+#### 事件驱动研究（EVT · P3 · 📐 docs/26）
+
+> 把已有日历数据（§16/§20）从「提醒」升级为「可回测规律」；对标 FactSet Events。依赖：01 → {02, 03} → 04；样本 < 30 禁出统计结论。
+
+- [ ] **[EVT-01]** 事件归一：`event_registry` 表 + 三日历源（财经/财报/分红IPO）归一为 `EventRecord`（类型/日期/严重度/来源/快照）（~250 行，测试 ≥80%，无依赖可先行）
+- [ ] **[EVT-02]** 研究引擎：`domain/event_study/engine.py`（事件时间对齐 + 市场/行业调整异常收益 + CAR/CAAR + bootstrap 置信带）+ `pead.py`（SUE 分位漂移）（~400 行，测试 ≥80% 含 golden，依赖 EVT-01 + DQ-03 快照）
+- [ ] **[EVT-03]** 持仓暴露扫描 + 告警：`exposure.py`（持仓/纸面 × 未来 N 日事件，高危 + 仓位阈值 → AlertEngine P2 通道）（~200 行，测试 ≥80%，依赖 EVT-01 + ALERT 引擎）
+- [ ] **[EVT-04]** 前端数据中心 Tab：事件窗口曲线/样本明细/暴露时间轴/PEAD 漂移 + 统计结论一键生成策略草稿（流转 §四，仅草稿）（~300 行，测试 ≥70%，依赖 EVT-02/03）
+
+#### 组合风险模型进阶（RMOD · P3 · 📐 docs/27）
+
+> 模型层（供 §七 展示层 / §二十三 优化器 / §十 告警消费），与 `RISK-02~08` 分工不重复；对标 Barra 简化版 + Bloomberg PORT。依赖：01 → {02, 03} → 04。
+
+- [ ] **[RMOD-01]** 因子构建 + 协方差估计：`domain/risk_model/factors.py`（市场/行业/风格因子收益）+ `cov.py`（因子协方差 + 对角特异风险，Ledoit-Wolf 收缩可选）（~350 行，测试 ≥85%，依赖 DQ-03 快照 + §二十一 因子体系）
+- [ ] **[RMOD-02]** 风险分解 + 预算：`decompose.py`（MCTR/CTR 持仓×因子两级，勾稽误差 <1% 内置断言）+ 预算检查端点（超支可联动告警）（~250 行，测试 ≥85%，依赖 RMOD-01）
+- [ ] **[RMOD-03]** Black-Litterman：均衡收益 + 观点融合（置信度必填 → Ω 映射，AI 观点强制溯源；极端情形收敛性 golden case）（~300 行，测试 ≥85%，依赖 RMOD-01）
+- [ ] **[RMOD-04]** 前端进阶 Tab + 优化器接入：风险瀑布/协方差热力/预算条/观点表单 + `/portfolio/optimize` 可选 `model_id`（不破坏现有接口）（~300 行，测试 ≥70%，依赖 RMOD-02/03）

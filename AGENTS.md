@@ -50,6 +50,10 @@
 | docs/21 | docs/21. 专家团多智能体协作系统.md |
 | docs/22 | docs/22. Agent 工具链稳定性保障体系.md |
 | docs/23 | docs/23. 业务数据源聚合Facade设计.md |
+| docs/24 | docs/24. 因子研究平台架构设计.md |
+| docs/25 | docs/25. 执行质量分析架构设计.md |
+| docs/26 | docs/26. 事件驱动研究架构设计.md |
+| docs/27 | docs/27. 组合风险模型架构设计.md |
 
 ---
 
