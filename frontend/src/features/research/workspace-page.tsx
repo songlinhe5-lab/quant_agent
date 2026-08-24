@@ -40,6 +40,7 @@ export function ResearchWorkspacePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const handleSelectSession = useChatStore((s) => s.handleSelectSession)
+  const handleNewChat = useChatStore((s) => s.handleNewChat)
   const mode = useTradingModeStore((s) => s.mode)
   const modeMeta = MODE_META[mode]
 
@@ -126,7 +127,7 @@ export function ResearchWorkspacePage() {
         <SessionCenter
           activeId={activeSession?.id}
           onSelect={(it) => { setActiveSession(it) }}
-          onNewChat={() => { setActiveSession(undefined); setB2Mode('chat') }}
+          onNewChat={() => { setActiveSession(undefined); setB2Mode('chat'); handleNewChat() }}
         />
 
         {/* B2 主区：对话(COPILOT-14) / 资产库(COPILOT-18) */}
