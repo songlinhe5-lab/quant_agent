@@ -7,7 +7,7 @@
 import React, { useMemo, useState } from 'react'
 import { ChevronDown, Users, Sparkles, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { TEAM_GROUPS, SCENARIOS, expertById, type ExpertProfile } from './expert-roster'
+import { TEAM_GROUPS, SCENARIOS, expertById, scenarioDefaultExperts, type ExpertProfile } from './expert-roster'
 import { AssetSearchBind } from './asset-search-bind'
 
 export interface TeamConfig {
@@ -56,14 +56,8 @@ export function RosterPanel({
   }
 
   const scenarioExperts = useMemo(() => {
-    // 选定场景时预置对应领域的默认阵容提示（前端镜像后端场景默认）
-    const map: Record<string, string[]> = {
-      financial_research: TEAM_GROUPS.flatMap((t) => (t.key === 'code' ? [] : t.members.map((m) => m.id))),
-      full_investment: TEAM_GROUPS.flatMap((t) => (['code'].includes(t.key) ? [] : t.members.map((m) => m.id))),
-      trade_decision: ['technical_analyst', 'trade_executor', 'risk_officer', 'sentiment_analyst', 'quant_researcher'],
-      code_review: TEAM_GROUPS.find((t) => t.key === 'code')!.members.map((m) => m.id),
-    }
-    return map[config.scenario] ?? []
+    // 选定场景时预置默认阵容（与后端场景模板一致，镜像集中在 expert-roster.ts）
+    return scenarioDefaultExperts(config.scenario)
   }, [config.scenario])
 
   const effectiveRoster: ExpertProfile[] = (customMode ? Array.from(picked) : scenarioExperts)

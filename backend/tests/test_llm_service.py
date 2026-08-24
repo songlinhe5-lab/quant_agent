@@ -180,6 +180,49 @@ class TestLLMServiceGeneratePydantic:
         assert "number" in schema_str.lower() or "float" in schema_str.lower()
 
 
+class TestLLMServiceGenerateStream:
+    """真·token 流式生成测试（投研会流式渲染依赖）"""
+
+    @pytest.fixture
+    def service(self):
+        with mock.patch.dict("os.environ", {"LLM_API_KEY": "test-key"}):
+            return LLMService()
+
+    @mock.patch("backend.services.ai_narrator.llm_service.LLMService.get_model")
+    async def test_generate_stream_yields_delta_chunks(self, mock_get_model, service):
+        """stream=True：逐增量 yield delta.content；usage 帧（无 delta）不产出片段"""
+        mock_get_model.return_value = "test-model"
+
+        def _chunk(content=None, usage=None):
+            c = mock.MagicMock()
+            c.usage = usage
+            c.choices = [mock.MagicMock(delta=mock.MagicMock(content=content))] if content is not None else []
+            return c
+
+        async def _fake_stream():
+            yield _chunk("Hello ")
+            yield _chunk("world")
+            yield _chunk(None, usage=mock.MagicMock(prompt_tokens=1, completion_tokens=2, total_tokens=3))
+
+        service.client.chat.completions.create = mock.AsyncMock(return_value=_fake_stream())
+
+        pieces = [p async for p in service.generate_stream("hi")]
+        assert pieces == ["Hello ", "world"]
+        # 请求携带 stream=True 与计量选项
+        _, kwargs = service.client.chat.completions.create.call_args
+        assert kwargs["stream"] is True
+        assert kwargs["stream_options"] == {"include_usage": True}
+
+    async def test_generate_stream_offline_stub_segments(self, monkeypatch):
+        """离线 stub 模式：分段回放确定性文本（不触网，消费方逻辑一致）"""
+        monkeypatch.setattr(LLMService, "_is_offline", lambda self: True)
+        service = LLMService()
+        pieces = [p async for p in service.generate_stream("test prompt")]
+        assert pieces
+        assert "".join(pieces).startswith("[离线stub]")
+        assert all(len(p) <= 8 for p in pieces)
+
+
 class TestLLMServiceClose:
     """测试 LLM 服务关闭"""
 

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
 import { Plus, Search, Trash2, Loader2, Scale, Download, Inbox } from 'lucide-react'
@@ -50,10 +51,10 @@ interface SessionCenterProps {
   activeId?: string
   onSelect: (item: SessionItem) => void
   onNewChat: () => void
-  onNewDebate: () => void
 }
 
-export function SessionCenter({ activeId, onSelect, onNewChat, onNewDebate }: SessionCenterProps) {
+export function SessionCenter({ activeId, onSelect, onNewChat }: SessionCenterProps) {
+  const navigate = useNavigate()
   const [items, setItems] = useState<SessionItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [query, setQuery] = useState('')
@@ -127,7 +128,7 @@ export function SessionCenter({ activeId, onSelect, onNewChat, onNewDebate }: Se
         <button type="button" onClick={onNewChat} className="flex items-center justify-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 py-1.5 text-[11px] font-medium text-sky-400 hover:bg-sky-500/20 transition-colors">
           <Plus className="h-3.5 w-3.5" /> 新对话
         </button>
-        <button type="button" onClick={onNewDebate} className="flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] font-medium transition-colors hover:opacity-90" style={{ borderColor: 'rgba(167,139,250,0.35)', backgroundColor: 'rgba(167,139,250,0.12)', color: '#A78BFA' }}>
+        <button type="button" onClick={() => navigate('/research-team')} className="flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] font-medium transition-colors hover:opacity-90" style={{ borderColor: 'rgba(167,139,250,0.35)', backgroundColor: 'rgba(167,139,250,0.12)', color: '#A78BFA' }}>
           <Scale className="h-3.5 w-3.5" /> 发起投研会
         </button>
       </div>

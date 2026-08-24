@@ -9,12 +9,9 @@ import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { MODE_META } from '@/features/trading/trading-mode-types'
 import { SessionCenter, type SessionItem } from './session-center'
 import { ChatWorkspace } from './chat-workspace'
-import { DebateComposer, type ComposerResult } from './debate-composer'
-import { DebateRoom } from './debate-room'
 import { AssetLibrary } from './asset-library'
 import { RunInfoPanel } from './run-info-panel'
 import { useChatStore } from '@/stores/useChatStore'
-import type { TeamConfig } from '@/features/copilot/research-team/roster-panel'
 
 interface ResearchMeta {
   tools_count: number
@@ -26,38 +23,30 @@ interface ResearchMeta {
  *  - B1 会话中心(240px) / B2 主区(1fr) / B3 运行信息(280px, 可折叠)
  *  - 标题条副标题 Hermes ReAct · {tools_count} tools · {model_name}（来自 GET /research/meta，禁止写死）
  *  - 右侧 SANDBOX/LIVE 徽章（与策略工作台同口径）
+ *  - 注: 发起投研会(多专家辩论+首席收敛)的唯一入口已收敛到 /research-team 页面,
+ *        /research 仅承载轻量对话(COPILOT-14) + 资产库(COPILOT-18)。
  */
-type B2Mode = 'chat' | 'composer' | 'debate' | 'assets'
+type B2Mode = 'chat' | 'assets'
 
 export function ResearchWorkspacePage() {
   const [meta, setMeta] = useState<ResearchMeta>({ tools_count: 0, model_name: '' })
   const [b3Open, setB3Open] = useState(true)
   const [activeSession, setActiveSession] = useState<SessionItem | undefined>(undefined)
-  // B2 主区模式：对话 / 组局态(COPILOT-15) / 辩论态(COPILOT-16)
+  // B2 主区模式：对话 / 资产库
   const [b2Mode, setB2Mode] = useState<B2Mode>('chat')
-  const [debateRun, setDebateRun] = useState<{ question: string; config: TeamConfig; runToken: number } | null>(null)
   const chatMessages = useChatStore((s) => s.messages)
   // COPILOT-19: 折叠后关键状态（迭代数）微徽章
   const chatIterCount = chatMessages.reduce((acc, m) => acc + (m.tools?.length ?? 0), 0)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const handleSelectSession = useChatStore((s) => s.handleSelectSession)
+  const handleNewChat = useChatStore((s) => s.handleNewChat)
   const mode = useTradingModeStore((s) => s.mode)
   const modeMeta = MODE_META[mode]
 
   // COPILOT-20: 反向「收起」→ 返回数据中心（UI 拆分后抽屉已隐藏）
   const collapseToDrawer = () => {
     navigate('/data-center')
-  }
-
-  const handleLaunchDebate = (r: ComposerResult) => {
-    // runToken>0 才触发 TeamSession 的 run()；每次发起递增避免重复 key remount
-    setDebateRun((prev) => ({
-      question: r.question,
-      config: { scenario: r.scenario, expertIds: r.expertIds, rounds: r.rounds, symbols: r.symbols },
-      runToken: (prev?.runToken ?? 0) + 1,
-    }))
-    setB2Mode('debate')
   }
 
   useEffect(() => {
@@ -137,32 +126,25 @@ export function ResearchWorkspacePage() {
         {/* B1 会话中心（COPILOT-13） */}
         <SessionCenter
           activeId={activeSession?.id}
-          onSelect={(it) => { setActiveSession(it); if (it.kind === 'debate') setB2Mode('chat') }}
-          onNewChat={() => { setActiveSession(undefined); setB2Mode('chat') }}
-          onNewDebate={() => { setActiveSession(undefined); setB2Mode('composer') }}
+          onSelect={(it) => {
+            setActiveSession(it)
+            setB2Mode('chat')
+            if (it.kind === 'chat') {
+              // 历史对话：从后端加载该会话消息到共享 useChatStore
+              const realId = it.id.split(':')[1]
+              handleSelectSession(realId)
+            }
+            // debate 类型会话在 /research-team 承载，这里仅高亮不展开
+          }}
+          onNewChat={() => { setActiveSession(undefined); setB2Mode('chat'); handleNewChat() }}
         />
 
-        {/* B2 主区：对话(COPILOT-14) / 组局态(COPILOT-15) / 辩论态(COPILOT-16) / 资产库(COPILOT-18) */}
+        {/* B2 主区：对话(COPILOT-14) / 资产库(COPILOT-18) */}
         <main className="relative flex-1 min-w-0 flex flex-col">
           {b2Mode === 'assets' ? (
             <AssetLibrary onClose={() => setB2Mode('chat')} />
-          ) : b2Mode === 'composer' ? (
-            <DebateComposer
-              onLaunch={handleLaunchDebate}
-              onUseHoldings={() => { /* 预留：资产库接入后从当前持仓生成命题 */ }}
-            />
-          ) : b2Mode === 'debate' && debateRun ? (
-            <DebateRoom
-              key={debateRun.runToken}
-              question={debateRun.question}
-              config={debateRun.config}
-              runToken={debateRun.runToken}
-              // COPILOT-17: 调整阵容重跑 → 回填组局态；追问首席 → 切对话模式
-              onRerun={() => setB2Mode('composer')}
-              onAskChief={() => { setActiveSession(undefined); setB2Mode('chat') }}
-            />
           ) : (
-            <ChatWorkspace />
+            <ChatWorkspace onStored={() => setB2Mode('assets')} />
           )}
         </main>
 

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
 import { Scale, Play, Sparkles, Target, Loader2, AlertTriangle } from 'lucide-react'
-import { SCENARIOS, TEAM_GROUPS, expertById, type ExpertProfile } from '@/features/copilot/research-team/expert-roster'
+import { SCENARIOS, TEAM_GROUPS, expertById, scenarioDefaultExperts, type ExpertProfile } from '@/features/copilot/research-team/expert-roster'
 
 /** 后端 GET /expert-team/scenarios 返回的场景模板 */
 interface ApiScenario {
@@ -31,17 +31,14 @@ interface DebateComposerProps {
 
 const ROUND_OPTIONS = [1, 2, 3]
 
-// 场景默认阵容（与 roster-panel 前端镜像后端默认一致）
-const SCENARIO_DEFAULT_EXPERTS: Record<string, string[]> = {
-  financial_research: TEAM_GROUPS.flatMap((t) => (t.key === 'code' ? [] : t.members.map((m) => m.id))),
-  full_investment: TEAM_GROUPS.flatMap((t) => (['code'].includes(t.key) ? [] : t.members.map((m) => m.id))),
-  trade_decision: ['technical_analyst', 'trade_executor', 'risk_officer', 'sentiment_analyst', 'quant_researcher'],
-  code_review: TEAM_GROUPS.find((t) => t.key === 'code')!.members.map((m) => m.id),
-}
+// 场景默认阵容（镜像集中在 expert-roster.ts，与后端场景模板一致）
+const SCENARIO_DEFAULT_EXPERTS: Record<string, string[]> = Object.fromEntries(
+  SCENARIOS.map((s) => [s.id, s.expertIds]),
+)
 
 /**
  * COPILOT-15: B2 辩论室·组局态 (Proposition Composer)
- *  四组配置居中 720px：命题 textarea / 场景 4 卡 / 13 专家网格 / 轮数分段
+ *  四组配置居中 720px：命题 textarea / 场景卡片 / 专家网格 / 轮数分段
  *  场景数据来自 GET /expert-team/scenarios，静态镜像做 desc 兜底并标角标
  */
 export function DebateComposer({ onLaunch, onUseHoldings }: DebateComposerProps) {
@@ -250,7 +247,13 @@ export function DebateComposer({ onLaunch, onUseHoldings }: DebateComposerProps)
           <button
             type="button"
             disabled={!canLaunch}
-            onClick={() => onLaunch({ question, scenario, expertIds: effectiveRoster.map((e) => e.id), rounds, symbols: declaredSymbols })}
+            onClick={() => {
+              // 阵容未改时不传 expert_ids，由后端场景模板决定（保证前后端阵容一致）
+              const pickedIds = effectiveRoster.map((e) => e.id)
+              const defaults = scenarioDefaultExperts(scenario)
+              const customized = pickedIds.length !== defaults.length || pickedIds.some((id) => !defaults.includes(id))
+              onLaunch({ question, scenario, expertIds: customized ? pickedIds : [], rounds, symbols: declaredSymbols })
+            }}
             className={cn(
               'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all',
               canLaunch

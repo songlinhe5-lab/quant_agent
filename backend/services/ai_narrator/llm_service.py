@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from enum import Enum
-from typing import Any, Dict, Optional, Type, TypeVar
+from typing import Any, AsyncGenerator, Dict, Optional, Type, TypeVar
 
 import httpx
 from openai import AsyncOpenAI
@@ -368,6 +368,72 @@ class LLMService:
             await store.record(prompt, completion, total)
         except Exception:  # noqa: BLE001
             pass
+
+    async def generate_stream(
+        self,
+        user_prompt: str,
+        system_prompt: str = "You are a helpful assistant.",
+        tier: Optional[ModelTier] = None,
+        temperature: float = 0.7,
+    ) -> AsyncGenerator[str, None]:
+        """真·token 流式文本生成（SSE 场景）：逐增量片段 yield。
+
+        与 generate 同构，但 stream=True。调用方应在首个片段到达前就给用户展示进度，
+        避免生成期间长时间空白。离线 stub 模式分段回放同一段确定性文本。
+        """
+        # SVC-06: 离线 stub 短路（分段回放，保证离线时流式消费方逻辑一致）
+        if self._is_offline():
+            from backend.services.ai_narrator.llm_stub import llm_stub_provider
+
+            response = llm_stub_provider.make_text_response(
+                f"[离线stub] 已为 prompt 生成确定性解说：{user_prompt[:40]}…"
+            )
+            await self._record_token_usage(response)
+            text = response.choices[0].message.content or ""
+            for i in range(0, len(text), 8):
+                yield text[i : i + 8]
+            return
+
+        client = self.get_client(tier)
+        model = self.get_model(tier)
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+
+        # 优先请求计量 (include_usage)；个别兼容端点不支持该参数时去掉它重试，不阻断生成。
+        # 流式响应的 usage 挂在最后一个 chunk 上（delta 为空，不产生 yield）。
+        stream = None
+        for use_usage in (True, False):
+            try:
+                kwargs: Dict[str, Any] = {"stream": True}
+                if use_usage:
+                    kwargs["stream_options"] = {"include_usage": True}
+                stream = await client.chat.completions.create(
+                    model=model,
+                    temperature=temperature,
+                    messages=messages,
+                    **kwargs,
+                )
+                break
+            except Exception:
+                if not use_usage:
+                    if tier is not None:
+                        self.router.record_failure(tier)
+                    raise
+
+        try:
+            async for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    await self._record_token_usage(chunk)
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+            if tier is not None:
+                self.router.record_success(tier)
+        except Exception:
+            if tier is not None:
+                self.router.record_failure(tier)
+            raise
 
     async def generate(
         self,

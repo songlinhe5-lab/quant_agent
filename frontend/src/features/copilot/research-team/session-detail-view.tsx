@@ -8,7 +8,7 @@
 import React, { useState } from 'react'
 import { Crown, Inbox } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { BriefingMarkdown } from '@/features/briefing/briefing-markdown'
+import { ChiefReportPanel } from './chief-report-panel'
 import { ExpertOpinionCard, type ExpertOpinionState } from './expert-opinion-card'
 import { expertById } from './expert-roster'
 import type { SessionDetail, HistoricalOpinion } from './expert-team-client'
@@ -109,20 +109,19 @@ export function SessionDetailView({ session }: { session: SessionDetail }) {
               <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
             ))}
 
-            {/* 首席投资官 tab 内容 */}
+            {/* 首席投资官 tab 内容：结构化收敛报告（与新会话面板同构） */}
             {activeTab === '__cio__' && chief && (
-              <div className="rounded-xl border border-yellow-300/40 bg-yellow-300/5 p-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-yellow-300" />
-                  <span className="text-xs font-bold text-yellow-300">首席投资官 · 最终研判</span>
-                  {typeof chief.probability_assessment === 'number' && (
-                    <span className="ml-auto rounded-full border border-scene/40 bg-scene/10 px-2 py-0.5 text-[10px] text-scene">
-                      看涨概率 {chief.probability_assessment}%
-                    </span>
-                  )}
-                </div>
-                <BriefingMarkdown content={chief.full_report || chief.final_recommendation || ''} />
-              </div>
+              <ChiefReportPanel report={{
+                probability: chief.probability_assessment,
+                body: chief.full_report,
+                finalRecommendation: chief.final_recommendation,
+                consensusAreas: chief.consensus_areas,
+                divergenceAreas: chief.divergence_areas,
+                strongestBullCase: chief.strongest_bull_case,
+                strongestBearCase: chief.strongest_bear_case,
+                riskWarnings: chief.risk_warnings,
+                minorityOpinion: chief.minority_opinion,
+              }} />
             )}
           </>
         )}

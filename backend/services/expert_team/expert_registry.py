@@ -2,15 +2,19 @@
 专家角色注册表 + 场景模板
 定义所有可用的专家角色和预配置的场景组合
 
-专家团组织架构 (17位):
-├── 📊 分析师团队 (analyst) - 7位
+专家团组织架构 (21位):
+├── 📊 分析师团队 (analyst) - 11位
 │   ├── fundamental_analyst   基本面分析师
 │   ├── technical_analyst     技术面分析师
 │   ├── macro_strategist      宏观策略师
 │   ├── valuation_expert      估值专家
 │   ├── industry_analyst      行业分析师
 │   ├── sentiment_analyst     情绪分析师
-│   └── news_analyst          新闻分析师
+│   ├── news_analyst          新闻分析师
+│   ├── event_driven_analyst  事件驱动分析师
+│   ├── options_strategist    期权策略师
+│   ├── fixed_income_strategist 固收策略师
+│   └── esg_analyst           ESG/治理分析师
 ├── 🔬 研究员团队 (researcher) - 2位
 │   ├── industry_researcher   产业研究员
 │   └── quant_researcher      量化研究员
@@ -116,6 +120,46 @@ NEWS_ANALYST = ExpertRole(
     bias="neutral",
     available_tools=["get_macro_news", "get_company_news", "web_search"],
     description="专注新闻质量评估、信息可信度、叙事转变识别、市场定价充分性、信号与噪音分离",
+)
+
+EVENT_DRIVEN_ANALYST = ExpertRole(
+    id="event_driven_analyst",
+    name="事件驱动分析师",
+    domain="finance",
+    team="analyst",
+    bias="neutral",
+    available_tools=["get_company_news", "web_search", "compare_earnings_expectations"],
+    description="专注并购重组、财报预期差、政策催化、解禁/回购等催化剂事件的时间表与定价充分性",
+)
+
+OPTIONS_STRATEGIST = ExpertRole(
+    id="options_strategist",
+    name="期权策略师",
+    domain="finance",
+    team="analyst",
+    bias="neutral",
+    available_tools=["get_option_volatility", "get_option_strategy_lab", "get_broker_market_data"],
+    description="专注隐含波动率、PCR、期限结构、期权组合策略(备兑/价差/对冲)与尾部保护",
+)
+
+FIXED_INCOME_STRATEGIST = ExpertRole(
+    id="fixed_income_strategist",
+    name="固收策略师",
+    domain="finance",
+    team="analyst",
+    bias="neutral",
+    available_tools=["get_fred_macro_data", "get_fed_watch", "get_macro_news"],
+    description="专注利率曲线、信用利差、股债性价比、跨资产轮动信号",
+)
+
+ESG_ANALYST = ExpertRole(
+    id="esg_analyst",
+    name="ESG/治理分析师",
+    domain="finance",
+    team="analyst",
+    bias="neutral",
+    available_tools=["web_search", "get_company_news"],
+    description="专注 ESG 评级、公司治理质量、监管合规风险与可持续发展溢价",
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -247,6 +291,10 @@ EXPERT_REGISTRY: dict[str, ExpertRole] = {
     "industry_analyst": INDUSTRY_ANALYST,
     "sentiment_analyst": SENTIMENT_ANALYST,
     "news_analyst": NEWS_ANALYST,
+    "event_driven_analyst": EVENT_DRIVEN_ANALYST,
+    "options_strategist": OPTIONS_STRATEGIST,
+    "fixed_income_strategist": FIXED_INCOME_STRATEGIST,
+    "esg_analyst": ESG_ANALYST,
     # 🔬 研究员团队 (researcher)
     "industry_researcher": INDUSTRY_RESEARCHER,
     "quant_researcher": QUANT_RESEARCHER,
@@ -274,6 +322,10 @@ TEAM_GROUPS: dict[str, list[str]] = {
         "industry_analyst",
         "sentiment_analyst",
         "news_analyst",
+        "event_driven_analyst",
+        "options_strategist",
+        "fixed_income_strategist",
+        "esg_analyst",
     ],
     "researcher": ["industry_researcher", "quant_researcher"],
     "trader": ["trade_executor"],
@@ -330,13 +382,15 @@ SCENARIO_TEMPLATES: dict[str, ScenarioTemplate] = {
         id="financial_research",
         name="金融投研",
         domain="finance",
-        description="多维度研判个股/资产投资价值：基本面 + 技术面 + 宏观 + 风控 + 估值",
+        description="标准多维研判个股/资产：基本面 + 技术面 + 宏观 + 估值 + 行业 + 新闻 + 风控（7人轻量团）",
         expert_ids=[
             "fundamental_analyst",
             "technical_analyst",
             "macro_strategist",
-            "risk_officer",
             "valuation_expert",
+            "industry_analyst",
+            "news_analyst",
+            "risk_officer",
         ],
         data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment", "fed_watch"],
         chief_prompt_file="chief_analyst.md",
@@ -345,13 +399,19 @@ SCENARIO_TEMPLATES: dict[str, ScenarioTemplate] = {
         id="full_investment",
         name="完整投决会",
         domain="finance",
-        description="模拟完整投资决策委员会：分析师 + 研究员 + 交易员 + 风控 + 管理层全链路研判",
+        description="模拟完整投资决策委员会：分析师 + 研究员 + 交易员 + 风控 + 管理层全链路研判（17人全员）",
         expert_ids=[
             "fundamental_analyst",
             "technical_analyst",
+            "macro_strategist",
+            "valuation_expert",
             "industry_analyst",
-            "news_analyst",
             "sentiment_analyst",
+            "news_analyst",
+            "event_driven_analyst",
+            "options_strategist",
+            "fixed_income_strategist",
+            "esg_analyst",
             "industry_researcher",
             "quant_researcher",
             "trade_executor",
@@ -360,6 +420,55 @@ SCENARIO_TEMPLATES: dict[str, ScenarioTemplate] = {
             "chief_investment_officer",
         ],
         data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment", "fed_watch"],
+        chief_prompt_file="chief_analyst.md",
+    ),
+    "earnings_watch": ScenarioTemplate(
+        id="earnings_watch",
+        name="财报季快评",
+        domain="finance",
+        description="财报发布前后快评：预期差识别、催化与风险、财报后走势推演",
+        expert_ids=[
+            "fundamental_analyst",
+            "event_driven_analyst",
+            "valuation_expert",
+            "technical_analyst",
+            "news_analyst",
+            "risk_officer",
+        ],
+        data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment"],
+        chief_prompt_file="chief_analyst.md",
+    ),
+    "macro_allocation": ScenarioTemplate(
+        id="macro_allocation",
+        name="宏观资产配置",
+        domain="finance",
+        description="跨资产（股/债/商品/汇率）配置视角：宏观周期 + 利率 + 情绪 + 风控 + 首席收敛（无需绑定个股）",
+        expert_ids=[
+            "macro_strategist",
+            "fixed_income_strategist",
+            "sentiment_analyst",
+            "quant_researcher",
+            "portfolio_risk_manager",
+            "chief_investment_officer",
+        ],
+        data_requirements=["macro_news", "sentiment", "fed_watch", "market_review"],
+        chief_prompt_file="chief_analyst.md",
+    ),
+    "event_special": ScenarioTemplate(
+        id="event_special",
+        name="事件驱动专项",
+        domain="finance",
+        description="针对单一催化事件（并购/政策/行业突变）的快速专项研判：事件定性 + 定价 + 执行 + 风控",
+        expert_ids=[
+            "event_driven_analyst",
+            "news_analyst",
+            "fundamental_analyst",
+            "technical_analyst",
+            "options_strategist",
+            "trade_executor",
+            "risk_officer",
+        ],
+        data_requirements=["quote", "fundamental", "technicals", "macro_news", "sentiment"],
         chief_prompt_file="chief_analyst.md",
     ),
     "trading_decision": ScenarioTemplate(

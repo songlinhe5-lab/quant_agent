@@ -7,7 +7,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Crown, AlertTriangle, Square, Database, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { BriefingMarkdown } from '@/features/briefing/briefing-markdown'
+import { ChiefReportPanel } from './chief-report-panel'
 import { ExpertOpinionCard, type ExpertOpinionState } from './expert-opinion-card'
 import { expertById } from './expert-roster'
 import {
@@ -131,11 +131,15 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               }
               break
             }
-            case 'expert_opinion':
-              appendOrUpdate(e.expert_id, e.round, e.content, true, e.data)
+            case 'expert_opinion': {
+              // 身份字段: 顶层优先(新协议每片携带), 缺失时回退首片 data(兼容旧后端);
+              // 无身份的帧丢弃, 避免观点落入匿名 tab
+              const eid = e.expert_id ?? e.data?.expert_id
+              if (eid) appendOrUpdate(eid, e.round ?? e.data?.round ?? 1, e.content, true, e.data)
               break
+            }
             case 'round_complete':
-              setCurrentRound(e.round)
+              setCurrentRound(e.round ?? 0)
               // 该轮所有专家落定（停止流式光标）
               setOpinions((prev) => prev.map((o) => (o.round === e.round ? { ...o, streaming: false } : o)))
               if (e.message) setStatusText(e.message)
@@ -143,13 +147,18 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
             case 'chief_report':
               setActiveTab('__cio__')
               setStatusText('首席投资官正在收敛最终研判…')
-              // 首片（带完整 data）初始化，后续增量片仅追加 content，保留首片结构化字段
+              // 真流式协议：增量片不带 data，末帧（完成帧）才携带结构化字段；
+              // prev.data 为空对象时不得阻断后续完成帧 data（{} 非 nullish，?? 会原样钉死）
               setChief((prev) =>
                 prev
                   ? {
                       ...prev,
                       content: prev.content + (e.content ?? ''),
-                      data: prev.data ?? (e.data && Object.keys(e.data).length ? e.data : undefined),
+                      data: prev.data && Object.keys(prev.data).length
+                        ? prev.data
+                        : e.data && Object.keys(e.data).length
+                          ? e.data
+                          : undefined,
                     }
                   : e,
               )
@@ -434,21 +443,20 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                 </div>
               </div>
             )}
-            {/* 首席投资官 tab 内容：流式展示最终研判 */}
+            {/* 首席投资官 tab 内容：结构化收敛报告 + 流式 Markdown 正文 */}
             {activeTab === '__cio__' && (
               chief ? (
-                <div className="rounded-xl border border-yellow-300/40 bg-yellow-300/5 p-3">
-                  <div className="mb-2 flex items-center gap-2">
-                    <Crown className="h-4 w-4 text-yellow-300" />
-                    <span className="text-xs font-bold text-yellow-300">首席投资官 · 最终研判</span>
-                    {typeof chief.bullish_probability === 'number' && (
-                      <span className="ml-auto rounded-full border border-scene/40 bg-scene/10 px-2 py-0.5 text-[10px] text-scene">
-                        看涨概率 {chief.bullish_probability}%
-                      </span>
-                    )}
-                  </div>
-                  <BriefingMarkdown content={chief.content} />
-                </div>
+                <ChiefReportPanel report={{
+                  probability: chief.bullish_probability ?? chief.data?.probability_assessment,
+                  body: chief.content,
+                  finalRecommendation: chief.data?.final_recommendation,
+                  consensusAreas: chief.data?.consensus_areas,
+                  divergenceAreas: chief.data?.divergence_areas,
+                  strongestBullCase: chief.data?.strongest_bull_case,
+                  strongestBearCase: chief.data?.strongest_bear_case,
+                  riskWarnings: chief.data?.risk_warnings,
+                  minorityOpinion: chief.data?.minority_opinion,
+                }} />
               ) : (
                 <div className="flex items-center gap-2 rounded-xl border border-yellow-300/20 bg-yellow-300/5 p-4 text-xs text-yellow-300/60">
                   <Loader2 className="h-4 w-4 animate-spin" />
