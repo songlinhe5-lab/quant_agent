@@ -442,7 +442,10 @@ class DebateOrchestrator:
             async for ev in stream:
                 await q.put(ev)
                 if ev.data and ev.data.get("expert_id") == expert.id:
-                    opinion = ExpertOpinion.model_validate(ev.data)  # 末帧结构化完成帧
+                    try:
+                        opinion = ExpertOpinion.model_validate(ev.data)  # 末帧结构化完成帧
+                    except Exception:  # noqa: BLE001 — 校验失败不得中断调度（否则丢哨兵→整轮阻塞+占位串混入已流内容）
+                        opinion = None
             await q.put(_WorkerDone(expert.id, opinion))
 
         tasks = [asyncio.create_task(_worker(e)) for e in experts]
