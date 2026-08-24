@@ -126,7 +126,16 @@ export function ResearchWorkspacePage() {
         {/* B1 会话中心（COPILOT-13） */}
         <SessionCenter
           activeId={activeSession?.id}
-          onSelect={(it) => { setActiveSession(it) }}
+          onSelect={(it) => {
+            setActiveSession(it)
+            setB2Mode('chat')
+            if (it.kind === 'chat') {
+              // 历史对话：从后端加载该会话消息到共享 useChatStore
+              const realId = it.id.split(':')[1]
+              handleSelectSession(realId)
+            }
+            // debate 类型会话在 /research-team 承载，这里仅高亮不展开
+          }}
           onNewChat={() => { setActiveSession(undefined); setB2Mode('chat'); handleNewChat() }}
         />
 
