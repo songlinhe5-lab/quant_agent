@@ -28,6 +28,8 @@ interface TeamSessionProps {
 }
 
 type Phase = 'idle' | 'running' | 'done' | 'error'
+/** Tab 标识：专家 id 或首席投资官 '__cio__' */
+type TabId = string
 
 export function TeamSession({ question, config, customMode, runToken, onRunningChange }: TeamSessionProps) {
   const [phase, setPhase] = useState<Phase>('idle')
@@ -41,8 +43,8 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     { key: string; status: string; message: string; request?: Record<string, unknown> | null; response?: string | null }[]
   >([])
   const [collectOpen, setCollectOpen] = useState(false)
-  // 角色 tab：当前选中的专家（展示该专家的全部轮次意见）
-  const [activeExpertId, setActiveExpertId] = useState<string | null>(null)
+  // 当前选中的 tab（专家 id 或 '__cio__'）
+  const [activeTab, setActiveTab] = useState<TabId | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const reset = useCallback(() => {
@@ -53,7 +55,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setErrorMsg('')
     setCollectSteps([])
     setCollectOpen(false)
-    setActiveExpertId(null)
+    setActiveTab(null)
   }, [])
 
   const run = useCallback(() => {
@@ -132,6 +134,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               break
             case 'chief_report':
               setChief(e)
+              setActiveTab('__cio__')
               setStatusText('首席投资官正在收敛最终研判…')
               break
             case 'done':
@@ -170,16 +173,39 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setStatusText('已中止')
   }
 
-  // 角色 tab：从已到意见里按 expertId 去重得到专家列表
+  // Tab 列表：各专家 + 首席投资官
   const expertList = Array.from(new Set(opinions.map((o) => o.expertId)))
   // 首个专家意见到达时自动选中该角色
   useEffect(() => {
-    if (!activeExpertId && expertList.length > 0) {
-      setActiveExpertId(expertList[0])
+    if (!activeTab && expertList.length > 0) {
+      setActiveTab(expertList[0])
     }
-  }, [expertList, activeExpertId])
-  const activeExpert = activeExpertId ?? expertList[0] ?? null
+  }, [expertList, activeTab])
+  const activeExpert = (activeTab && activeTab !== '__cio__') ? activeTab : (expertList[0] ?? null)
   const activeExpertOpinions = activeExpert ? opinions.filter((o) => o.expertId === activeExpert) : []
+  const showCioTab = !!chief
+  const hasAnyContent = expertList.length > 0 || showCioTab
+
+  // 各角色关注的数据源子集（数据采集是全局共享的，此处按角色过滤展示）
+  const _EXPERT_DATA_SOURCES: Record<string, string[]> = {
+    fundamental_analyst: ['quote', 'fundamental'],
+    technical_analyst: ['quote', 'technicals'],
+    macro_strategist: ['macro_news', 'fed_watch'],
+    valuation_expert: ['quote', 'fundamental'],
+    industry_analyst: ['quote', 'fundamental', 'macro_news'],
+    sentiment_analyst: ['sentiment', 'quote'],
+    news_analyst: ['macro_news'],
+    industry_researcher: ['quote', 'fundamental'],
+    quant_researcher: ['technicals', 'sentiment'],
+    trade_executor: ['quote', 'technicals', 'sentiment'],
+    risk_officer: ['quote', 'fundamental', 'sentiment'],
+    portfolio_risk_manager: ['quote', 'fundamental', 'sentiment'],
+    chief_investment_officer: ['quote', 'fundamental', 'technicals', 'macro_news', 'sentiment', 'fed_watch'],
+  }
+  // 当前选中 tab 对应的数据采集状态（仅展示该角色关注的数据源）
+  const activeDataSteps = (activeTab && activeTab !== '__cio__')
+    ? collectSteps.filter((s) => (_EXPERT_DATA_SOURCES[activeTab] ?? []).includes(s.key))
+    : collectSteps
 
   return (
     <div className="flex h-full flex-col">
@@ -284,23 +310,23 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           </details>
         )}
 
-        {/* 研究员研判：角色 tab，逐专家展示意见 */}
-        {opinions.length > 0 && (
+        {/* 研究员研判：角色 tab，逐专家 + 首席展示 */}
+        {hasAnyContent && (
           <div className="space-y-2">
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
               研究员研判 {currentRound > 0 && `· 第 ${currentRound} 轮`}
             </div>
-            {/* 角色 tab 栏 */}
+            {/* 角色 tab 栏（含首席投资官） */}
             <div className="flex gap-1 overflow-x-auto pb-1">
               {expertList.map((eid) => {
                 const p = expertById(eid)
-                const isActive = eid === activeExpert
+                const isActive = eid === activeTab
                 const rounds = opinions.filter((o) => o.expertId === eid)
                 return (
                   <button
                     key={eid}
                     type="button"
-                    onClick={() => setActiveExpertId(eid)}
+                    onClick={() => setActiveTab(eid)}
                     className={cn(
                       'flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] transition-colors',
                       isActive
@@ -314,29 +340,100 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                   </button>
                 )
               })}
+              {showCioTab && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('__cio__')}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] transition-colors',
+                    activeTab === '__cio__'
+                      ? 'border-yellow-300/50 bg-yellow-300/15 text-yellow-300'
+                      : 'border-yellow-300/30 text-yellow-300/70 hover:bg-yellow-300/10',
+                  )}
+                >
+                  <Crown className="h-3 w-3" />
+                  <span className="max-w-[90px] truncate">首席投资官</span>
+                </button>
+              )}
             </div>
-            {/* 当前选中角色的意见（含其全部轮次） */}
-            {activeExpertOpinions.map((o, i) => (
+            {/* 当前选中专家的数据源状态（仅展示该角色关注的数据采集结果） */}
+            {activeTab !== '__cio__' && activeDataSteps.length > 0 && (
+              <div className="rounded-lg border border-border/30 bg-white/[0.02] px-2.5 py-1.5">
+                <div className="mb-1 text-[10px] font-medium text-muted-foreground">数据源</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  {activeDataSteps.map((s) => {
+                    const isErr = s.status === 'error' || s.status === 'timeout' || s.status === 'skipped'
+                    const isSuccess = s.status === 'success'
+                    return (
+                      <div key={s.key} className="flex items-center gap-1 text-[10px]">
+                        <span className={cn(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          isErr ? 'bg-red-400' : isSuccess ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse',
+                        )} />
+                        <span className={cn(
+                          'font-medium',
+                          isErr ? 'text-red-400' : isSuccess ? 'text-foreground/70' : 'text-amber-400',
+                        )}>{s.key}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {/* 当前选中专家的意见（含其全部轮次） */}
+            {activeTab !== '__cio__' && activeExpertOpinions.map((o, i) => (
               <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
             ))}
+            {/* 首席投资官数据源总览（展示全部数据采集状态） */}
+            {activeTab === '__cio__' && collectSteps.length > 0 && (
+              <div className="rounded-lg border border-yellow-300/20 bg-white/[0.02] px-2.5 py-1.5">
+                <div className="mb-1 text-[10px] font-medium text-yellow-300/80">数据源总览</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  {collectSteps.map((s) => {
+                    const isErr = s.status === 'error' || s.status === 'timeout' || s.status === 'skipped'
+                    const isSuccess = s.status === 'success'
+                    return (
+                      <div key={s.key} className="flex items-center gap-1 text-[10px]">
+                        <span className={cn(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          isErr ? 'bg-red-400' : isSuccess ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse',
+                        )} />
+                        <span className={cn(
+                          'font-medium',
+                          isErr ? 'text-red-400' : isSuccess ? 'text-foreground/70' : 'text-amber-400',
+                        )}>{s.key}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {/* 首席投资官 tab 内容：流式展示最终研判 */}
+            {activeTab === '__cio__' && (
+              chief ? (
+                <div className="rounded-xl border border-yellow-300/40 bg-yellow-300/5 p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Crown className="h-4 w-4 text-yellow-300" />
+                    <span className="text-xs font-bold text-yellow-300">首席投资官 · 最终研判</span>
+                    {typeof chief.bullish_probability === 'number' && (
+                      <span className="ml-auto rounded-full border border-scene/40 bg-scene/10 px-2 py-0.5 text-[10px] text-scene">
+                        看涨概率 {chief.bullish_probability}%
+                      </span>
+                    )}
+                  </div>
+                  <BriefingMarkdown content={chief.content} />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 rounded-xl border border-yellow-300/20 bg-yellow-300/5 p-4 text-xs text-yellow-300/60">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  首席投资官研判中…
+                </div>
+              )
+            )}
           </div>
         )}
 
-        {/* 首席最终报告 */}
-        {chief && (
-          <div className="rounded-xl border border-yellow-300/40 bg-yellow-300/5 p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <Crown className="h-4 w-4 text-yellow-300" />
-              <span className="text-xs font-bold text-yellow-300">首席投资官 · 最终研判</span>
-              {typeof chief.bullish_probability === 'number' && (
-                <span className="ml-auto rounded-full border border-scene/40 bg-scene/10 px-2 py-0.5 text-[10px] text-scene">
-                  看涨概率 {chief.bullish_probability}%
-                </span>
-              )}
-            </div>
-            <BriefingMarkdown content={chief.content} />
-          </div>
-        )}
+
       </div>
     </div>
   )
