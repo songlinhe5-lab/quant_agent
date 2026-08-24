@@ -31,6 +31,13 @@ from backend.services.expert_team.models import (
 from backend.services.expert_team.orchestrator import DebateOrchestrator, _StreamSplitter
 
 
+@pytest.fixture(autouse=True)
+def _disable_stream_pacing(monkeypatch):
+    """测试环境禁用打字机限速，避免用真实时间等待滴播（生产默认 0.12s/20字符）"""
+    monkeypatch.setattr("backend.services.expert_team.orchestrator._STREAM_EMIT_INTERVAL", 0.0)
+    monkeypatch.setattr("backend.services.expert_team.orchestrator._STREAM_CHARS_PER_TICK", 100000)
+
+
 def _stream_fn(text: str):
     """构造 generate_stream mock：把文本切小段逐段 yield，模拟真实 token 流"""
 

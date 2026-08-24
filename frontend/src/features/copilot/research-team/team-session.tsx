@@ -12,9 +12,11 @@ import { ExpertOpinionCard, type ExpertOpinionState } from './expert-opinion-car
 import { expertById } from './expert-roster'
 import {
   startTeamAnalysis,
+  fetchSession,
   type TeamStreamEvent,
   type ChiefReportEvent,
   type ExpertOpinionData,
+  type HistoricalOpinion,
 } from './expert-team-client'
 import type { TeamConfig } from './roster-panel'
 
@@ -93,6 +95,48 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
       })
     }
 
+    // 完成帧后的补全对账：拿持久化会话补齐流式丢帧导致的缺失/空白观点，
+    // 保证无论传输层丢了多少帧，结束后所有专家 × 所有轮次内容都完整展示（与历史详情一致）
+    const reconcileFromSession = async (sid: string) => {
+      try {
+        const detail = await fetchSession(sid)
+        if (!detail) return
+        const fromAllRounds = Object.values(detail.all_rounds ?? {}).flat()
+        const persisted: HistoricalOpinion[] = fromAllRounds.length > 0
+          ? fromAllRounds
+          : [...(detail.round1_opinions ?? []), ...(detail.round2_opinions ?? [])]
+        if (persisted.length > 0) {
+          setOpinions((prev) => {
+            const next = [...prev]
+            for (const p of persisted) {
+              const filled: ExpertOpinionState = {
+                expertId: p.expert_id,
+                round: p.round,
+                content: p.reasoning || p.stance || '',
+                streaming: false,
+                stance: p.stance,
+                confidence: p.confidence,
+                keyEvidence: p.key_evidence,
+                confidenceDelta: p.confidence_delta,
+                revisedStance: p.revised_stance,
+              }
+              const idx = next.findIndex((o) => o.expertId === p.expert_id && o.round === p.round)
+              if (idx < 0) next.push(filled)
+              else if (!next[idx].content.trim()) next[idx] = { ...next[idx], ...filled }
+            }
+            return next
+          })
+        }
+        // 首席正文缺失时用持久化 full_report 兜底（已有流式正文则不动）
+        const rep = detail.chief_report
+        if (rep?.full_report) {
+          setChief((prev) => (prev && !prev.content.trim() ? { ...prev, content: rep.full_report as string } : prev))
+        }
+      } catch {
+        /* 对账失败不阻断：流式内容保持原样 */
+      }
+    }
+
     const ctrl = startTeamAnalysis(
       {
         question: question.trim(),
@@ -158,11 +202,15 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                   : e,
               )
               break
-            case 'done':
+            case 'done': {
               setPhase('done')
               onRunningChange?.(false)
               setStatusText('投决会结束')
+              // 拿持久化会话对账补全，确保内容与历史详情一致完整
+              const sid = e.data?.session_id ?? e.session_id
+              if (sid) void reconcileFromSession(sid)
               break
+            }
             case 'error':
               setErrorMsg(e.message)
               setPhase('error')
