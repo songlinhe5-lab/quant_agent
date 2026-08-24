@@ -506,6 +506,10 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [ build-data-subservice, test-data-subservice, deploy-master, compose-hygiene ]
     runs-on: ubuntu-latest
+    # 将 Tailscale OAuth secret 映射为 job 级 env，供 step 的 if 条件判断
+    # (step 级 if 不允许直接引用 secrets context，只能引用 env/github 等)。
+    env:
+      TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
     strategy:
       fail-fast: false
       matrix:
