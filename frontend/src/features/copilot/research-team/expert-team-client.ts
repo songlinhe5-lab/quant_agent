@@ -240,6 +240,8 @@ export interface SessionDetail {
   completed_at?: string
   round1_opinions?: HistoricalOpinion[]
   round2_opinions?: HistoricalOpinion[]
+  /** 全部轮次观点（键=轮次号，JSON 序列化后为字符串键）；逐轮全量展示，后轮不覆盖前轮 */
+  all_rounds?: Record<string, HistoricalOpinion[]>
   chief_report?: {
     final_recommendation?: string
     probability_assessment?: number

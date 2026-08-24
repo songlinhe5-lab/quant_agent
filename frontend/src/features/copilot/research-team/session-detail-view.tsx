@@ -27,11 +27,13 @@ function toOpinionState(o: HistoricalOpinion): ExpertOpinionState {
 }
 
 export function SessionDetailView({ session }: { session: SessionDetail }) {
-  // 合并全部轮次意见（按阵容顺序、轮次顺序全量展示）
-  const allOpinions = [
-    ...(session.round1_opinions ?? []),
-    ...(session.round2_opinions ?? []),
-  ].map(toOpinionState)
+  // 合并全部轮次意见：优先 all_rounds（含 3+ 轮的全量记录，逐条自带 round 字段）；
+  // 旧记录无 all_rounds 时回退 round1+round2（两源不同时存在，避免重复）
+  const fromAllRounds = Object.values(session.all_rounds ?? {}).flat()
+  const merged: HistoricalOpinion[] = fromAllRounds.length > 0
+    ? fromAllRounds
+    : [...(session.round1_opinions ?? []), ...(session.round2_opinions ?? [])]
+  const allOpinions = merged.map(toOpinionState)
   const expertIds = Array.from(new Set(allOpinions.map((o) => o.expertId)))
   const rounds = Array.from(new Set(allOpinions.map((o) => o.round))).sort((a, b) => a - b)
   const chief = session.chief_report
