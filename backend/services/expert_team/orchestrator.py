@@ -243,6 +243,7 @@ class DebateOrchestrator:
             async for ev in self._run_round_stream(experts, question, shared_text, 1, round1_opinions, None):
                 yield ev
             session.round1_opinions = round1_opinions
+            session.all_rounds[1] = round1_opinions
 
             yield StreamEvent(
                 type="round_complete",
@@ -500,9 +501,8 @@ class DebateOrchestrator:
 
     @staticmethod
     def _promote_round(session: DebateSession, opinions: list[ExpertOpinion], round_index: int) -> None:
-        """把最新一轮观点写入 session (覆盖 round2_opinions, 便于持久化展示)"""
-        session.__dict__.setdefault("all_rounds", {})
-        session.all_rounds[round_index] = [o.model_dump() for o in opinions]
+        """把本轮观点追加到 all_rounds（不覆盖前置轮次）；round2_opinions 承载最后一轮以兼容旧读取方"""
+        session.all_rounds[round_index] = opinions
         session.round2_opinions = opinions
 
     # ─── Round 1: 独立研判 ─────────────────────────────────────

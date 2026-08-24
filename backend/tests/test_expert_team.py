@@ -413,8 +413,8 @@ class TestOrchestrator:
 
         with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
             mock_llm.generate_stream = MagicMock(
-                side_effect=[_stream_fn(_R1_STREAM_TEXT)] * 5
-                + [_stream_fn(_R2_STREAM_TEXT)] * 5
+                side_effect=[_stream_fn(_R1_STREAM_TEXT)] * 7
+                + [_stream_fn(_R2_STREAM_TEXT)] * 7
                 + [_stream_fn(_CHIEF_STREAM_TEXT)]
             )
 
@@ -802,11 +802,11 @@ class TestOrchestratorDebateExtensions:
         orch = DebateOrchestrator(tool_registry=None)
 
         with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
-            # 5 专家 * 3 轮 + 1 首席
+            # 7 专家（financial_research 默认阵容）* 3 轮 + 1 首席
             mock_llm.generate_stream = MagicMock(
-                side_effect=[_stream_fn(_R1_STREAM_TEXT)] * 5
-                + [_stream_fn(_R2_STREAM_TEXT)] * 5
-                + [_stream_fn(_R2_STREAM_TEXT)] * 5
+                side_effect=[_stream_fn(_R1_STREAM_TEXT)] * 7
+                + [_stream_fn(_R2_STREAM_TEXT)] * 7
+                + [_stream_fn(_R2_STREAM_TEXT)] * 7
                 + [_stream_fn(_CHIEF_STREAM_TEXT)]
             )
             rounds_seen = []
@@ -819,6 +819,11 @@ class TestOrchestratorDebateExtensions:
                 if event.type == "round_complete":
                     rounds_seen.append(event.data.get("round"))
             assert rounds_seen == [1, 2, 3]
+            # 后续轮次不得覆盖前置轮次：all_rounds 须完整保留三轮全部专家观点（7 人阵容）
+            sess = orch._last_session
+            assert sess is not None
+            assert sorted(sess.all_rounds.keys()) == [1, 2, 3]
+            assert all(len(ops) == 7 for ops in sess.all_rounds.values())
 
     @pytest.mark.asyncio
     async def test_debate_stream_custom_expert_ids(self):

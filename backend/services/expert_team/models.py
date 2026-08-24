@@ -61,6 +61,9 @@ class DebateSession(BaseModel):
     experts: list[ExpertRole] = Field(default_factory=list)
     round1_opinions: list[ExpertOpinion] = Field(default_factory=list)
     round2_opinions: list[ExpertOpinion] = Field(default_factory=list)
+    # 全部轮次观点（键=轮次号）：持久化后历史详情逐轮全量展示，后续轮次不覆盖前置轮次；
+    # round1/round2 字段仅为兼容旧数据保留（round2 承载最后一轮）
+    all_rounds: dict[int, list[ExpertOpinion]] = Field(default_factory=dict)
     chief_report: Optional[ChiefReport] = None
     status: Literal["pending", "collecting", "round1", "round2", "synthesis", "done", "error"] = "pending"
     error_message: str = ""
