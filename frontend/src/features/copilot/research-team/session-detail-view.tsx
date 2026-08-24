@@ -35,10 +35,11 @@ export function SessionDetailView({ session }: { session: SessionDetail }) {
     ...(session.round2_opinions ?? []),
   ].map(toOpinionState)
   const expertList = Array.from(new Set(allOpinions.map((o) => o.expertId)))
-  const [activeExpertId, setActiveExpertId] = useState<string | null>(expertList[0] ?? null)
-  const activeExpert = activeExpertId ?? expertList[0] ?? null
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+  const activeExpert = (activeTab && activeTab !== '__cio__') ? activeTab : (expertList[0] ?? null)
   const activeOpinions = activeExpert ? allOpinions.filter((o) => o.expertId === activeExpert) : []
   const chief = session.chief_report
+  const showCioTab = !!chief
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -60,18 +61,18 @@ export function SessionDetailView({ session }: { session: SessionDetail }) {
           </div>
         ) : (
           <>
-            {/* 角色 tab 栏 */}
+            {/* 角色 tab 栏（含首席投资官） */}
             {expertList.length > 0 && (
               <div className="flex gap-1 overflow-x-auto pb-1">
                 {expertList.map((eid) => {
                   const p = expertById(eid)
-                  const isActive = eid === activeExpert
+                  const isActive = eid === activeTab
                   const rounds = allOpinions.filter((o) => o.expertId === eid)
                   return (
                     <button
                       key={eid}
                       type="button"
-                      onClick={() => setActiveExpertId(eid)}
+                      onClick={() => setActiveTab(eid)}
                       className={cn(
                         'flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] transition-colors',
                         isActive
@@ -85,16 +86,31 @@ export function SessionDetailView({ session }: { session: SessionDetail }) {
                     </button>
                   )
                 })}
+                {showCioTab && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('__cio__')}
+                    className={cn(
+                      'flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] transition-colors',
+                      activeTab === '__cio__'
+                        ? 'border-yellow-300/50 bg-yellow-300/15 text-yellow-300'
+                        : 'border-yellow-300/30 text-yellow-300/70 hover:bg-yellow-300/10',
+                    )}
+                  >
+                    <Crown className="h-3 w-3" />
+                    <span className="max-w-[90px] truncate">首席投资官</span>
+                  </button>
+                )}
               </div>
             )}
 
-            {/* 当前角色意见 */}
-            {activeOpinions.map((o, i) => (
+            {/* 当前选中专家意见 */}
+            {activeTab !== '__cio__' && activeOpinions.map((o, i) => (
               <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
             ))}
 
-            {/* 首席最终报告 */}
-            {chief && (
+            {/* 首席投资官 tab 内容 */}
+            {activeTab === '__cio__' && chief && (
               <div className="rounded-xl border border-yellow-300/40 bg-yellow-300/5 p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <Crown className="h-4 w-4 text-yellow-300" />
