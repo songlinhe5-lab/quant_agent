@@ -511,8 +511,10 @@ jobs:
       matrix:
         include:
           # 北京从节点 (VPS_BJ)：全量镜像 :us，DS_CAPABILITIES 运行时隔离为 tushare+akshare+yfinance
+          # 注意: 北京节点 SSH 目标改走 Tailscale 内网 IP (ts-host-secret), 绕开 GFW 对公网 22 的干扰。
           - node: bj
             host-secret: VPS_BJ_HOST
+            ts-host-secret: VPS_BJ_TAILSCALE_IP
             user-secret: VPS_BJ_USER
             port-secret: VPS_BJ_PORT
             key-secret: VPS_BJ_SSH_KEY
@@ -570,10 +572,37 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # ── 接入 Tailscale: 让 GitHub 公共 runner 进入 tailnet,
+      #    使境外 runner 能经 WireGuard 加密隧道直连境内节点的 Tailscale 内网 IP (如北京 100.124.178.96),
+      #    彻底绕开 GFW 对 "境外→境内公网 22" 的握手干扰 (表现为 Connection closed [preauth] / invalid format)。
+      #    仅当配置了 TAILSCALE_OAUTH_SECRET 时启用; 未配置则跳过 (公网直连节点如 S2/S3/S4 不受影响)。
+      - name: Connect Tailscale
+        if: ${{ secrets.TAILSCALE_OAUTH_SECRET != '' }}
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+          tags: tag:ci
+
+      # ── 解析 SSH 目标 host: 若节点配置了 ts-host-secret (如北京走 Tailscale 内网 IP),
+      #    且对应 secret 非空, 则优先用 TS 内网 IP (需 runner 已接入 Tailscale); 否则回退公网 host。
+      - name: Resolve SSH target
+        id: ssh-target
+        run: |
+          TS_HOST="${{ secrets[matrix.ts-host-secret] }}"
+          PUB_HOST="${{ secrets[matrix.host-secret] }}"
+          if [ -n "$TS_HOST" ]; then
+            echo "SSH_TARGET_HOST=$TS_HOST" >> "$GITHUB_ENV"
+            echo "🔗 节点 ${{ matrix.node }} 走 Tailscale 内网 IP: $TS_HOST"
+          else
+            echo "SSH_TARGET_HOST=$PUB_HOST" >> "$GITHUB_ENV"
+            echo "🔗 节点 ${{ matrix.node }} 走公网 IP: $PUB_HOST"
+          fi
+
       - name: Setup SSH
         uses: ./.github/actions/ssh-preflight
         with:
-          host: ${{ secrets[matrix.host-secret] }}
+          host: ${{ env.SSH_TARGET_HOST }}
 
       - name: Stage SSH key
         run: |
@@ -582,7 +611,7 @@ jobs:
 
       - name: Deploy data node ${{ matrix.node }}
         env:
-          VPS_HOST: ${{ secrets[matrix.host-secret] }}
+          VPS_HOST: ${{ env.SSH_TARGET_HOST }}
           VPS_USER: ${{ secrets[matrix.user-secret] }}
           VPS_PORT: ${{ secrets[matrix.port-secret] || '22' }}
           COMPOSE_FILE: ${{ matrix.compose }}
