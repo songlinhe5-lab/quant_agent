@@ -4,10 +4,15 @@ Round 1: 独立研判 (并行) → Round 2: 交叉辩论 (对抗) → Round 3: �
 """
 
 import asyncio
+import json
+import time
 import traceback
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
+
+from pydantic import ValidationError
 
 from backend.services.ai_narrator.llm_service import ModelTier, llm_service
 from backend.services.expert_team.data_collector import (
@@ -28,9 +33,88 @@ from backend.services.expert_team.models import (
 from hermes_agent.tool_registry import ToolRegistry
 
 # ─── 超时配置 ──────────────────────────────────────────────────
-_EXPERT_TIMEOUT = 60.0  # 单个专家超时
+_EXPERT_TIMEOUT = 60.0  # 单个专家超时（真流式下为整段生成的总时限）
 _ROUND_TIMEOUT = 180.0  # 整轮超时
-_STREAM_CHUNK_DELAY = 0.02  # 打字机效果：切片间隔（秒）
+_CHIEF_TIMEOUT = 120.0  # 首席报告更长，单独放宽
+_ROUND_TIMEOUT = 180.0  # 整轮超时（与 _EXPERT_TIMEOUT 叠加，双保险）
+_STREAM_CHUNK_DELAY = 0.02  # 打字机效果：切片间隔（秒），仅降级/占位路径使用；真流式无需人造延迟
+
+
+class _StreamSplitter:
+    """把 LLM 流分为两段：Markdown 研判文本（实时流给前端） + 末尾 ```json 结构化块（累积后解析）。
+
+    专家/首席的输出协议：先自由研判（可流式展示），末尾以 ```json 块给出结构化字段。
+    marker 可能跨 chunk 切开，故未确认前留存尾部候选前缀不先流出。
+    """
+
+    _MARKER = "```json"
+
+    def __init__(self) -> None:
+        self._pending = ""  # marker 前的研判文本缓冲（可能含半个 marker）
+        self._in_json = False
+        self._json_buf = ""
+        self.markdown = ""
+
+    def feed(self, chunk: str) -> str:
+        """喂入增量片段，返回可实时流出的研判文本（可能为空串）"""
+        if self._in_json:
+            self._json_buf += chunk
+            return ""
+        buf = self._pending + chunk
+        idx = buf.find(self._MARKER)
+        if idx >= 0:
+            self._in_json = True
+            prose = buf[:idx]
+            self._json_buf = buf[idx + len(self._MARKER) :]
+            self._pending = ""
+            self.markdown += prose
+            return prose
+        # marker 可能正在跨片段到达：留存尾部可为 marker 前缀的部分，其余先流出。
+        # 从最长前缀开始匹配（含完整 marker），避免短前缀提前命中把 marker 切断
+        hold = 0
+        for k in range(len(self._MARKER), 0, -1):
+            if buf.endswith(self._MARKER[:k]):
+                hold = k
+                break
+        flush, self._pending = buf[: len(buf) - hold], buf[len(buf) - hold :]
+        self.markdown += flush
+        return flush
+
+    def finish(self) -> tuple[str, dict]:
+        """结束：冲刷剩余缓冲，去掉围栏后解析 JSON 块。
+        返回 (完整 Markdown, 结构化字典)；JSON 缺失/非法时字典为空（由调用方降级）。
+        """
+        if self._pending:
+            # 流恰好在 marker 处结束（pending 含半个/完整 marker）：同样切分，不把 marker 泄入正文
+            idx = self._pending.find(self._MARKER)
+            if idx >= 0:
+                self.markdown += self._pending[:idx]
+                self._json_buf += self._pending[idx + len(self._MARKER) :]
+            else:
+                self.markdown += self._pending
+            self._pending = ""
+        raw = self._json_buf.strip()
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
+        if raw.startswith("json"):
+            raw = raw[4:].strip()
+        data: dict = {}
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    data = parsed
+            except json.JSONDecodeError:
+                data = {}
+        return self.markdown.strip(), data
+
+
+@dataclass
+class _WorkerDone:
+    """专家流式任务完成哨兵（携带本轮观点，供调度方归集）"""
+
+    expert_id: str
+    opinion: Optional[ExpertOpinion]
 
 
 class DebateOrchestrator:
@@ -163,6 +247,7 @@ class DebateOrchestrator:
             yield StreamEvent(
                 type="round_complete",
                 message="Round 1 完成",
+                round=1,
                 data={"round": 1, "opinion_count": len(round1_opinions)},
             )
 
@@ -184,6 +269,7 @@ class DebateOrchestrator:
                 yield StreamEvent(
                     type="round_complete",
                     message=f"Round {r} 完成",
+                    round=r,
                     data={"round": r, "opinion_count": len(round_opinions)},
                 )
 
@@ -191,20 +277,8 @@ class DebateOrchestrator:
             session.status = "synthesis"
             yield StreamEvent(type="status", message="首席分析师正在收敛最终报告...")
 
-            chief_report = await self._run_synthesis(session, question, round1_opinions, latest_opinions)
-            session.chief_report = chief_report
-
-            # 切片流式输出首席报告（首片带完整结构化数据，后续片仅增量 content）
-            report_parts = self._split_for_stream(chief_report.full_report or "", max_chunk=120)
-            for i, chunk in enumerate(report_parts):
-                if i > 0:
-                    await asyncio.sleep(_STREAM_CHUNK_DELAY)
-                yield StreamEvent(
-                    type="chief_report",
-                    message="首席分析师报告生成中...",
-                    content=chunk,
-                    data=chief_report.model_dump() if i == 0 else {},
-                )
+            async for ev in self._run_synthesis_stream(session, question, round1_opinions, latest_opinions):
+                yield ev
 
             # ─── 完成 ─────────────────────────────────────────
             session.status = "done"
@@ -287,22 +361,6 @@ class DebateOrchestrator:
         return missing >= 3 or (missing >= 1 and missing / max(shared_text.count("## "), 1) >= 0.5)
 
     @staticmethod
-    async def _generate_with_retry(
-        llm_call,
-        retries: int = 2,
-    ) -> Any:
-        """对 generate_pydantic 加简单重试：JSON 被截断/解析失败时重试，成功即返回。"""
-        last_exc: Exception | None = None
-        for attempt in range(retries + 1):
-            try:
-                return await llm_call()
-            except Exception as e:  # noqa: BLE001
-                last_exc = e
-                if attempt < retries:
-                    await asyncio.sleep(0.6 * (attempt + 1))
-        raise last_exc  # type: ignore[misc]
-
-    @staticmethod
     def _parse_text_fallback(text: str, round_index: int) -> ExpertOpinion:
         """纯文本降级：从 LLM 自由文本中尽力解析 stance/confidence，避免把报错串当观点。
 
@@ -349,7 +407,10 @@ class DebateOrchestrator:
             yield StreamEvent(
                 type="expert_opinion",
                 message=f"{opinion.expert_id} 撰写中 ({i + 1}/{len(parts)})",
-                # 首片附带完整结构化数据 + 完整文本, 后续片仅增量 content
+                # 身份字段每片携带(前端据此将增量片归位到对应专家/轮次);
+                # 首片附带完整结构化数据, 后续片仅增量 content
+                expert_id=opinion.expert_id,
+                round=round_index,
                 content=chunk,
                 data=opinion.model_dump() if i == 0 else {},
             )
@@ -363,49 +424,58 @@ class DebateOrchestrator:
         out_opinions: list[ExpertOpinion],
         prev_opinions: Optional[list[ExpertOpinion]],
     ) -> "AsyncGenerator[StreamEvent, None]":
-        """并行调度本轮所有专家，先完成先流式输出其观点（不等整轮 gather）。
+        """并行调度本轮所有专家，真·token 流边生成边推送（不等整轮也不等整篇）。
 
-        专家完成一个立即流式输出一个，不等整轮结束。
-        round_index == 1 走独立研判；否则走交叉辩论（需传 prev_opinions）。
-        完成顺序追加到 out_opinions（调用方用于持久化与下一轮输入）。
+        每个专家一个 worker：把 _call_expert_roundN 生成的增量事件实时入队，
+        完成后投递 _WorkerDone 哨兵（携带结构化观点）。调度方从队列消费，
+        事件直接透传给上层，哨兵用于归集观点与判定占位。
         """
-        q: "asyncio.Queue[Optional[ExpertOpinion]]" = asyncio.Queue()
+        q: "asyncio.Queue[Any]" = asyncio.Queue()
 
         async def _worker(expert: ExpertRole) -> None:
-            if round_index == 1:
-                opinion = await self._call_expert_round1(expert, question, shared_text)
-            else:
-                opinion = await self._call_expert_round2(expert, question, shared_text, prev_opinions or [])
-            await q.put(opinion)
+            stream = (
+                self._call_expert_round1(expert, question, shared_text)
+                if round_index == 1
+                else self._call_expert_round2(expert, question, shared_text, prev_opinions or [])
+            )
+            opinion: Optional[ExpertOpinion] = None
+            async for ev in stream:
+                await q.put(ev)
+                if ev.data and ev.data.get("expert_id") == expert.id:
+                    opinion = ExpertOpinion.model_validate(ev.data)  # 末帧结构化完成帧
+            await q.put(_WorkerDone(expert.id, opinion))
 
         tasks = [asyncio.create_task(_worker(e)) for e in experts]
         gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
 
         served: set[str] = set()
         deadline = asyncio.get_running_loop().time() + _ROUND_TIMEOUT
+
+        def _consume_item(item: Any) -> Optional[StreamEvent]:
+            """哨兵 → 归集观点；事件 → 透传"""
+            if isinstance(item, _WorkerDone):
+                served.add(item.expert_id)
+                if item.opinion is not None:
+                    out_opinions.append(item.opinion)
+                return None
+            return item
+
         try:
-            # 边等待边消费：任一专家完成立即流出其观点事件
             while not gather_task.done():
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     raise asyncio.TimeoutError()
                 try:
-                    opinion = await asyncio.wait_for(q.get(), timeout=min(remaining, 0.5))
+                    item = await asyncio.wait_for(q.get(), timeout=min(remaining, 0.5))
                 except asyncio.TimeoutError:
                     continue
-                if opinion is not None:
-                    served.add(opinion.expert_id)
-                    out_opinions.append(opinion)
-                    async for ev in self._yield_opinion_stream(opinion, round_index=round_index):
-                        yield ev
-            # gather 结束：消费队列中剩余的观点（超时/异常者可能为 None）
+                ev = _consume_item(item)
+                if ev is not None:
+                    yield ev
+            # gather 结束：消费队列中剩余的事件/哨兵
             while not q.empty():
-                opinion = q.get_nowait()
-                if opinion is None or opinion.expert_id in served:
-                    continue
-                served.add(opinion.expert_id)
-                out_opinions.append(opinion)
-                async for ev in self._yield_opinion_stream(opinion, round_index=round_index):
+                ev = _consume_item(q.get_nowait())
+                if ev is not None:
                     yield ev
         except asyncio.TimeoutError:
             print(f"⚠️ [Orchestrator] Round {round_index} 整轮超时")
@@ -434,8 +504,10 @@ class DebateOrchestrator:
 
     # ─── Round 1: 独立研判 ─────────────────────────────────────
 
-    async def _call_expert_round1(self, expert: ExpertRole, question: str, shared_text: str) -> Optional[ExpertOpinion]:
-        """单个专家的 Round 1 调用"""
+    async def _call_expert_round1(
+        self, expert: ExpertRole, question: str, shared_text: str
+    ) -> "AsyncGenerator[StreamEvent, None]":
+        """单个专家的 Round 1 真流式调用：研判文本实时流出，末尾 JSON 块解析为结构化字段"""
         system_prompt = expert.system_prompt or f"你是{expert.name}，{expert.description}。"
 
         # PERF/FIX: 数据缺失时强制压低置信度，禁止基于行业常识硬给方向性高置信判断
@@ -454,71 +526,117 @@ class DebateOrchestrator:
 ## 共享数据包
 {shared_text}
 
-## 输出要求
-请以 JSON 格式输出你的独立研判：
+## 输出要求（严格遵循，两段式）
+1. 先用 Markdown 输出你的独立研判过程（核心论点、关键依据、逻辑推理、风险提示），这部分会实时流式展示给用户；
+2. 然后另起一行，以 ```json 开头输出一个 JSON 代码块，仅包含以下字段：
 {{
   "stance": "核心观点 (<=200字)",
   "confidence": 0-100的整数,
-  "key_evidence": ["依据1", "依据2", ...],
-  "reasoning": "完整推理过程"
+  "key_evidence": ["依据1", "依据2", ...]
 }}
 {confidence_rule}
 注意：你正在独立研判，看不到其他专家的观点。请基于数据和你的专业视角给出判断。"""
 
+        async for ev in self._stream_expert_opinion(
+            expert, 1, user_prompt, system_prompt, _Round1Output, temperature=0.3, data_missing=data_missing
+        ):
+            yield ev
+
+    async def _stream_expert_opinion(
+        self,
+        expert: ExpertRole,
+        round_index: int,
+        user_prompt: str,
+        system_prompt: str,
+        output_model: type,
+        temperature: float,
+        data_missing: bool,
+    ) -> "AsyncGenerator[StreamEvent, None]":
+        """真流式生成专家观点（round1/round2 共用骨架）。
+
+        研判文本随 LLM token 流实时推给前端（不再是生成完再切片回放）；
+        末尾 ```json 块解析后以“结构化完成帧”（content 为空、携带 data）补全观点/置信度。
+        无论成败至少产出一帧完成帧，保证调度方总能归集到观点。
+        """
+        splitter = _StreamSplitter()
+        deadline = time.monotonic() + _EXPERT_TIMEOUT
+        opinion: Optional[ExpertOpinion] = None
         try:
-            result = await asyncio.wait_for(
-                self._generate_with_retry(
-                    lambda: llm_service.generate_pydantic(
-                        prompt=user_prompt,
-                        response_model=_Round1Output,
-                        system_prompt=system_prompt,
-                        tier=ModelTier.STANDARD,
-                        temperature=0.3,
-                    )
-                ),
-                timeout=_EXPERT_TIMEOUT,
+            async for chunk in llm_service.generate_stream(
+                user_prompt, system_prompt, tier=ModelTier.STANDARD, temperature=temperature
+            ):
+                if time.monotonic() > deadline:
+                    raise asyncio.TimeoutError()
+                prose = splitter.feed(chunk)
+                if prose:
+                    yield StreamEvent(type="expert_opinion", expert_id=expert.id, round=round_index, content=prose)
+            markdown, structured = splitter.finish()
+            opinion = self._assemble_opinion(expert, round_index, markdown, structured, output_model, data_missing)
+        except asyncio.TimeoutError:
+            print(f"⚠️ [Orchestrator] {expert.id} Round{round_index} 流式超时 ({_EXPERT_TIMEOUT}s)")
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ [Orchestrator] {expert.id} Round{round_index} 流式生成失败: {e}")
+            # 已流出部分研判文本时走文本降级提取，不丢弃已展示内容；绝不外泄底层报错
+            markdown, _ = splitter.finish()
+            if markdown.strip():
+                opinion = self._parse_text_fallback(markdown, round_index)
+                opinion.expert_id = expert.id
+                opinion.reasoning = markdown[:2000]
+                if data_missing:
+                    opinion.confidence = min(opinion.confidence, 30)
+        if opinion is None:
+            opinion = ExpertOpinion(
+                expert_id=expert.id,
+                round=round_index,
+                stance="本轮研判超时或异常，未能在时限内产出有效观点。",
+                confidence=0,
             )
-            # 数据缺失时，即便 LLM 违反规则给出高置信，也强制压低到 30
-            conf = min(result.confidence, 30) if data_missing else result.confidence
+        # 结构化完成帧：无增量文本，仅补全结构化字段（前端卡片据此点亮观点/置信度徽章）
+        yield StreamEvent(
+            type="expert_opinion", expert_id=expert.id, round=round_index, content="", data=opinion.model_dump()
+        )
+
+    def _assemble_opinion(
+        self,
+        expert: ExpertRole,
+        round_index: int,
+        markdown: str,
+        structured: dict,
+        output_model: type,
+        data_missing: bool,
+    ) -> ExpertOpinion:
+        """合并流式结果：末尾 JSON 块校验成结构化字段；缺失/非法时从已流文本提取保守字段。"""
+        parsed = None
+        if structured:
+            try:
+                parsed = output_model.model_validate(structured)
+            except ValidationError:
+                parsed = None
+        if parsed is not None and parsed.stance.strip():
+            conf = parsed.confidence
+            delta = getattr(parsed, "confidence_delta", 0) or 0
+            # 数据缺失时即便 LLM 违反规则，也强制压低置信度且禁止上调
+            if data_missing:
+                conf = min(conf, 30)
+                delta = min(delta, 0)
             return ExpertOpinion(
                 expert_id=expert.id,
-                round=1,
-                stance=result.stance,
+                round=round_index,
+                stance=parsed.stance,
                 confidence=conf,
-                key_evidence=result.key_evidence,
-                reasoning=result.reasoning,
+                key_evidence=parsed.key_evidence,
+                reasoning=markdown[:4000],
+                challenges=getattr(parsed, "challenges", []) or [],
+                confidence_delta=delta,
+                revised_stance=getattr(parsed, "revised_stance", "") or "",
             )
-        except asyncio.TimeoutError:
-            print(f"⚠️ [Orchestrator] {expert.id} Round1 超时 ({_EXPERT_TIMEOUT}s)")
-            return None
-        except Exception as e:
-            print(f"⚠️ [Orchestrator] {expert.id} Round1 结构化失败，降级为纯文本: {e}")
-            # P0: 结构化校验失败 → 纯文本降级，避免把报错串当观点
-            try:
-                raw = await asyncio.wait_for(
-                    llm_service.generate(
-                        user_prompt=user_prompt,
-                        system_prompt=system_prompt,
-                        tier=ModelTier.STANDARD,
-                        temperature=0.3,
-                    ),
-                    timeout=_EXPERT_TIMEOUT,
-                )
-                fallback = self._parse_text_fallback(raw or "", 1)
-                fallback.expert_id = expert.id
-                if data_missing:
-                    fallback.confidence = min(fallback.confidence, 30)
-                return fallback
-            except Exception as e2:  # noqa: BLE001
-                print(f"⚠️ [Orchestrator] {expert.id} Round1 纯文本降级也失败: {e2}")
-                # 返回明确"无法判断"，绝不外泄底层报错
-                return ExpertOpinion(
-                    expert_id=expert.id,
-                    round=1,
-                    stance="数据不可用且模型输出异常，本轮无法形成有效研判。",
-                    confidence=0,
-                    reasoning="",
-                )
+        # JSON 块缺失/非法 → 从已流文本正则提取保守字段（置信度 0 + 明确无法判断）
+        fallback = self._parse_text_fallback(markdown, round_index)
+        fallback.expert_id = expert.id
+        fallback.reasoning = markdown[:4000] if markdown else fallback.reasoning
+        if data_missing:
+            fallback.confidence = min(fallback.confidence, 30)
+        return fallback
 
     # ─── Round 2: 交叉辩论 ─────────────────────────────────────
 
@@ -528,8 +646,8 @@ class DebateOrchestrator:
         question: str,
         shared_text: str,
         round1_opinions: list[ExpertOpinion],
-    ) -> Optional[ExpertOpinion]:
-        """单个专家的 Round 2 调用"""
+    ) -> "AsyncGenerator[StreamEvent, None]":
+        """单个专家的 Round 2 真流式调用：交叉辩论过程实时流出，末尾 JSON 块补全结构化字段"""
         system_prompt = expert.system_prompt or f"你是{expert.name}，{expert.description}。"
 
         # 自己的 Round 1 输出
@@ -570,93 +688,46 @@ class DebateOrchestrator:
 ### 其他专家的 Round 1 观点
 {others_text}
 
-## 输出要求
+## 输出要求（严格遵循，两段式）
 现在进入交叉辩论环节。请：
-1. 审视其他专家的观点，找出逻辑漏洞或被忽略的风险
-2. 反思自己的判断是否需要修正
-3. 以 JSON 格式输出：
+1. 审视其他专家的观点，找出逻辑漏洞或被忽略的风险；
+2. 反思自己的判断是否需要修正；
+3. 先用 Markdown 输出你的辩论与反思过程（对他方观点的审视、自我反思、修正/坚持的依据），这部分会实时流式展示给用户；
+4. 然后另起一行，以 ```json 开头输出一个 JSON 代码块，仅包含以下字段：
 {{
   "stance": "修正后的核心观点 (<=200字)",
   "confidence": 0-100的整数,
   "key_evidence": ["依据1", "依据2", ...],
-  "reasoning": "修正/坚持的推理过程",
   "challenges": ["对专家X的质疑: ...", ...],
   "confidence_delta": 置信度变化整数(如+5或-10),
   "revised_stance": "如果修正了观点，写修正后的观点；如果坚持，重复stance"
 }}
 {confidence_rule}"""
 
-        try:
-            result = await asyncio.wait_for(
-                self._generate_with_retry(
-                    lambda: llm_service.generate_pydantic(
-                        prompt=user_prompt,
-                        response_model=_Round2Output,
-                        system_prompt=system_prompt,
-                        tier=ModelTier.STANDARD,
-                        temperature=0.4,
-                    )
-                ),
-                timeout=_EXPERT_TIMEOUT,
-            )
-            # 数据缺失时：置信度强制 ≤30，且不允许上调（confidence_delta 截为 ≤0）
-            conf = result.confidence
-            conf_delta = result.confidence_delta
-            if data_missing:
-                conf = min(conf, 30)
-                conf_delta = min(conf_delta, 0)
-            return ExpertOpinion(
-                expert_id=expert.id,
-                round=2,
-                stance=result.stance,
-                confidence=conf,
-                key_evidence=result.key_evidence,
-                reasoning=result.reasoning,
-                challenges=result.challenges,
-                confidence_delta=conf_delta,
-                revised_stance=result.revised_stance,
-            )
-        except asyncio.TimeoutError:
-            print(f"⚠️ [Orchestrator] {expert.id} Round2 超时 ({_EXPERT_TIMEOUT}s)")
-            return None
-        except Exception as e:
-            print(f"⚠️ [Orchestrator] {expert.id} Round2 结构化失败，降级为纯文本: {e}")
-            # P0: 结构化校验失败 → 纯文本降级，避免把报错串当观点
-            try:
-                raw = await asyncio.wait_for(
-                    llm_service.generate(
-                        user_prompt=user_prompt,
-                        system_prompt=system_prompt,
-                        tier=ModelTier.STANDARD,
-                        temperature=0.4,
-                    ),
-                    timeout=_EXPERT_TIMEOUT,
-                )
-                fallback = self._parse_text_fallback(raw or "", 2)
-                fallback.expert_id = expert.id
-                if data_missing:
-                    fallback.confidence = min(fallback.confidence, 30)
-                return fallback
-            except Exception as e2:  # noqa: BLE001
-                print(f"⚠️ [Orchestrator] {expert.id} Round2 纯文本降级也失败: {e2}")
-                return ExpertOpinion(
-                    expert_id=expert.id,
-                    round=2,
-                    stance="数据不可用且模型输出异常，本轮无法形成有效研判。",
-                    confidence=0,
-                    reasoning="",
-                )
+        async for ev in self._stream_expert_opinion(
+            expert,
+            round_index=2,
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            output_model=_Round2Output,
+            temperature=0.4,
+            data_missing=data_missing,
+        ):
+            yield ev
 
     # ─── Round 3: 首席收敛 ─────────────────────────────────────
 
-    async def _run_synthesis(
+    async def _run_synthesis_stream(
         self,
         session: DebateSession,
         question: str,
         round1_opinions: list[ExpertOpinion],
         round2_opinions: list[ExpertOpinion],
-    ) -> ChiefReport:
-        """首席分析师综合所有辩论内容，生成最终报告"""
+    ) -> "AsyncGenerator[StreamEvent, None]":
+        """首席分析师真流式收敛：完整报告随 token 流实时推给前端，末尾 JSON 块补全结构化字段。
+
+        首席收敛必须降级，绝不能抛异常中断整个辩论 SSE 流。
+        """
         # 组装全部辩论记录
         debate_text_parts: list[str] = []
 
@@ -702,8 +773,10 @@ class DebateOrchestrator:
 ## 完整辩论记录
 {debate_text}
 
-## 输出要求
-作为首席分析师，请综合所有专家的研判和辩论，输出最终收敛报告。JSON 格式：
+## 输出要求（严格遵循，两段式）
+作为首席分析师，请综合所有专家的研判和辩论，输出最终收敛报告：
+1. 先用 Markdown 输出完整收敛报告（共识与分歧梳理、各方论据权衡、概率评估与理由、最终建议、风险提示），这部分会实时流式展示给用户；
+2. 然后另起一行，以 ```json 开头输出一个 JSON 代码块，仅包含以下字段：
 {{
   "consensus_areas": ["共识点1", "共识点2", ...],
   "divergence_areas": ["分歧点1", "分歧点2", ...],
@@ -712,8 +785,7 @@ class DebateOrchestrator:
   "probability_assessment": 0-100的看涨/正面概率整数,
   "final_recommendation": "最终建议 (<=300字)",
   "risk_warnings": ["风险提示1", "风险提示2", ...],
-  "minority_opinion": "少数派意见保留 (如有)",
-  "full_report": "完整 Markdown 格式报告"
+  "minority_opinion": "少数派意见保留 (如有)"
 }}
 {probability_rule}"""
 
@@ -723,71 +795,58 @@ class DebateOrchestrator:
             "你的判断应当客观、全面，既尊重多数派共识，也保留有价值的少数派意见。"
         )
 
+        splitter = _StreamSplitter()
+        deadline = time.monotonic() + _CHIEF_TIMEOUT
+        report: Optional[ChiefReport] = None
         try:
-            result = await asyncio.wait_for(
-                self._generate_with_retry(
-                    lambda: llm_service.generate_pydantic(
-                        prompt=user_prompt,
-                        response_model=ChiefReport,
-                        system_prompt=chief_system,
-                        tier=ModelTier.FLAGSHIP,
-                        temperature=0.2,
-                    )
-                ),
-                timeout=_EXPERT_TIMEOUT,
-            )
-            # 数据缺失时兜底：即便 LLM 违反规则，也把概率收敛到 40-60 不确定区间
-            if data_missing and result.probability_assessment is not None:
-                result.probability_assessment = min(max(result.probability_assessment, 40), 60)
-            return result
+            async for chunk in llm_service.generate_stream(
+                user_prompt, chief_system, tier=ModelTier.FLAGSHIP, temperature=0.2
+            ):
+                if time.monotonic() > deadline:
+                    raise asyncio.TimeoutError()
+                prose = splitter.feed(chunk)
+                if prose:
+                    yield StreamEvent(type="chief_report", message="首席分析师报告生成中...", content=prose)
+            markdown, structured = splitter.finish()
+            report = self._assemble_chief_report(markdown, structured, data_missing)
         except Exception as e:  # noqa: BLE001
-            # FIX: 首席收敛必须降级，绝不能抛异常中断整个辩论 SSE 流（前端会显示"辩论流程异常"）。
-            print(f"⚠️ [Orchestrator] 首席收敛结构化失败，降级为纯文本: {e}")
-            try:
-                raw = await asyncio.wait_for(
-                    llm_service.generate(
-                        user_prompt=user_prompt,
-                        system_prompt=chief_system,
-                        tier=ModelTier.FLAGSHIP,
-                        temperature=0.2,
-                    ),
-                    timeout=_EXPERT_TIMEOUT,
+            print(f"⚠️ [Orchestrator] 首席收敛流式失败，降级: {e}")
+            # 中途失败保留已流出文本作为报告主体，仍不中断流程、不外泄报错
+            markdown, structured = splitter.finish()
+            report = self._assemble_chief_report(markdown, structured, data_missing) if markdown.strip() else None
+            if report is None:
+                report = ChiefReport(
+                    probability_assessment=50,
+                    final_recommendation="首席收敛报告生成异常，无法给出明确结论，建议稍后重试。",
+                    full_report="> ⚠️ 首席收敛报告生成异常，本轮无法完成最终研判。请稍后重试。",
+                    risk_warnings=["模型输出异常，未能生成完整收敛报告"],
                 )
-                text = (raw or "").strip()
-                if text:
-                    # 尽力从纯文本解析关键字段；解析不到就用整段作为 full_report
-                    import re as _re
+        session.chief_report = report
+        # 结构化完成帧：无增量文本，仅补全结构化字段（前端据此渲染概率/共识/分歧卡片）
+        yield StreamEvent(type="chief_report", content="", data=report.model_dump())
 
-                    m_prob = _re.search(r"(\d{1,3})\s*%", text)
-                    prob = int(m_prob.group(1)) if m_prob else 50
-                    prob = min(max(prob, 0), 100)
-                    if data_missing:
-                        prob = min(max(prob, 40), 60)
-                    return ChiefReport(
-                        probability_assessment=prob,
-                        final_recommendation=text[:300],
-                        full_report=text,
-                        risk_warnings=[],
-                        minority_opinion="",
-                        consensus_areas=[],
-                        divergence_areas=[],
-                        strongest_bull_case="",
-                        strongest_bear_case="",
-                    )
-            except Exception as e2:  # noqa: BLE001
-                print(f"⚠️ [Orchestrator] 首席收敛纯文本降级也失败: {e2}")
-            # 最终兜底：返回明确"收敛失败"的最简报告，仍不中断流程
-            return ChiefReport(
-                probability_assessment=50,
-                final_recommendation="首席收敛报告生成异常，无法给出明确结论，建议稍后重试。",
-                full_report="> ⚠️ 首席收敛报告生成异常，本轮无法完成最终研判。请稍后重试。",
-                risk_warnings=["模型输出异常，未能生成完整收敛报告"],
-                minority_opinion="",
-                consensus_areas=[],
-                divergence_areas=[],
-                strongest_bull_case="",
-                strongest_bear_case="",
-            )
+    def _assemble_chief_report(self, markdown: str, structured: dict, data_missing: bool) -> ChiefReport:
+        """合并首席流式结果：末尾 JSON 块校验成结构化字段，流式 Markdown 作为 full_report。"""
+        report: Optional[ChiefReport] = None
+        if structured:
+            structured.pop("full_report", None)
+            try:
+                report = ChiefReport.model_validate(structured)
+            except ValidationError:
+                report = None
+        if report is None:
+            # JSON 块缺失/非法：尽力从文本提取概率，整段作为报告主体
+            import re as _re
+
+            m_prob = _re.search(r"(\d{1,3})\s*%", markdown)
+            prob = int(m_prob.group(1)) if m_prob else 50
+            prob = min(max(prob, 0), 100)
+            report = ChiefReport(probability_assessment=prob, final_recommendation=markdown[:300])
+        report.full_report = markdown or report.full_report
+        # 数据缺失时兜底：概率收敛到 40-60 不确定区间，避免伪精确
+        if data_missing and report.probability_assessment is not None:
+            report.probability_assessment = min(max(report.probability_assessment, 40), 60)
+        return report
 
 
 # ─── LLM 结构化输出中间模型 ────────────────────────────────────

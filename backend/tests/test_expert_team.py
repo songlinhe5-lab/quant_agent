@@ -28,7 +28,35 @@ from backend.services.expert_team.models import (
     ScenarioTemplate,
     StreamEvent,
 )
-from backend.services.expert_team.orchestrator import DebateOrchestrator
+from backend.services.expert_team.orchestrator import DebateOrchestrator, _StreamSplitter
+
+
+def _stream_fn(text: str):
+    """构造 generate_stream mock：把文本切小段逐段 yield，模拟真实 token 流"""
+
+    async def _gen(*args, **kwargs):
+        for i in range(0, len(text), 7):
+            yield text[i : i + 7]
+
+    return _gen
+
+
+# 真流式协议样本：Markdown 研判文本 + 末尾 ```json 结构化块（与 orchestrator prompt 约定一致）
+_R1_STREAM_TEXT = (
+    '基本面优秀，ROE 持续高位。\n```json\n{"stance": "看多", "confidence": 70, "key_evidence": ["ROE 持续 >20%"]}\n```'
+)
+_R2_STREAM_TEXT = (
+    "辩论后维持判断。\n```json\n"
+    '{"stance": "维持看多", "confidence": 72, "key_evidence": ["ROE 持续 >20%"], '
+    '"challenges": ["风控官过度悲观"], "confidence_delta": 2, "revised_stance": "维持看多"}\n```'
+)
+_CHIEF_STREAM_TEXT = (
+    "# 报告\n测试\n```json\n"
+    '{"consensus_areas": ["基本面优秀"], "divergence_areas": ["短期估值"], '
+    '"strongest_bull_case": "ROE >20%", "strongest_bear_case": "估值偏高", '
+    '"probability_assessment": 65, "final_recommendation": "逢低买入", '
+    '"risk_warnings": ["估值回调风险"], "minority_opinion": "风控官建议观望"}\n```'
+)
 
 
 @pytest.fixture(autouse=True)
@@ -144,10 +172,10 @@ class TestExpertRegistry:
     """专家注册表测试"""
 
     def test_registry_has_all_experts(self):
-        assert len(EXPERT_REGISTRY) == 17
-        # 金融域 13 个
+        assert len(EXPERT_REGISTRY) == 21
+        # 金融域 17 个
         finance_experts = [e for e in EXPERT_REGISTRY.values() if e.domain == "finance"]
-        assert len(finance_experts) == 13
+        assert len(finance_experts) == 17
         # 代码域 4 个
         code_experts = [e for e in EXPERT_REGISTRY.values() if e.domain == "code"]
         assert len(code_experts) == 4
@@ -164,7 +192,7 @@ class TestExpertRegistry:
     def test_get_scenario_valid(self):
         scenario = get_scenario("financial_research")
         assert scenario.name == "金融投研"
-        assert len(scenario.expert_ids) == 5
+        assert len(scenario.expert_ids) == 7
 
     def test_get_scenario_invalid(self):
         with pytest.raises(ValueError, match="未知场景"):
@@ -172,16 +200,19 @@ class TestExpertRegistry:
 
     def test_list_scenarios(self):
         scenarios = list_scenarios()
-        assert len(scenarios) == 4
+        assert len(scenarios) == 7
         ids = [s.id for s in scenarios]
         assert "financial_research" in ids
         assert "code_review" in ids
         assert "full_investment" in ids
         assert "trading_decision" in ids
+        assert "earnings_watch" in ids
+        assert "macro_allocation" in ids
+        assert "event_special" in ids
 
     def test_instantiate_expert_team_finance(self):
         team = instantiate_expert_team("financial_research")
-        assert len(team) == 5
+        assert len(team) == 7
         ids = [e.id for e in team]
         assert "fundamental_analyst" in ids
         assert "risk_officer" in ids
@@ -195,12 +226,48 @@ class TestExpertRegistry:
 
     def test_instantiate_full_investment_team(self):
         team = instantiate_expert_team("full_investment")
-        assert len(team) == 11
+        assert len(team) == 17
         ids = [e.id for e in team]
         assert "chief_investment_officer" in ids
         assert "trade_executor" in ids
         assert "portfolio_risk_manager" in ids
         assert "news_analyst" in ids
+        assert "macro_strategist" in ids
+        assert "valuation_expert" in ids
+        assert "event_driven_analyst" in ids
+        assert "options_strategist" in ids
+        assert "fixed_income_strategist" in ids
+        assert "esg_analyst" in ids
+
+    def test_instantiate_earnings_watch_team(self):
+        team = instantiate_expert_team("earnings_watch")
+        assert len(team) == 6
+        ids = [e.id for e in team]
+        assert "event_driven_analyst" in ids
+        assert "fundamental_analyst" in ids
+        assert "risk_officer" in ids
+
+    def test_instantiate_macro_allocation_team(self):
+        """宏观资产配置：无需个股数据的跨资产场景"""
+        template = get_scenario("macro_allocation")
+        # 数据需求均为市场级（无需个股 ticker；market_review 按市场维度采集）
+        from backend.services.expert_team.data_collector import _DATA_COLLECTORS
+
+        for req in template.data_requirements:
+            assert _DATA_COLLECTORS[req]["param_key"] != "ticker", f"{req} 需要 ticker，不符合跨资产场景定位"
+        team = instantiate_expert_team("macro_allocation")
+        assert len(team) == 6
+        ids = [e.id for e in team]
+        assert "fixed_income_strategist" in ids
+        assert "chief_investment_officer" in ids
+
+    def test_instantiate_event_special_team(self):
+        team = instantiate_expert_team("event_special")
+        assert len(team) == 7
+        ids = [e.id for e in team]
+        assert "event_driven_analyst" in ids
+        assert "options_strategist" in ids
+        assert "trade_executor" in ids
 
     def test_instantiate_trading_decision_team(self):
         team = instantiate_expert_team("trading_decision")
@@ -222,6 +289,20 @@ class TestExpertRegistry:
         expert = get_expert("fundamental_analyst")
         # prompt 文件存在时应加载成功
         assert "基本面" in expert.system_prompt or expert.system_prompt == ""
+
+    def test_event_driven_analyst_prompt_loading(self):
+        """新增角色：事件驱动分析师的 prompt 文件应可加载"""
+        expert = get_expert("event_driven_analyst")
+        assert expert.name == "事件驱动分析师"
+        assert "催化" in expert.system_prompt
+
+    def test_all_finance_experts_have_prompt(self):
+        """回归：每个金融专家都必须有可加载的 prompt 文件（防新增角色忘建 prompt）"""
+        for eid, role in EXPERT_REGISTRY.items():
+            if role.domain != "finance":
+                continue
+            expert = get_expert(eid)
+            assert expert.system_prompt, f"金融专家 {eid} 缺少 prompt 文件"
 
 
 # ─── data_collector.py 测试 ────────────────────────────────────
@@ -330,36 +411,12 @@ class TestOrchestrator:
         """完整辩论流应产生正确的事件序列"""
         orchestrator = DebateOrchestrator(tool_registry=None)
 
-        # Mock LLM 调用
-        mock_r1 = MagicMock()
-        mock_r1.stance = "看多"
-        mock_r1.confidence = 70
-        mock_r1.key_evidence = ["ROE 持续 >20%"]
-        mock_r1.reasoning = "基本面优秀"
-
-        mock_r2 = MagicMock()
-        mock_r2.stance = "维持看多"
-        mock_r2.confidence = 72
-        mock_r2.key_evidence = ["ROE 持续 >20%"]
-        mock_r2.reasoning = "辩论后维持"
-        mock_r2.challenges = ["风控官过度悲观"]
-        mock_r2.confidence_delta = 2
-        mock_r2.revised_stance = "维持看多"
-
-        mock_chief = ChiefReport(
-            consensus_areas=["基本面优秀"],
-            divergence_areas=["短期估值"],
-            strongest_bull_case="ROE >20%",
-            strongest_bear_case="估值偏高",
-            probability_assessment=65,
-            final_recommendation="逢低买入",
-            risk_warnings=["估值回调风险"],
-            minority_opinion="风控官建议观望",
-            full_report="# 报告\n测试",
-        )
-
         with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
-            mock_llm.generate_pydantic = AsyncMock(side_effect=[mock_r1] * 5 + [mock_r2] * 5 + [mock_chief])
+            mock_llm.generate_stream = MagicMock(
+                side_effect=[_stream_fn(_R1_STREAM_TEXT)] * 5
+                + [_stream_fn(_R2_STREAM_TEXT)] * 5
+                + [_stream_fn(_CHIEF_STREAM_TEXT)]
+            )
 
             events = []
             async for event in orchestrator.run_debate_stream(
@@ -406,7 +463,7 @@ class TestExpertTeamService:
 
         service = ExpertTeamService()
         scenarios = service.get_scenarios()
-        assert len(scenarios) == 4
+        assert len(scenarios) == 7
 
     @pytest.mark.asyncio
     async def test_get_sessions_empty(self):
@@ -537,7 +594,7 @@ class TestExpertTeamRouter:
         # API 响应有统一包装 {code, msg, data}
         payload = data.get("data", data)
         assert "scenarios" in payload
-        assert len(payload["scenarios"]) == 4
+        assert len(payload["scenarios"]) == 7
 
     @pytest.mark.slow
     def test_list_sessions_endpoint(self, client, auth_headers):
@@ -651,25 +708,106 @@ class TestOrchestratorDebateExtensions:
         assert joined == DebateOrchestrator._opinion_to_text(op)
 
     @pytest.mark.asyncio
+    async def test_yield_opinion_stream_carries_identity_every_chunk(self):
+        """回归：每片均携带顶层 expert_id/round，否则前端增量片无法归位到对应专家（全部 R0）"""
+        op = self._make_opinion()
+        orch = DebateOrchestrator()
+        events = [ev async for ev in orch._yield_opinion_stream(op, round_index=2)]
+        assert len(events) > 1
+        for ev in events:
+            assert ev.expert_id == op.expert_id
+            assert ev.round == 2
+
+    # ─── 真流式协议测试（研判文本实时流出 + 末尾 JSON 补全结构化字段）───
+
+    def test_stream_splitter_separates_markdown_and_json(self):
+        """```json 之前的研判文本实时流出，JSON 块不外泄、结束时可解析"""
+        s = _StreamSplitter()
+        text = '分析文本一。\n```json\n{"stance": "看多"}\n```'
+        out = "".join(s.feed(text[i : i + 5]) for i in range(0, len(text), 5))
+        md, data = s.finish()
+        assert out == "分析文本一。\n"  # JSON 块不会流给前端
+        assert md == "分析文本一。"
+        assert data == {"stance": "看多"}
+
+    def test_stream_splitter_marker_split_across_chunks(self):
+        """回归：marker 跨 chunk 切开时不得丢失或提前外泄"""
+        s = _StreamSplitter()
+        out = "".join(s.feed(c) for c in "前半段分析")
+        out += "".join(s.feed(c) for c in '\n```json\n{"a": 1}\n```')
+        md, data = s.finish()
+        assert md == "前半段分析"
+        assert data == {"a": 1}
+        assert "json" not in out  # 片段到达时不提前外泄 marker
+
+    def test_stream_splitter_no_json_block(self):
+        """LLM 未遵守两段式格式：全部当研判文本，结构化为空（由调用方降级）"""
+        s = _StreamSplitter()
+        s.feed("只有研判文本，没有结构化块。")
+        md, data = s.finish()
+        assert md == "只有研判文本，没有结构化块。"
+        assert data == {}
+
+    @pytest.mark.asyncio
+    async def test_expert_stream_delta_and_completion_frames(self):
+        """真流式协议：增量帧仅带文本不带 data，末帧（完成帧）content 为空、携带结构化 data"""
+        orch = DebateOrchestrator()
+        expert = get_expert("fundamental_analyst")
+
+        async def fake_stream(*args, **kwargs):
+            yield "基本面强劲，"
+            yield "ROE 稳健。\n```j"
+            yield 'son\n{"stance": "看多", "confidence": 70, "key_evidence": ["ROE>20%"]}\n```'
+
+        with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
+            mock_llm.generate_stream = fake_stream
+            events = [ev async for ev in orch._call_expert_round1(expert, "AAPL?", "## 数据\n" + "有效内容。" * 20)]
+
+        deltas = [e for e in events if e.content]
+        final = events[-1]
+        assert deltas and all(e.expert_id == expert.id and e.round == 1 for e in events)
+        assert all(not e.data for e in deltas)  # 增量帧不带结构化数据
+        assert "".join(e.content for e in deltas) == "基本面强劲，ROE 稳健。\n"
+        assert final.content == ""
+        assert final.data.get("stance") == "看多"
+        assert final.data.get("confidence") == 70
+        assert final.data.get("reasoning", "").startswith("基本面强劲")
+
+    @pytest.mark.asyncio
+    async def test_chief_stream_yields_completion_frame(self):
+        """首席收敛真流式：报告增量流出，完成帧携带结构化数据并写入 session"""
+        orch = DebateOrchestrator()
+        sess = DebateSession(session_id="s", scenario="financial_research", question="q")
+        chief_text = (
+            "# 最终报告\n看涨概率 55%。\n```json\n"
+            '{"consensus_areas": ["c1"], "divergence_areas": ["d1"], "probability_assessment": 55, '
+            '"final_recommendation": "逢低买入"}\n```'
+        )
+        op = self._make_opinion()
+        with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
+            mock_llm.generate_stream = _stream_fn(chief_text)
+            events = [ev async for ev in orch._run_synthesis_stream(sess, "q", [op], [op])]
+
+        deltas = [e for e in events if e.content]
+        final = events[-1]
+        assert deltas and all(e.type == "chief_report" for e in events)
+        assert final.content == ""
+        assert final.data.get("probability_assessment") == 55
+        assert sess.chief_report is not None
+        assert sess.chief_report.full_report.startswith("# 最终报告")
+
+    @pytest.mark.asyncio
     async def test_debate_stream_multi_round(self):
         """rounds=3 应触发 Round1 + Round2 + Round3 三轮辩论"""
         orch = DebateOrchestrator(tool_registry=None)
-        mock_r1 = MagicMock(stance="看多", confidence=70, key_evidence=["e1"], reasoning="r1")
-        mock_r2 = MagicMock(
-            stance="维持",
-            confidence=72,
-            key_evidence=["e1"],
-            reasoning="r2",
-            challenges=["c1"],
-            confidence_delta=2,
-            revised_stance="维持",
-        )
-        mock_chief = ChiefReport(full_report="# 报告")
 
         with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
             # 5 专家 * 3 轮 + 1 首席
-            mock_llm.generate_pydantic = AsyncMock(
-                side_effect=[mock_r1] * 5 + [mock_r2] * 5 + [mock_r2] * 5 + [mock_chief]
+            mock_llm.generate_stream = MagicMock(
+                side_effect=[_stream_fn(_R1_STREAM_TEXT)] * 5
+                + [_stream_fn(_R2_STREAM_TEXT)] * 5
+                + [_stream_fn(_R2_STREAM_TEXT)] * 5
+                + [_stream_fn(_CHIEF_STREAM_TEXT)]
             )
             rounds_seen = []
             async for event in orch.run_debate_stream(
@@ -686,11 +824,13 @@ class TestOrchestratorDebateExtensions:
     async def test_debate_stream_custom_expert_ids(self):
         """expert_ids 自定义阵容应覆盖场景默认, 并用 get_expert 实例化"""
         orch = DebateOrchestrator(tool_registry=None)
-        mock_op = MagicMock(stance="自定义观点", confidence=60, key_evidence=["e"], reasoning="r")
-        mock_chief = ChiefReport(full_report="# 报告")
 
         with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
-            mock_llm.generate_pydantic = AsyncMock(side_effect=[mock_op] * 2 + [mock_op] * 2 + [mock_chief])
+            mock_llm.generate_stream = MagicMock(
+                side_effect=[_stream_fn(_R1_STREAM_TEXT)] * 2
+                + [_stream_fn(_R2_STREAM_TEXT)] * 2
+                + [_stream_fn(_CHIEF_STREAM_TEXT)]
+            )
             seen_experts = []
             async for event in orch.run_debate_stream(
                 scenario_id="financial_research",

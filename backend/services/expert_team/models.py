@@ -127,3 +127,7 @@ class StreamEvent(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
     content: str = ""  # 可选: 整段文本 (专家观点/首席报告的人读摘要, 供前端流式渲染)
+    # 观点事件身份字段: 每片均携带(不只首片), 前端据此将增量片归位到对应专家/轮次;
+    # 仅放在 data 里会导致后续增量片无法归位(首片之后 data 为空对象)
+    expert_id: Optional[str] = None
+    round: Optional[int] = None

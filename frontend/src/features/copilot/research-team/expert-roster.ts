@@ -33,6 +33,10 @@ const _E: ExpertProfile[] = [
   { id: 'industry_analyst', name: '行业分析师', team: 'analyst', bias: 'neutral', glyph: '行', accent: 'text-cyan-400 border-cyan-400/40', description: '行业格局、竞争态势、市场空间、产业链地位' },
   { id: 'sentiment_analyst', name: '情绪分析师', team: 'analyst', bias: 'neutral', glyph: '情', accent: 'text-fuchsia-400 border-fuchsia-400/40', description: '市场情绪指标、资金流向、持仓结构、散户/机构行为' },
   { id: 'news_analyst', name: '新闻分析师', team: 'analyst', bias: 'neutral', glyph: '闻', accent: 'text-teal-400 border-teal-400/40', description: '新闻质量评估、信号噪音分离、叙事转变识别' },
+  { id: 'event_driven_analyst', name: '事件驱动分析师', team: 'analyst', bias: 'neutral', glyph: '事', accent: 'text-orange-300 border-orange-300/40', description: '并购重组、财报预期差、政策催化、催化剂日历与定价充分性' },
+  { id: 'options_strategist', name: '期权策略师', team: 'analyst', bias: 'neutral', glyph: '期', accent: 'text-sky-300 border-sky-300/40', description: '隐含波动率、PCR、期限结构、期权组合策略与尾部保护' },
+  { id: 'fixed_income_strategist', name: '固收策略师', team: 'analyst', bias: 'neutral', glyph: '债', accent: 'text-emerald-300 border-emerald-300/40', description: '利率曲线、信用利差、股债性价比、跨资产轮动信号' },
+  { id: 'esg_analyst', name: 'ESG/治理分析师', team: 'analyst', bias: 'neutral', glyph: '治', accent: 'text-green-300 border-green-300/40', description: 'ESG 评级、公司治理质量、监管合规风险与可持续溢价' },
   // 🔬 研究员团队
   { id: 'industry_researcher', name: '产业研究员', team: 'researcher', bias: 'neutral', glyph: '产', accent: 'text-emerald-400 border-emerald-400/40', description: '产业链上下游、竞争壁垒(护城河)、技术路线、行业拐点' },
   { id: 'quant_researcher', name: '量化研究员', team: 'researcher', bias: 'neutral', glyph: '量', accent: 'text-lime-400 border-lime-400/40', description: '因子有效性、统计套利、回测验证、信号衰减' },
@@ -63,12 +67,62 @@ export const TEAM_GROUPS: TeamGroup[] = [
   { key: 'code', name: '💻 代码域', members: _E.filter((e) => e.team === 'code') },
 ]
 
-export const SCENARIOS: { id: string; name: string; domain: string; desc: string }[] = [
-  { id: 'financial_research', name: '金融投研', domain: 'finance', desc: '多专家金融视角研判（默认 12 人团）' },
-  { id: 'full_investment', name: '完整投决会', domain: 'finance', desc: '含风控与首席的全流程投资决策' },
-  { id: 'trade_decision', name: '交易决策', domain: 'finance', desc: '聚焦择时、仓位与执行' },
-  { id: 'code_review', name: '代码审查', domain: 'code', desc: '架构/安全/性能/可维护性多视角' },
+export const SCENARIOS: { id: string; name: string; domain: string; desc: string; expertIds: string[] }[] = [
+  {
+    id: 'financial_research',
+    name: '金融投研',
+    domain: 'finance',
+    desc: '基本面/技术/宏观/估值/行业/新闻/风控 7 人标准研判',
+    expertIds: ['fundamental_analyst', 'technical_analyst', 'macro_strategist', 'valuation_expert', 'industry_analyst', 'news_analyst', 'risk_officer'],
+  },
+  {
+    id: 'full_investment',
+    name: '完整投决会',
+    domain: 'finance',
+    desc: '分析师+研究员+交易员+风控+首席 17 人全链路投决',
+    expertIds: ['fundamental_analyst', 'technical_analyst', 'macro_strategist', 'valuation_expert', 'industry_analyst', 'sentiment_analyst', 'news_analyst', 'event_driven_analyst', 'options_strategist', 'fixed_income_strategist', 'esg_analyst', 'industry_researcher', 'quant_researcher', 'trade_executor', 'risk_officer', 'portfolio_risk_manager', 'chief_investment_officer'],
+  },
+  {
+    id: 'earnings_watch',
+    name: '财报季快评',
+    domain: 'finance',
+    desc: '财报预期差、催化与风险、财报后走势推演',
+    expertIds: ['fundamental_analyst', 'event_driven_analyst', 'valuation_expert', 'technical_analyst', 'news_analyst', 'risk_officer'],
+  },
+  {
+    id: 'macro_allocation',
+    name: '宏观资产配置',
+    domain: 'finance',
+    desc: '跨资产配置：宏观周期+利率+情绪+风控+首席（无需个股）',
+    expertIds: ['macro_strategist', 'fixed_income_strategist', 'sentiment_analyst', 'quant_researcher', 'portfolio_risk_manager', 'chief_investment_officer'],
+  },
+  {
+    id: 'event_special',
+    name: '事件驱动专项',
+    domain: 'finance',
+    desc: '单一催化事件快速专项：事件定性+定价+执行+风控',
+    expertIds: ['event_driven_analyst', 'news_analyst', 'fundamental_analyst', 'technical_analyst', 'options_strategist', 'trade_executor', 'risk_officer'],
+  },
+  {
+    id: 'trading_decision',
+    name: '交易决策',
+    domain: 'finance',
+    desc: '聚焦择时、仓位与执行',
+    expertIds: ['technical_analyst', 'sentiment_analyst', 'quant_researcher', 'trade_executor', 'portfolio_risk_manager'],
+  },
+  {
+    id: 'code_review',
+    name: '代码审查',
+    domain: 'code',
+    desc: '架构/安全/性能/可维护性多视角',
+    expertIds: ['code_architect', 'security_expert', 'performance_expert', 'maintainability_expert'],
+  },
 ]
+
+/** 场景默认阵容（与后端 SCENARIO_TEMPLATES 保持一致的镜像） */
+export function scenarioDefaultExperts(scenarioId: string): string[] {
+  return SCENARIOS.find((s) => s.id === scenarioId)?.expertIds ?? []
+}
 
 export function expertById(id: string): ExpertProfile | undefined {
   return EXPERT_PROFILES[id]

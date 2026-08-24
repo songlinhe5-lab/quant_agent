@@ -44,6 +44,7 @@ _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
     "market_review": {
         "tool": "get_market_review",
         "param_key": "market",
+        "default_kwargs": {"market": "美股"},  # market 为必填参数，默认采集美股复盘（项目主市场）
         "description": "市场复盘(宏观判因)",
     },
     "fed_watch": {
