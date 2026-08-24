@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { Loader2, Download, Save, Bot } from 'lucide-react'
 import { useChatStore } from '@/stores/useChatStore'
 import { useAssetLibrary } from '@/stores/useAssetLibrary'
+import { toast } from '@/components/ui/use-toast'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
 
@@ -14,7 +15,7 @@ import { ChatInputBox } from '@/features/copilot/chat-input-box'
  *  - 消息流 760px 居中（MessageListArea wide）
  *  - 顶部工具条：ReAct · 第 n/8 步 + session_id 短码 + 导出按钮
  */
-export function ChatWorkspace() {
+export function ChatWorkspace({ onStored }: { onStored?: () => void } = {}) {
   const messages = useChatStore((s) => s.messages)
   const isGenerating = useChatStore((s) => s.isGenerating)
   const sessionId = useChatStore((s) => s.sessionId)
@@ -60,12 +61,20 @@ export function ChatWorkspace() {
         <div className="ml-auto flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => addAsset({
-              type: 'chat',
-              title: messages.find((m) => m.role === 'user')?.content?.slice(0, 20) || '对话',
-              source: sessionId,
-              content: messages.map((m) => `## ${m.role === 'user' ? '用户' : '助手'}\n\n${m.content}`).join('\n\n---\n\n'),
-            })}
+            onClick={() => {
+              const id = addAsset({
+                type: 'chat',
+                title: messages.find((m) => m.role === 'user')?.content?.slice(0, 20) || '对话',
+                source: sessionId,
+                content: messages.map((m) => `## ${m.role === 'user' ? '用户' : '助手'}\n\n${m.content}`).join('\n\n---\n\n'),
+              })
+              if (id) {
+                toast({ title: '已存入资产库', description: '可在「资产库」面板查看' })
+                onStored?.()
+              } else {
+                toast({ title: '已在资产库', description: '相同内容已存档，未重复添加' })
+              }
+            }}
             disabled={messages.length === 0}
             className="flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
             title="存入资产库"

@@ -135,7 +135,7 @@ export function ResearchWorkspacePage() {
           {b2Mode === 'assets' ? (
             <AssetLibrary onClose={() => setB2Mode('chat')} />
           ) : (
-            <ChatWorkspace />
+            <ChatWorkspace onStored={() => setB2Mode('assets')} />
           )}
         </main>
 
