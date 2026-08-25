@@ -360,49 +360,43 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           </details>
         )}
 
-        {/* 研究员研判：全量时间线 —— 按轮次分组，所有专家同屏展示，流式完成后内容持久保留 */}
+        {/* 研究员研判：扁平时间线 —— 每位分析师一张独立面板，按生成顺序(轮次→阵容)排列，
+            内容在面板内流式展示并持久保留；不再使用「第 X 轮 · 独立研判」聚合面板 */}
         {hasAnyContent && (
-          <div className="space-y-3">
-            {Array.from({ length: roundsToShow }, (_, i) => i + 1).map((r) => {
-              const roundOps = opinions.filter((o) => o.round === r)
-              const orderedOps = [...roundOps].sort(
-                (a, b) => expertList.indexOf(a.expertId) - expertList.indexOf(b.expertId),
-              )
-              const servedIds = new Set(roundOps.map((o) => o.expertId))
-              const pendingExperts = expertList.filter((eid) => !servedIds.has(eid))
-              const isLiveRound = phase === 'running' && r === activeRound
-              return (
-                <div key={r} className="space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    第 {r} 轮 · {r === 1 ? '独立研判' : '交叉辩论'}
-                    <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/60">
-                      {roundOps.length}/{expertList.length} 位专家已发言
+          <div className="space-y-2">
+            {opinions
+              .slice()
+              .sort((a, b) => {
+                if (a.round !== b.round) return a.round - b.round
+                return expertList.indexOf(a.expertId) - expertList.indexOf(b.expertId)
+              })
+              .map((o, i) => (
+                <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
+              ))}
+            {/* 当前运行轮次：尚未产出观点的分析师占位（每张独立面板，避免聚合感） */}
+            {phase === 'running' && Array.from({ length: roundsToShow }, (_, i) => i + 1).map((r) => {
+              const servedIds = new Set(opinions.filter((o) => o.round === r).map((o) => o.expertId))
+              const pending = expertList.filter((eid) => !servedIds.has(eid))
+              const isLiveRound = r === activeRound
+              return pending.map((eid) => {
+                const p = expertById(eid)
+                return (
+                  <div
+                    key={`pending-${eid}-${r}`}
+                    className="flex items-center gap-2 rounded-xl border border-border/30 bg-white/[0.02] px-3 py-2 text-[11px] text-muted-foreground"
+                  >
+                    {isLiveRound ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-scene" />
+                    ) : (
+                      <span className="text-xs">{p?.glyph ?? '🧑'}</span>
+                    )}
+                    <span>{p?.name ?? eid}</span>
+                    <span className="text-muted-foreground/60">
+                      {isLiveRound ? `第 ${r} 轮研判中，观点将流式展示…` : `第 ${r} 轮未产出观点`}
                     </span>
                   </div>
-                  {orderedOps.map((o, i) => (
-                    <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
-                  ))}
-                  {pendingExperts.map((eid) => {
-                    const p = expertById(eid)
-                    return (
-                      <div
-                        key={eid}
-                        className="flex items-center gap-2 rounded-xl border border-border/30 bg-white/[0.02] px-3 py-2 text-[11px] text-muted-foreground"
-                      >
-                        {isLiveRound ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-scene" />
-                        ) : (
-                          <span className="text-xs">{p?.glyph ?? '🧑'}</span>
-                        )}
-                        <span>{p?.name ?? eid}</span>
-                        <span className="text-muted-foreground/60">
-                          {isLiveRound ? '研判中，观点将流式展示…' : '本轮未产出观点'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
+                )
+              })
             })}
             {/* 首席投资官收敛报告：结构化字段由完成帧补全，流式正文持久保留 */}
             {chief ? (
