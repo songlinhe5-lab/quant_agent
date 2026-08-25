@@ -47,8 +47,11 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const [lineupExpertIds, setLineupExpertIds] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  // 用户主动划走滚动后，停止自动聚焦到流式中的分析师面板
+  // 用户主动划走滚动后，停止自动聚焦到流式中的分析师面板；
+  // 用户通过滚轮/拖拽/触控板离开阅读区即视为"主动查看"，不再强行拉回顶部
   const userScrolledRef = useRef(false)
+  // 滚动区是否贴近底部（贴近底部时轻微的自动跟随不会造成视觉跳动）
+  const nearBottomRef = useRef(false)
 
   const reset = useCallback(() => {
     setOpinions([])
@@ -250,16 +253,21 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const hasAnyContent = expertList.length > 0 || !!chief
   // 轮次严格顺序推进：已见最大轮次；运行中再补上正在进行的下一轮（含等待占位）
   const maxRoundSeen = opinions.reduce((m, o) => Math.max(m, o.round), 0)
-  const activeRound = phase === 'running' ? currentRound + 1 : 0
+  // 运行中：activeRound = 当前已完成轮 + 1（正在进行的轮）；且严格受 config.rounds 上限约束，避免越界轮次占位
+  const totalRounds = config?.rounds ?? 2
+  const activeRound = phase === 'running' ? Math.min(currentRound + 1, totalRounds) : 0
   const roundsToShow = Math.max(maxRoundSeen, activeRound)
 
-  // 自动聚焦：流式进行中，自动滚动到正在输出的分析师面板；用户主动划走后不再强制定位
+  // 自动聚焦：流式进行中，自动滚动到正在输出的分析师面板；
+  // 仅当用户未主动查看别处、且当前贴近底部（流式追加内容）时才轻微跟随，避免把正在阅读的人强行拉走
   const streamingOp = opinions.find((o) => o.streaming)
   useEffect(() => {
     if (userScrolledRef.current) return
     if (!streamingOp) return
+    // 不在底部时（用户正在看历史内容）不强行拉顶，避免画面跳动
+    if (!nearBottomRef.current) return
     const el = document.getElementById(`opinion-${streamingOp.expertId}-${streamingOp.round}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    el?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [streamingOp?.expertId, streamingOp?.round])
 
   // 定位到指定分析师（轴上标识点击）：主动定位后恢复自动聚焦能力
@@ -357,11 +365,20 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           </div>
         )}
 
-        {/* 滚动内容区：用户主动 wheel/touch 划走后停止自动聚焦 */}
+        {/* 滚动内容区：用户主动 wheel/拖拽/触控板 划走后停止自动聚焦；
+            贴近底部时恢复轻微跟随（新内容自然滚入） */}
         <div
           ref={scrollRef}
           onWheel={() => { userScrolledRef.current = true }}
           onTouchMove={() => { userScrolledRef.current = true }}
+          onPointerDown={() => { userScrolledRef.current = true }}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+            nearBottomRef.current = distance < 80
+            // 用户主动把内容滚回底部（距离 < 80px）视为恢复跟随
+            if (distance < 80) userScrolledRef.current = false
+          }}
           className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
         >
         {phase === 'idle' && (
@@ -457,32 +474,17 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                   <ExpertOpinionCard opinion={o} campBorder />
                 </div>
               ))}
-            {/* 当前运行轮次：尚未产出观点的分析师占位（每张独立面板，避免聚合感） */}
-            {phase === 'running' && Array.from({ length: roundsToShow }, (_, i) => i + 1).map((r) => {
-              const servedIds = new Set(opinions.filter((o) => o.round === r).map((o) => o.expertId))
-              const pending = expertList.filter((eid) => !servedIds.has(eid))
-              const isLiveRound = r === activeRound
-              return pending.map((eid) => {
-                const p = expertById(eid)
-                return (
-                  <div
-                    key={`pending-${eid}-${r}`}
-                    id={`opinion-pending-${eid}`}
-                    className="flex items-center gap-2 rounded-xl border border-border/30 bg-white/[0.02] px-3 py-2 text-[11px] text-muted-foreground"
-                  >
-                    {isLiveRound ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-scene" />
-                    ) : (
-                      <span className="text-xs">{p?.glyph ?? '🧑'}</span>
-                    )}
-                    <span>{p?.name ?? eid}</span>
-                    <span className="text-muted-foreground/60">
-                      {isLiveRound ? `第 ${r} 轮研判中，观点将流式展示…` : `第 ${r} 轮未产出观点`}
-                    </span>
-                  </div>
-                )
-              })
-            })}
+            {/* 当前运行轮次：仅渲染一个「等待下一位专家发言」气泡（不再为每个专家逐个预占位，
+                避免专家逐个产出时列表反复重排导致画面抖动；已完成轮次不渲染任何占位 */}
+            {phase === 'running' && (
+              <div
+                key={`pending-round-${activeRound}`}
+                className="flex items-center gap-2 rounded-xl border border-border/30 bg-white/[0.02] px-3 py-2 text-[11px] text-muted-foreground"
+              >
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-scene" />
+                <span>第 {activeRound} 轮进行中，等待下一位专家发言…</span>
+              </div>
+            )}
             {/* 首席投资官收敛报告：结构化字段由完成帧补全，流式正文持久保留 */}
             {chief ? (
               <div id="opinion-chief">
