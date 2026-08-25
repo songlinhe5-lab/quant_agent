@@ -47,6 +47,8 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const [lineupExpertIds, setLineupExpertIds] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // 用户主动划走滚动后，停止自动聚焦到流式中的分析师面板
+  const userScrolledRef = useRef(false)
 
   const reset = useCallback(() => {
     setOpinions([])
@@ -57,6 +59,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setCollectSteps([])
     setCollectOpen(false)
     setLineupExpertIds([])
+    userScrolledRef.current = false
   }, [])
 
   const run = useCallback(() => {
@@ -250,12 +253,27 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const activeRound = phase === 'running' ? currentRound + 1 : 0
   const roundsToShow = Math.max(maxRoundSeen, activeRound)
 
-  // 流式追加时若用户已贴近底部则跟随滚动（向上回看时不打断）
+  // 自动聚焦：流式进行中，自动滚动到正在输出的分析师面板；用户主动划走后不再强制定位
+  const streamingOp = opinions.find((o) => o.streaming)
   useEffect(() => {
-    const el = scrollRef.current
-    if (!el || phase !== 'running') return
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight
-  }, [opinions, chief, phase])
+    if (userScrolledRef.current) return
+    if (!streamingOp) return
+    const el = document.getElementById(`opinion-${streamingOp.expertId}-${streamingOp.round}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [streamingOp?.expertId, streamingOp?.round])
+
+  // 定位到指定分析师（轴上标识点击）：主动定位后恢复自动聚焦能力
+  const focusExpert = (expertId: string) => {
+    userScrolledRef.current = false
+    const latest = opinions
+      .filter((o) => o.expertId === expertId)
+      .sort((a, b) => b.round - a.round)[0]
+    const targetId = latest
+      ? `opinion-${latest.expertId}-${latest.round}`
+      : `opinion-pending-${expertId}`
+    const el = document.getElementById(targetId)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -280,8 +298,72 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
         )}
       </div>
 
-      {/* 滚动内容区 */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
+      {/* 主体：左侧时间线轴 + 右侧滚动内容区 */}
+      <div className="flex min-h-0 flex-1">
+        {/* 时间线轴：可点击的分析师标识，高亮当前输出者 */}
+        {expertList.length > 0 && (
+          <div className="flex w-11 shrink-0 flex-col items-center gap-1.5 border-r border-border/30 py-3">
+            <span className="mb-1 text-[9px] uppercase tracking-wide text-muted-foreground/60">分析师</span>
+            {expertList.map((eid) => {
+              const ops = opinions.filter((o) => o.expertId === eid)
+              const latest = ops.sort((a, b) => b.round - a.round)[0]
+              const isStreaming = ops.some((o) => o.streaming)
+              const isDone = !!latest?.content.trim()
+              const p = expertById(eid)
+              return (
+                <button
+                  key={eid}
+                  type="button"
+                  title={p?.name ?? eid}
+                  onClick={() => focusExpert(eid)}
+                  className={cn(
+                    'relative flex h-8 w-8 items-center justify-center rounded-full border text-[13px] transition-colors',
+                    isStreaming
+                      ? 'border-scene/70 bg-scene/15 text-foreground ring-2 ring-scene/40'
+                      : isDone
+                        ? 'border-emerald-400/40 bg-emerald-400/10 text-foreground'
+                        : 'border-white/15 bg-white/[0.03] text-muted-foreground hover:border-white/30',
+                  )}
+                >
+                  <span>{p?.glyph ?? '🧑'}</span>
+                  {isStreaming && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-ping rounded-full bg-scene" />
+                  )}
+                </button>
+              )
+            })}
+            {/* 首席投资官（时间线末尾锚点） */}
+            {(chief || phase === 'running') && (
+              <button
+                type="button"
+                title="首席投资官 · 最终研判"
+                onClick={() => {
+                  userScrolledRef.current = false
+                  document.getElementById('opinion-chief')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+                className={cn(
+                  'relative flex h-8 w-8 items-center justify-center rounded-full border text-[13px] transition-colors',
+                  chief?.content
+                    ? 'border-yellow-300/50 bg-yellow-300/10 text-yellow-200'
+                    : 'border-yellow-300/30 bg-yellow-300/5 text-yellow-300/70 hover:border-yellow-300/60',
+                )}
+              >
+                <Crown className="h-4 w-4" />
+                {phase === 'running' && !chief && (
+                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-ping rounded-full bg-yellow-300" />
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 滚动内容区：用户主动 wheel/touch 划走后停止自动聚焦 */}
+        <div
+          ref={scrollRef}
+          onWheel={() => { userScrolledRef.current = true }}
+          onTouchMove={() => { userScrolledRef.current = true }}
+          className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
+        >
         {phase === 'idle' && (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
             <Crown className="mb-2 h-8 w-8 opacity-40" />
@@ -360,53 +442,51 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           </details>
         )}
 
-        {/* 研究员研判：全量时间线 —— 按轮次分组，所有专家同屏展示，流式完成后内容持久保留 */}
+        {/* 研究员研判：扁平时间线 —— 每位分析师一张独立面板，按生成顺序(轮次→阵容)排列，
+            内容在面板内流式展示并持久保留；不再使用「第 X 轮 · 独立研判」聚合面板 */}
         {hasAnyContent && (
-          <div className="space-y-3">
-            {Array.from({ length: roundsToShow }, (_, i) => i + 1).map((r) => {
-              const roundOps = opinions.filter((o) => o.round === r)
-              const orderedOps = [...roundOps].sort(
-                (a, b) => expertList.indexOf(a.expertId) - expertList.indexOf(b.expertId),
-              )
-              const servedIds = new Set(roundOps.map((o) => o.expertId))
-              const pendingExperts = expertList.filter((eid) => !servedIds.has(eid))
-              const isLiveRound = phase === 'running' && r === activeRound
-              return (
-                <div key={r} className="space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    第 {r} 轮 · {r === 1 ? '独立研判' : '交叉辩论'}
-                    <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/60">
-                      {roundOps.length}/{expertList.length} 位专家已发言
+          <div className="space-y-2">
+            {opinions
+              .slice()
+              .sort((a, b) => {
+                if (a.round !== b.round) return a.round - b.round
+                return expertList.indexOf(a.expertId) - expertList.indexOf(b.expertId)
+              })
+              .map((o, i) => (
+                <div key={`${o.expertId}-${o.round}-${i}`} id={`opinion-${o.expertId}-${o.round}`}>
+                  <ExpertOpinionCard opinion={o} campBorder />
+                </div>
+              ))}
+            {/* 当前运行轮次：尚未产出观点的分析师占位（每张独立面板，避免聚合感） */}
+            {phase === 'running' && Array.from({ length: roundsToShow }, (_, i) => i + 1).map((r) => {
+              const servedIds = new Set(opinions.filter((o) => o.round === r).map((o) => o.expertId))
+              const pending = expertList.filter((eid) => !servedIds.has(eid))
+              const isLiveRound = r === activeRound
+              return pending.map((eid) => {
+                const p = expertById(eid)
+                return (
+                  <div
+                    key={`pending-${eid}-${r}`}
+                    id={`opinion-pending-${eid}`}
+                    className="flex items-center gap-2 rounded-xl border border-border/30 bg-white/[0.02] px-3 py-2 text-[11px] text-muted-foreground"
+                  >
+                    {isLiveRound ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-scene" />
+                    ) : (
+                      <span className="text-xs">{p?.glyph ?? '🧑'}</span>
+                    )}
+                    <span>{p?.name ?? eid}</span>
+                    <span className="text-muted-foreground/60">
+                      {isLiveRound ? `第 ${r} 轮研判中，观点将流式展示…` : `第 ${r} 轮未产出观点`}
                     </span>
                   </div>
-                  {orderedOps.map((o, i) => (
-                    <ExpertOpinionCard key={`${o.expertId}-${o.round}-${i}`} opinion={o} campBorder />
-                  ))}
-                  {pendingExperts.map((eid) => {
-                    const p = expertById(eid)
-                    return (
-                      <div
-                        key={eid}
-                        className="flex items-center gap-2 rounded-xl border border-border/30 bg-white/[0.02] px-3 py-2 text-[11px] text-muted-foreground"
-                      >
-                        {isLiveRound ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-scene" />
-                        ) : (
-                          <span className="text-xs">{p?.glyph ?? '🧑'}</span>
-                        )}
-                        <span>{p?.name ?? eid}</span>
-                        <span className="text-muted-foreground/60">
-                          {isLiveRound ? '研判中，观点将流式展示…' : '本轮未产出观点'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
+                )
+              })
             })}
             {/* 首席投资官收敛报告：结构化字段由完成帧补全，流式正文持久保留 */}
             {chief ? (
-              <ChiefReportPanel report={{
+              <div id="opinion-chief">
+                <ChiefReportPanel report={{
                 probability: chief.bullish_probability ?? chief.data?.probability_assessment,
                 body: chief.content,
                 finalRecommendation: chief.data?.final_recommendation,
@@ -417,6 +497,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                 riskWarnings: chief.data?.risk_warnings,
                 minorityOpinion: chief.data?.minority_opinion,
               }} />
+              </div>
             ) : phase === 'running' && currentRound >= (config.rounds || 2) ? (
               <div className="flex items-center gap-2 rounded-xl border border-yellow-300/20 bg-yellow-300/5 p-4 text-xs text-yellow-300/60">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -427,6 +508,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
         )}
 
 
+      </div>
       </div>
     </div>
   )

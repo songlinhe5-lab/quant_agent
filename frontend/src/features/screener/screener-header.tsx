@@ -3,7 +3,26 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Database, Settings2, Save, FolderOpen, Share2, Pencil, Trash2, X, Copy, Check } from 'lucide-react'
 import { useScreenerContext } from './screener-context'
+import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { useToast } from '@/hooks/use-toast'
+
+/** 页头环境胶囊：SANDBOX 琥珀 / LIVE 转红，订阅策略仅入纸面，切 LIVE 必经全局 REAL_TRADE_EXECUTE 闸门 */
+function ModeCapsule() {
+  const mode = useTradingModeStore((s) => s.mode)
+  const isLive = mode === 'LIVE'
+  return (
+    <span
+      className={
+        isLive
+          ? 'text-[10px] font-mono font-bold text-red-500 bg-red-500/10 border border-red-500/40 rounded-full px-2 py-0.5'
+          : 'text-[10px] font-mono font-bold text-amber-500 bg-amber-500/10 border border-amber-500/40 rounded-full px-2 py-0.5'
+      }
+      title={isLive ? 'LIVE 实盘模式：切换需通过 REAL_TRADE_EXECUTE 校验' : 'SANDBOX · 单次推演，无持久账本；订阅策略仅入纸面'}
+    >
+      {isLive ? 'LIVE · 实盘' : 'SANDBOX · 单次推演'}
+    </span>
+  )
+}
 
 export function ScreenerHeader() {
   const {
@@ -77,6 +96,8 @@ export function ScreenerHeader() {
       <div className="h-1.5 w-1.5 rounded-full bg-violet-500 dark:bg-violet-400 transition-colors duration-300" aria-hidden="true" />
       <h1 className="text-base font-bold tracking-tight">智能量化选股</h1>
       <span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">Agentic Screener</span>
+      {/* UIRF: 页头环境胶囊 —— 沙箱推演口径显性化（全局横幅之外的页面级提示） */}
+      <ModeCapsule />
       <div className="ml-auto flex items-center gap-2">
         <button onClick={openSave} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors bg-secondary/30 hover:bg-secondary/60 px-3 py-1.5 rounded-lg border border-border/50 shadow-sm">
           <Save className="h-3.5 w-3.5" />保存条件</button>

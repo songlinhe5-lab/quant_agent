@@ -97,8 +97,10 @@ export function CapitalDistributionPanel({ ticker = 'HK.00700' }: { ticker?: str
           ))}
         </div>
       )}
-      <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground text-center bg-secondary/10">
-        数据源：{data.source || 'Futu 主力资金分层'} · 更新于 {data.updated_at || '实时'}
+      <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground flex items-center justify-center gap-2 bg-secondary/10">
+        <span>数据源：{data.source || 'Futu 主力资金分层'} · 更新于 {data.updated_at || '实时'}</span>
+        {/* 存量数据更新频率徽章（设计稿：筹码/共识日更） */}
+        <span className="px-1.5 py-px rounded border border-sky-500/30 bg-sky-500/10 text-sky-500 font-mono">日更</span>
       </div>
     </div>
   )

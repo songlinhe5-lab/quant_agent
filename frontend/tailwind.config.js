@@ -56,6 +56,11 @@ export default {
         bear: 'hsl(var(--color-bear))',
         warn: 'hsl(var(--color-warn))',
         info: 'hsl(var(--color-info))',
+        // docs/uiue design-tokens: AI 生成内容 / 链接次级按钮 / 涨跌淡色底 (tint)
+        ai: 'hsl(var(--color-ai))',
+        link: '#60A5FA',
+        'tint-up': '#34D3991F',
+        'tint-down': '#F871711F',
         // PROD-04c: 场景强调色（随场景模式动态变化，用于 Alert / Focus Ring / AI Badge 等关键 UI）
         scene: 'hsl(var(--scene-accent))',
       },

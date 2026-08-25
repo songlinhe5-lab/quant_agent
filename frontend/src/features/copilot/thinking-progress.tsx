@@ -21,7 +21,7 @@ const PHASES: PhaseDef[] = [
 /** 从消息状态推导当前阶段 */
 function derivePhase(msg: ChatMessage, isLast: boolean, isGenerating: boolean): Phase {
   if (!isGenerating || !isLast) return 'output'
-  const hasThinkContent = msg.content.includes('<think>') || msg.thinkEndTime
+  const hasThinkContent = msg.content.includes('<think>') || msg.thinkEndTime || Boolean(msg.reasoning)
   const hasTools = (msg.tools?.length ?? 0) > 0
   const allToolsDone = hasTools && msg.tools!.every(t => t.status === 'done')
   const hasOutputText = msg.thinkEndTime && msg.content.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim().length > 0
@@ -49,6 +49,8 @@ export function ThinkingProgress({
   const currentPhase = derivePhase(msg, isLast, isGenerating)
   const [lastEventTime] = useState(Date.now())
   const [stale, setStale] = useState(false)
+  // P0-4: 推理片段默认折叠，用户可展开查看真实推理过程
+  const [reasoningOpen, setReasoningOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // 💡 30s 无新事件 → amber 慢响应警告
@@ -115,6 +117,30 @@ export function ThinkingProgress({
           )
         })}
       </div>
+
+      {/* P0-4: Plan 阶段真实推理片段（reasoning_chunk 流），默认折叠 */
+      currentPhase === 'plan' && msg.reasoning && (
+        <div className="rounded-lg border border-purple-500/20 bg-purple-500/5">
+          <button
+            type="button"
+            onClick={() => setReasoningOpen(v => !v)}
+            className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
+            </span>
+            推理过程
+            <span className="text-muted-foreground/60">({msg.reasoning.length} 字)</span>
+            <span className="ml-auto">{reasoningOpen ? '收起' : '展开'}</span>
+          </button>
+          {reasoningOpen && (
+            <div className="px-2.5 pb-2 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto custom-scrollbar">
+              {msg.reasoning}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 工具 chip 行：当前处于 Tool 阶段时展示正在执行的工具 */}
       {currentPhase === 'tool' && msg.tools && msg.tools.length > 0 && (

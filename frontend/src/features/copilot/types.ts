@@ -68,4 +68,6 @@ export interface ChatMessage {
   chartAnnotations?: ChartAnnotationPayload[]
   /** COPILOT-09: ReAct 迭代上限已达，后续内容为降级兜底总结 */
   iterationLimitReached?: boolean
+  /** COPILOT-03/P0-4: reasoning_chunk 流累积的真实推理片段（Plan 阶段） */
+  reasoning?: string
 }

@@ -84,6 +84,7 @@ export function useBacktest() {
   return {
     // state
     running: engine.running, done: engine.done, progress: engine.progress, progressStage: engine.progressStage,
+    stopped: engine.stopped,
     ticker, setTicker, period, setPeriod,
     interval, setIntervalVal, initialCapital, setInitialCapital,
     backtestResult, dataSource, setDataSource, isDebugMode, setIsDebugMode,

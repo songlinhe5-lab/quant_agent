@@ -24,13 +24,15 @@ interface BacktestResultsProps {
   /** UIRF-02: 回测错误态 */
   error?: string | null
   onRetry?: () => void
+  /** UIRF-01: 手动停止态（保留最后一次成功结果，明示未完成） */
+  stopped?: boolean
 }
 
 export function BacktestResults({
   backtestResult, running, progress, progressStage, isDebugMode,
   currentTearSheet, reproBadge, metrics,
   curve, underwaterDataComputed, histogramData,
-  error, onRetry,
+  error, onRetry, stopped,
 }: BacktestResultsProps) {
   // §14.1/§14.2：区分「推演进行中」与「从未运行」两种空态。
   // running 且尚无结果 → 进度骨架屏（引擎已在撮合，不应提示"请运行"）；
@@ -47,6 +49,26 @@ export function BacktestResults({
     )
   }
   if (!backtestResult) {
+    // UIRF-01: 已停止态——明示未完成且可重新运行，不静默回退到「请运行」引导
+    if (stopped) {
+      return (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <EmptyState
+            title="已手动停止"
+            description="回测推演被中止，未产出结果。停止即断开流，后端任务异步取消；可重新运行。"
+            action={onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-3 py-1.5 text-xs font-semibold text-foreground/80 hover:bg-secondary/70 transition-colors"
+              >
+                <RotateCcw className="h-3 w-3" /> 重新运行
+              </button>
+            ) : undefined}
+          />
+        </div>
+      )
+    }
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <EmptyState
@@ -82,6 +104,25 @@ export function BacktestResults({
   }
   return (
     <>
+      {/* UIRF-01: 已停止但保留最后一次成功结果——顶部提示条明示本次推演未完成 */
+      stopped && (
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg bg-secondary/40 border border-border/50">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-bold text-foreground/90">已手动停止</span>
+            · 下方为最后一次成功推演结果，本次中止未产生新数据。
+          </p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex items-center gap-1 rounded-md border border-border/50 px-2 py-1 text-[10px] font-semibold text-foreground/80 hover:bg-secondary/70 transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" /> 重新运行
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Disclaimer banner */}
       <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-500/10 dark:bg-amber-400/8 border border-amber-500/20 dark:border-amber-400/20 transition-colors duration-300">
         <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5 transition-colors duration-300" aria-hidden="true" />
