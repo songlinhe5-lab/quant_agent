@@ -38,9 +38,10 @@ _ROUND_TIMEOUT = 180.0  # 整轮超时（与 _EXPERT_TIMEOUT 叠加，双保险�
 _CHIEF_TIMEOUT = 120.0  # 首席报告更长，单独放宽
 _STREAM_CHUNK_DELAY = 0.02  # 打字机效果：切片间隔（秒），仅降级/占位路径使用；真流式无需人造延迟
 # 打字机限速（真流式）：每 _STREAM_EMIT_INTERVAL 秒最多推 _STREAM_CHARS_PER_TICK 字符，
-# 防止快速模型数秒内把全文一次性砸满屏幕来不及阅读；若生成先于节奏结束，剩余缓冲按同速率滴播
-_STREAM_EMIT_INTERVAL = 0.12
-_STREAM_CHARS_PER_TICK = 20
+# 防止快速模型数秒内把全文一次性砸满屏幕来不及阅读；若生成先于节奏结束，剩余缓冲按同速率滴播。
+# 当前节奏 0.18s / 12 字符 ≈ 67 字符/秒，兼顾可读性与响应感。
+_STREAM_EMIT_INTERVAL = 0.18
+_STREAM_CHARS_PER_TICK = 12
 
 
 class _StreamSplitter:
