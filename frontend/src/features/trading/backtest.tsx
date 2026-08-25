@@ -79,6 +79,8 @@ export function BacktestModule() {
         // UIRF-02: 错误态（错误卡 + 重试）
         error={bt.error}
         onRetry={() => { bt.setError(null); bt.setDone(false); bt.handleRun() }}
+        // UIRF-01: 手动停止态（明示已停止 + 可重新运行）
+        stopped={bt.stopped}
       />
     </div>
   )

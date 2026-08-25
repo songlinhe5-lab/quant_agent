@@ -2,9 +2,15 @@
  * 回测配置面板：参数输入 + 进度条 + 动态策略表单
  */
 
-import { FlaskConical, Play, CheckCircle, Square } from 'lucide-react'
+import { useState } from 'react'
+import { FlaskConical, Play, CheckCircle, Square, ChevronDown } from 'lucide-react'
 import { validate } from '../quotes/custom-indicator/engine'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DynamicStrategyForm } from '@/features/strategy/dynamic-strategy-form'
 import { SnapshotPicker } from '@/features/backtest/snapshot-picker'
 
@@ -48,6 +54,9 @@ export function BacktestConfig(props: BacktestConfigProps) {
     customExpr, setCustomExpr, reproParams, setReproParams,
   } = props
 
+  // 高级与复现区折叠态 (shadcn Collapsible 受控)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+
   return (
     <div className="glass-card rounded-lg overflow-hidden transition-colors duration-300">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
@@ -58,7 +67,9 @@ export function BacktestConfig(props: BacktestConfigProps) {
         <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 mb-4">
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">执行策略</p>
-            <select value={selectedStrategy} onChange={e => handleStrategyChange(e.target.value)} disabled={running || done} className="bg-background border border-border/50 rounded px-2 py-1.5 text-xs outline-none focus:border-primary w-full cursor-pointer">
+            {/* 保留原生 select：shadcn Select 不支持 optgroup 三分组（内置引擎/我的草稿/自定义），
+                样式对齐 Input 控件视觉（同尺寸/圆角/焦点环） */}
+            <select value={selectedStrategy} onChange={e => handleStrategyChange(e.target.value)} disabled={running || done} className="bg-background border-input dark:bg-input/30 rounded-md border px-2 py-1.5 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 w-full cursor-pointer">
               {/* 内置引擎（前端常量集, 非用户草稿） */}
               <optgroup label="内置引擎">
                 <option value="">内置底背离共振 (默认)</option>
@@ -79,46 +90,61 @@ export function BacktestConfig(props: BacktestConfigProps) {
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">测试标的</p>
-            <input type="text" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} className="bg-background border border-border/50 rounded px-2 py-1.5 text-xs outline-none focus:border-primary font-mono uppercase w-full" disabled={running || done} />
+            <Input type="text" value={ticker} onChange={e => setTicker(e.target.value.toUpperCase())} className="h-8 text-xs font-mono uppercase" disabled={running || done} />
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">回测区间</p>
-            <select value={period} onChange={e => setPeriod(e.target.value)} disabled={running || done} className="bg-background border border-border/50 rounded px-2 py-1.5 text-xs outline-none focus:border-primary w-full cursor-pointer">
-              <option value="1mo">1 个月</option>
-              <option value="3mo">3 个月</option>
-              <option value="6mo">6 个月</option>
-              <option value="1y">1 年</option>
-              <option value="2y">2 年</option>
-              <option value="5y">5 年</option>
-              <option value="max">全部历史</option>
-            </select>
+            <Select value={period} onValueChange={setPeriod} disabled={running || done}>
+              <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="1mo">1 个月</SelectItem>
+                  <SelectItem value="3mo">3 个月</SelectItem>
+                  <SelectItem value="6mo">6 个月</SelectItem>
+                  <SelectItem value="1y">1 年</SelectItem>
+                  <SelectItem value="2y">2 年</SelectItem>
+                  <SelectItem value="5y">5 年</SelectItem>
+                  <SelectItem value="max">全部历史</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">数据粒度</p>
-            <select value={interval} onChange={e => setIntervalVal(e.target.value)} disabled={running || done} className="bg-background border border-border/50 rounded px-2 py-1.5 text-xs outline-none focus:border-primary w-full cursor-pointer">
-              <option value="1d">1 日 (1d)</option>
-              <option value="1h">1 小时 (1h)</option>
-              <option value="15m">15 分钟 (15m)</option>
-              <option value="5m">5 分钟 (5m)</option>
-              <option value="1m">1 分钟 (1m)</option>
-            </select>
+            <Select value={interval} onValueChange={setIntervalVal} disabled={running || done}>
+              <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="1d">1 日 (1d)</SelectItem>
+                  <SelectItem value="1h">1 小时 (1h)</SelectItem>
+                  <SelectItem value="15m">15 分钟 (15m)</SelectItem>
+                  <SelectItem value="5m">5 分钟 (5m)</SelectItem>
+                  <SelectItem value="1m">1 分钟 (1m)</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">初始资金</p>
-            <input type="number" value={initialCapital} onChange={e => setInitialCapital(Number(e.target.value))} disabled={running || done} className="bg-background border border-border/50 rounded px-2 py-1.5 text-xs outline-none focus:border-primary font-mono w-full tabular-nums" />
+            <Input type="number" value={initialCapital} onChange={e => setInitialCapital(Number(e.target.value))} disabled={running || done} className="h-8 text-xs font-mono tabular-nums" />
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">数据源</p>
-            <select value={dataSource} onChange={e => setDataSource(e.target.value)} disabled={running || done} className="bg-background border border-border/50 rounded px-2 py-1.5 text-xs outline-none focus:border-primary w-full cursor-pointer">
-              <option value="auto">智能路由 (Auto)</option>
-              <option value="futu">富途 OpenD (Futu)</option>
-              <option value="yfinance">雅虎财经 (YFinance)</option>
-            </select>
+            <Select value={dataSource} onValueChange={setDataSource} disabled={running || done}>
+              <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="auto">智能路由 (Auto)</SelectItem>
+                  <SelectItem value="futu">富途 OpenD (Futu)</SelectItem>
+                  <SelectItem value="yfinance">雅虎财经 (YFinance)</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">调试模式</p>
             <div className="flex items-center gap-2 h-[26px]">
-              <input type="checkbox" id="debugModeBT" checked={isDebugMode} onChange={(e) => setIsDebugMode(e.target.checked)} className="rounded-sm border-border accent-primary focus:ring-primary/30 w-3.5 h-3.5 cursor-pointer" />
+              <Switch id="debugModeBT" checked={isDebugMode} onCheckedChange={setIsDebugMode} disabled={running || done} />
               <label htmlFor="debugModeBT" className="text-xs text-muted-foreground cursor-pointer select-none">记录逐K线日志</label>
             </div>
           </div>
@@ -130,13 +156,13 @@ export function BacktestConfig(props: BacktestConfigProps) {
               <span className="text-[11px] font-medium text-foreground">自定义指标脚本 (Pine 风格)</span>
               <span className="text-[9px] text-muted-foreground">作为条件触发信号源</span>
             </div>
-            <textarea
+            <Textarea
               value={customExpr}
               onChange={(e) => setCustomExpr(e.target.value)}
               disabled={running || done}
               placeholder="例：CROSS(MA(CLOSE,5), MA(CLOSE,20))  或  RSI(14) > 70"
               rows={2}
-              className="w-full bg-background border border-border/50 rounded px-2 py-1.5 text-xs font-mono outline-none focus:border-primary resize-none"
+              className="min-h-0 text-xs font-mono resize-none"
             />
             {customExpr.trim() && !validate(customExpr).ok && (
               <div className="text-[10px] text-red-400">语法错误：{validate(customExpr).error}</div>
@@ -184,27 +210,32 @@ export function BacktestConfig(props: BacktestConfigProps) {
         )}
 
         {/* UIRF-05: 高级与复现 —— 成本/复现参数显性化，ReproducibilityBadge 与实际 payload 一致 */}
-        <details className="mb-4 border border-border/30 rounded-lg">
-          <summary className="cursor-pointer select-none px-3 py-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground">⚙️ 高级与复现（ATR/成本/滑点/随机种子）</summary>
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="mb-4 border border-border/30 rounded-lg">
+          <CollapsibleTrigger className="flex items-center gap-1 cursor-pointer select-none px-3 py-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground w-full">
+            ⚙️ 高级与复现（ATR/成本/滑点/随机种子）
+            <ChevronDown className={`h-3 w-3 ml-auto transition-transform ${advancedOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
           <div className="grid grid-cols-2 gap-2 px-3 pb-3">
             <label className="flex flex-col gap-1">
               <span className="text-[10px] text-muted-foreground">ATR 倍数</span>
-              <input type="number" step="0.5" value={reproParams.atr_multiplier} onChange={(e) => setReproParams({ ...reproParams, atr_multiplier: parseFloat(e.target.value) || 2.0 })} className="rounded border border-border/40 bg-secondary/30 px-2 py-1 text-[11px]" />
+              <Input type="number" step="0.5" value={reproParams.atr_multiplier} onChange={(e) => setReproParams({ ...reproParams, atr_multiplier: parseFloat(e.target.value) || 2.0 })} className="h-7 text-[11px]" />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-[10px] text-muted-foreground">手续费率</span>
-              <input type="number" step="0.0001" value={reproParams.commission_pct} onChange={(e) => setReproParams({ ...reproParams, commission_pct: parseFloat(e.target.value) || 0.0005 })} className="rounded border border-border/40 bg-secondary/30 px-2 py-1 text-[11px]" />
+              <Input type="number" step="0.0001" value={reproParams.commission_pct} onChange={(e) => setReproParams({ ...reproParams, commission_pct: parseFloat(e.target.value) || 0.0005 })} className="h-7 text-[11px]" />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-[10px] text-muted-foreground">滑点率</span>
-              <input type="number" step="0.0001" value={reproParams.slippage_pct} onChange={(e) => setReproParams({ ...reproParams, slippage_pct: parseFloat(e.target.value) || 0.001 })} className="rounded border border-border/40 bg-secondary/30 px-2 py-1 text-[11px]" />
+              <Input type="number" step="0.0001" value={reproParams.slippage_pct} onChange={(e) => setReproParams({ ...reproParams, slippage_pct: parseFloat(e.target.value) || 0.001 })} className="h-7 text-[11px]" />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-[10px] text-muted-foreground">随机种子</span>
-              <input type="number" step="1" value={reproParams.random_seed} onChange={(e) => setReproParams({ ...reproParams, random_seed: parseInt(e.target.value) || 42 })} className="rounded border border-border/40 bg-secondary/30 px-2 py-1 text-[11px]" />
+              <Input type="number" step="1" value={reproParams.random_seed} onChange={(e) => setReproParams({ ...reproParams, random_seed: parseInt(e.target.value) || 42 })} className="h-7 text-[11px]" />
             </label>
           </div>
-        </details>
+          </CollapsibleContent>
+        </Collapsible>
 
         <div className="flex gap-2 flex-wrap">
           {formSchema.length === 0 && (

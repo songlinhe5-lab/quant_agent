@@ -93,8 +93,10 @@ export function ShortSellingPanel({ ticker = 'HK.00700', mode = 'rank' }: { tick
           </div>
         ))}
       </div>
-      <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground text-center bg-secondary/10">
-        数据源：{data.source || 'Futu 卖空 + HKEX 交叉验证'} · {data.note || '卖空占比经 HKEX 市场级校准'} · 更新于 {data.updated_at || '实时'}
+      <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground flex items-center justify-center gap-2 bg-secondary/10">
+        <span>数据源：{data.source || 'Futu 卖空 + HKEX 交叉验证'} · {data.note || '卖空占比经 HKEX 市场级校准'} · 更新于 {data.updated_at || '实时'}</span>
+        {/* 存量数据更新频率徽章（设计稿：卖空港股日更） */}
+        <span className="px-1.5 py-px rounded border border-sky-500/30 bg-sky-500/10 text-sky-500 font-mono">日更</span>
       </div>
     </div>
   )

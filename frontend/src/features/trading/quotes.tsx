@@ -60,9 +60,11 @@ export function QuotesModule() {
     })
   }
 
-  const [selectedSymbol, setSelectedSymbol] = useState('00700.HK')
+  // 设计稿：删除写死兑底标的（原 '00700.HK'）——初始选中取自选池持久化首项，自选为空走 EmptyState
+  const initialSymbol = useWatchlist.getState().watchlist[0]?.symbol ?? ''
+  const [selectedSymbol, setSelectedSymbol] = useState(initialSymbol)
   // 💡 进入工作台时按当前标的自动恢复已保存的视图偏好
-  const initialPref = readViewPrefs()['00700.HK']
+  const initialPref = initialSymbol ? readViewPrefs()[initialSymbol] : undefined
   const [selectedPeriod, setSelectedPeriod] = useState<string>(initialPref?.period ?? '1m')  // 💡 默认显示分时图
   // FE-26：中列 [K 线 | 期权] 模式切换（Figma Frame 5）
   const [chartMode, setChartMode] = useState<'chart' | 'options'>(initialPref?.chartMode ?? 'chart')
@@ -349,7 +351,7 @@ export function QuotesModule() {
                 </ChartErrorBoundary>
               )
             ) : (
-              <EmptyState title="暂无自选标的" description="添加关注标的即可开始盯盘，行情订阅建立后将自动加载。" action={<button type="button" onClick={() => addTicker(selectedSymbol)} className="rounded-md border border-border/40 px-3 py-1.5 text-sm text-foreground/80 transition-colors hover:border-border/70 hover:text-foreground">添加 {selectedSymbol}</button>} />
+              <EmptyState title="暂无自选标的" description="添加关注标的即可开始盯盘，行情订阅建立后将自动加载。" action={selectedSymbol ? <button type="button" onClick={() => addTicker(selectedSymbol)} className="rounded-md border border-border/40 px-3 py-1.5 text-sm text-foreground/80 transition-colors hover:border-border/70 hover:text-foreground">添加 {selectedSymbol}</button> : undefined} />
             )}
             <NarratorBubble symbol={selectedSymbol} />
           </AnomalyFlash>

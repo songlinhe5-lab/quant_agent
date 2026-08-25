@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useWatchlist } from '@/stores/use-watchlist'
 import { apiClient } from '@/lib/api-client'
 import { navigate } from '@/lib/navigate'
-import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
+import { getZhLabel, formatDisplaySymbol, sortColumnsByScanOrder, type SortKey } from '@/features/screener/shared'
 import { useScreenerWs } from './use-screener-ws'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 
@@ -106,7 +106,8 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     if (results.length === 0) return []
     const keys = new Set<string>()
     results.forEach(r => Object.keys(r).forEach(k => { if (!['symbol', 'name', 'rank'].includes(k)) keys.add(k) }))
-    return Array.from(keys).sort()
+    // UIRF: 列序按扫读习惯 价格→涨跌→规模→估值→成长，不再纯字母序
+    return sortColumnsByScanOrder(Array.from(keys))
   }, [results])
 
   const paginatedData = results

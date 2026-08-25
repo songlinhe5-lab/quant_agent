@@ -56,6 +56,12 @@ export function useChat() {
             const last = msgs[msgs.length - 1]
             if (last && last.role === 'assistant') last.content += content
           },
+          // COPILOT-03/P0-4: 消费后端 reasoning_chunk 真实推理流（Plan 阶段）
+          onReasoningChunk: (content) => {
+            const msgs = store.getState().messages
+            const last = msgs[msgs.length - 1]
+            if (last && last.role === 'assistant') last.reasoning = (last.reasoning || '') + content
+          },
           onThinkEnd: () => {
             const msgs = store.getState().messages
             const last = msgs[msgs.length - 1]

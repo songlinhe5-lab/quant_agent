@@ -87,8 +87,10 @@ export function AnalystVsFundamentalPanel({ ticker = 'US.AAPL' }: { ticker?: str
           </span>
         </div>
       )}
-      <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground text-center bg-secondary/10">
-        数据源：{data.source || 'Futu 分析师共识 + 基本面合并'} · {data.note || '共识为第三方卖方预期，非实际成交价'}
+      <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground flex items-center justify-center gap-2 bg-secondary/10">
+        <span>数据源：{data.source || 'Futu 分析师共识 + 基本面合并'} · {data.note || '共识为第三方卖方预期，非实际成交价'}</span>
+        {/* 存量数据更新频率徽章（设计稿：共识日更） */}
+        <span className="px-1.5 py-px rounded border border-sky-500/30 bg-sky-500/10 text-sky-500 font-mono">日更</span>
       </div>
     </div>
   )
