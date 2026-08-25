@@ -922,10 +922,12 @@ class DataSourceRouter:
                 cnt = node.action_errors.get(action_key, 0) + 1
                 node.action_errors[action_key] = cnt
                 if cnt >= _ACTION_MAX_FAILURES:
-                    node.action_breaker_until[action_key] = time.time() + get_cooldown_seconds()
+                    # 易限流兜底源（如 yfinance）用更短冷却，加速半开自愈
+                    _cd = get_cooldown_seconds(source="yfinance" if "yfinance" in node_name else None)
+                    node.action_breaker_until[action_key] = time.time() + _cd
                     logger.warning(
                         f"[CircuitBreaker] 节点 {node_name} action={action} 连续失败 {cnt} 次，"
-                        f"触发 action 级熔断 (冷却 {get_cooldown_seconds():.0f}s)"
+                        f"触发 action 级熔断 (冷却 {_cd:.0f}s)"
                     )
                     # 节点级兜底：统计当前处于熔断态的不同 action 数，用动态阈值判定
                     now = time.time()

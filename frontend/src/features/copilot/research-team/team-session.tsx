@@ -42,7 +42,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   const [collectSteps, setCollectSteps] = useState<
     { key: string; status: string; message: string; request?: Record<string, unknown> | null; response?: string | null }[]
   >([])
-  const [collectOpen, setCollectOpen] = useState(false)
+  const [collectOpen, setCollectOpen] = useState(true)
   // 出战阵容：从首个 status 事件的 data.experts 中预提取，用于在观点到达前展示等待占位
   const [lineupExpertIds, setLineupExpertIds] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
@@ -53,6 +53,14 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   // 滚动区是否贴近底部（贴近底部时轻微的自动跟随不会造成视觉跳动）
   const nearBottomRef = useRef(false)
 
+  // 流式节流：SSE 可能一次性把整段文本推过来，直接写入 state 会"瞬间刷完"看不清。
+  // 这里把增量文本先放进 ref 缓冲，再由固定节拍的定时器逐字/逐块吐出，形成平滑打字机效果。
+  const buffersRef = useRef<Record<string, string>>({})
+  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 每个节拍吐出的字符数：越小越慢。配合下方 28ms 节拍 ≈ 每秒 ~140 字
+  const FLUSH_CHARS_PER_TICK = 4
+  const FLUSH_INTERVAL_MS = 28
+
   const reset = useCallback(() => {
     setOpinions([])
     setChief(null)
@@ -60,8 +68,13 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     setCurrentRound(0)
     setErrorMsg('')
     setCollectSteps([])
-    setCollectOpen(false)
+    setCollectOpen(true)
     setLineupExpertIds([])
+    buffersRef.current = {}
+    if (flushTimerRef.current) {
+      clearInterval(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
     userScrolledRef.current = false
   }, [])
 
@@ -73,16 +86,41 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
     onRunningChange?.(true)
     setStatusText('专家团已就位，等待首席召集…')
 
+    // 流式节流：把增量文本写入 ref 缓冲，由 flushTimer 按固定节拍吐出到 state，
+    // 避免后端一次性推送整段导致"瞬间刷完"。结构化字段(data)仍即时落库。
+    const key = (expertId: string, round: number) => `${expertId}#${round}`
+    // 立即停掉节流定时器，并把缓冲里残留文本一次性吐出，保证 done/error 时内容不丢
+    const flushAllNow = () => {
+      if (flushTimerRef.current) {
+        clearInterval(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
+      const buf = buffersRef.current
+      const keys = Object.keys(buf)
+      if (keys.length === 0) return
+      setOpinions((prev) => {
+        const next = [...prev]
+        for (const k of keys) {
+          const pending = buf[k]
+          if (!pending) continue
+          const [eid, r] = k.split('#')
+          const round = Number(r)
+          const idx = next.findIndex((o) => o.expertId === eid && o.round === round)
+          if (idx >= 0) next[idx] = { ...next[idx], content: next[idx].content + pending }
+        }
+        return next
+      })
+      buffersRef.current = {}
+    }
     const appendOrUpdate = (expertId: string, round: number, content: string, streaming: boolean, data?: ExpertOpinionData) => {
+      // 1) 确保该专家本轮的占位卡片已存在（立即显示，不等流式内容）
       setOpinions((prev) => {
         const idx = prev.findIndex((o) => o.expertId === expertId && o.round === round)
         if (idx >= 0) {
           const next = [...prev]
           next[idx] = {
             ...next[idx],
-            content: next[idx].content + content,
             streaming,
-            // 结构化观点判断：首片 data 补齐后持久化
             stance: data?.stance ?? next[idx].stance,
             confidence: data?.confidence ?? next[idx].confidence,
             keyEvidence: data?.key_evidence ?? next[idx].keyEvidence,
@@ -91,14 +129,43 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           }
           return next
         }
-        return [{ expertId, round, content, streaming, ...(data ? {
+        return [{ expertId, round, content: '', streaming, ...(data ? {
           stance: data.stance,
           confidence: data.confidence,
           keyEvidence: data.key_evidence,
           confidenceDelta: data.confidence_delta,
           revisedStance: data.revised_stance,
-        } : {}) }]
+        } : {}) }, ...prev]
       })
+      // 2) 实时文本进入缓冲，由节流定时器逐步显示
+      if (content) {
+        buffersRef.current[key(expertId, round)] = (buffersRef.current[key(expertId, round)] ?? '') + content
+        if (!flushTimerRef.current) {
+          flushTimerRef.current = setInterval(() => {
+            const buf = buffersRef.current
+            const keys = Object.keys(buf)
+            if (keys.length === 0) return
+            setOpinions((prev) => {
+              let changed = false
+              const next = [...prev]
+              for (const k of keys) {
+                const pending = buf[k]
+                if (!pending) continue
+                const take = pending.slice(0, FLUSH_CHARS_PER_TICK)
+                const rest = pending.slice(FLUSH_CHARS_PER_TICK)
+                buf[k] = rest
+                if (!take) continue
+                changed = true
+                const [eid, r] = k.split('#')
+                const round = Number(r)
+                const idx = next.findIndex((o) => o.expertId === eid && o.round === round)
+                if (idx >= 0) next[idx] = { ...next[idx], content: next[idx].content + take }
+              }
+              return changed ? next : prev
+            })
+          }, FLUSH_INTERVAL_MS)
+        }
+      }
     }
 
     // 完成帧后的补全对账：拿持久化会话补齐流式丢帧导致的缺失/空白观点，
@@ -209,6 +276,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               )
               break
             case 'done': {
+              flushAllNow()
               setPhase('done')
               onRunningChange?.(false)
               setStatusText('投决会结束')
@@ -218,6 +286,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               break
             }
             case 'error':
+              flushAllNow()
               setErrorMsg(e.message)
               setPhase('error')
               onRunningChange?.(false)
@@ -250,7 +319,6 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
 
   // 全量时间线：所有专家 × 所有轮次内容同屏持久展示（无 tab 切换，流式完成后内容不消失）
   const expertList = Array.from(new Set([...lineupExpertIds, ...opinions.map((o) => o.expertId)]))
-  const hasAnyContent = expertList.length > 0 || !!chief
   // 轮次严格顺序推进：已见最大轮次；运行中再补上正在进行的下一轮（含等待占位）
   const maxRoundSeen = opinions.reduce((m, o) => Math.max(m, o.round), 0)
   // 运行中：activeRound = 当前已完成轮 + 1（正在进行的轮）；且严格受 config.rounds 上限约束，避免越界轮次占位
@@ -284,9 +352,9 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* 进度条 / 状态 */}
-      <div className="flex items-center gap-2 border-b border-border/40 px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-3 py-2">
         {phase === 'running' ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-scene" />
         ) : phase === 'error' ? (
@@ -398,7 +466,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
         {/* 数据采集过程：折叠思考过程（复用 Research 折叠形态） */}
         {collectSteps.length > 0 && (
           <details
-            open={collectOpen}
+            open={collectOpen || phase === 'running'}
             onToggle={(e) => setCollectOpen((e.target as HTMLDetailsElement).open)}
             className="group rounded-xl border border-border/40 bg-white/[0.03]"
           >
@@ -407,12 +475,19 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               <span>数据采集过程</span>
               <span className="ml-auto text-[10px] text-muted-foreground/70">
                 {collectSteps.length} 项 · {collectSteps.filter((s) => s.status === 'success').length} 完成
+                {phase === 'running' && collectSteps.some((s) => s.status !== 'success') && ' · 采集中'}
               </span>
               <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
             </summary>
             <div className="max-h-56 overflow-y-auto border-t border-border/30 px-3 py-2">
               {collectSteps.map((s) => {
                 const isErr = s.status === 'error' || s.status === 'timeout' || s.status === 'skipped'
+                // 友好文案：将后端透传的"网关 400/熔断/限流"归纳为可行动提示，避免直接甩原始报错
+                const rawMsg = s.message || ''
+                const isTransient = /熔断|限流|circuit|rate.?limit|cooldown|暂不可用|网关报错|400|503/i.test(rawMsg)
+                const friendlyMsg = isTransient
+                  ? '数据源临时不可用（熔断/限流冷却中），稍后重试即可恢复'
+                  : rawMsg
                 return (
                   <div key={s.key} className="flex items-start gap-2 py-1 text-[11px]">
                     <span className={cn(
@@ -424,12 +499,13 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                         <span className="font-medium text-foreground/80">{s.key}</span>
                         <span className={cn(
                           'text-[10px] px-1 rounded',
-                          isErr ? 'text-red-300' : s.status === 'success' ? 'text-emerald-300' : 'text-amber-300',
+                          isErr ? (isTransient ? 'text-amber-300' : 'text-red-300')
+                            : s.status === 'success' ? 'text-emerald-300' : 'text-amber-300',
                         )}>
-                          {s.status}
+                          {isTransient && isErr ? 'retry' : s.status}
                         </span>
                       </div>
-                      {s.message && <div className="truncate text-[10px] text-muted-foreground/70">{s.message}</div>}
+                      {friendlyMsg && <div className="truncate text-[10px] text-muted-foreground/70" title={rawMsg}>{friendlyMsg}</div>}
                       {(s.request || s.response) && (
                         <details className="group ml-1 mt-0.5 rounded border border-border/30 bg-secondary/10 px-1.5 py-0.5">
                           <summary className="cursor-pointer select-none text-[10px] text-muted-foreground hover:text-foreground">
@@ -459,23 +535,28 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           </details>
         )}
 
-        {/* 研究员研判：扁平时间线 —— 每位分析师一张独立面板，按生成顺序(轮次→阵容)排列，
-            内容在面板内流式展示并持久保留；不再使用「第 X 轮 · 独立研判」聚合面板 */}
-        {hasAnyContent && (
+        {/* 研究员研判：扁平时间线 —— 出场阵容里每位分析师在每一可见轮次都固定占一张面板，
+            尚未发言的显示为占位(等待发言…)，已发言的持久保留流式内容。
+            这样「全过程所有分析师」始终同屏可见，而非只显示正在流式的那一位。 */}
+        {expertList.length > 0 && (
           <div className="space-y-2">
-            {opinions
-              .slice()
-              .sort((a, b) => {
-                if (a.round !== b.round) return a.round - b.round
-                return expertList.indexOf(a.expertId) - expertList.indexOf(b.expertId)
-              })
-              .map((o, i) => (
-                <div key={`${o.expertId}-${o.round}-${i}`} id={`opinion-${o.expertId}-${o.round}`}>
-                  <ExpertOpinionCard opinion={o} campBorder />
-                </div>
-              ))}
-            {/* 当前运行轮次：仅渲染一个「等待下一位专家发言」气泡（不再为每个专家逐个预占位，
-                避免专家逐个产出时列表反复重排导致画面抖动；已完成轮次不渲染任何占位 */}
+            {Array.from({ length: roundsToShow }, (_, ri) => ri + 1).flatMap((r) =>
+              expertList.map((eid, i) => {
+                const existing = opinions.find((o) => o.expertId === eid && o.round === r)
+                const opinion: ExpertOpinionState = existing ?? {
+                  expertId: eid,
+                  round: r,
+                  content: '',
+                  streaming: phase === 'running' && r === activeRound,
+                }
+                return (
+                  <div key={`${eid}-${r}-${i}`} id={`opinion-${eid}-${r}`}>
+                    <ExpertOpinionCard opinion={opinion} campBorder />
+                  </div>
+                )
+              }),
+            )}
+            {/* 当前运行轮次：仅渲染一个「等待下一位专家发言」气泡，标记本轮还在进行中 */}
             {phase === 'running' && (
               <div
                 key={`pending-round-${activeRound}`}

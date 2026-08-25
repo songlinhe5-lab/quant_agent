@@ -667,23 +667,26 @@ class HermesAgent(MemoryOperationsMixin):
                                 },
                                 "message": final_res.get("message", ""),
                             }
-                        else:
-                            self.messages.append(
-                                {
-                                    "role": "tool",
-                                    "tool_call_id": tc["id"],
-                                    "name": tc["function"]["name"],
-                                    "content": json.dumps(final_res, ensure_ascii=False),
-                                }
-                            )
-                            # AGENT-01 + AGENT-17: 工具返回入事件日志（携带 turn_id 便于归组）
-                            _ev_content = json.dumps(final_res, ensure_ascii=False)
-                            if len(_ev_content) > 4096:
-                                _ev_content = _ev_content[:4096] + "...[truncated]"
-                            self.event_log.record_tool_result(
-                                tc["id"], tc["function"]["name"], _ev_content, turn_id=turn_id
-                            )
-                            yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
+                        # OpenAI 约束：assistant 的每一个 tool_call 都必须有对应的 tool 消息回灌，
+                        # 否则下一轮 LLM 调用会抛 400 (insufficient tool messages following tool_calls)。
+                        # 因此 circuit_breaker 分支也必须 append 一条 tool 消息（内容为报错信息），
+                        # 否则并行工具中任意一个被熔断都会让整批 tool_call_id 缺应答而崩溃。
+                        self.messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "name": tc["function"]["name"],
+                                "content": json.dumps(final_res, ensure_ascii=False),
+                            }
+                        )
+                        # AGENT-01 + AGENT-17: 工具返回入事件日志（携带 turn_id 便于归组）
+                        _ev_content = json.dumps(final_res, ensure_ascii=False)
+                        if len(_ev_content) > 4096:
+                            _ev_content = _ev_content[:4096] + "...[truncated]"
+                        self.event_log.record_tool_result(
+                            tc["id"], tc["function"]["name"], _ev_content, turn_id=turn_id
+                        )
+                        yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
 
                     if tool_tasks:
                         await asyncio.gather(*tool_tasks, return_exceptions=True)
