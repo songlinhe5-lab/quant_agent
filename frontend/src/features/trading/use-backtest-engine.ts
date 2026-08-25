@@ -33,6 +33,8 @@ export function useBacktestEngine(
   const [progress, setProgress] = useState(0)
   const [progressStage, setProgressStage] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // UIRF-01 状态机补全：手动停止态（明示已停止 + 可重新运行，不静默重置）
+  const [stopped, setStopped] = useState(false)
   const [rawReturns, setRawReturns] = useState<number[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
   const { toast } = useToast()
@@ -46,9 +48,9 @@ export function useBacktestEngine(
     abortControllerRef.current?.abort()
     setRunning(false)
     setDone(false)
-    setProgress(0)
+    setStopped(true)
     setProgressStage('')
-    toast({ variant: 'destructive', title: '🚨 回测已中止', description: '您手动取消了回测推演。' })
+    toast({ variant: 'destructive', title: '🚨 回测已中止', description: '停止即断开流，后端任务异步取消；已产出的最后一次成功结果（若有）保留。' })
   }
 
   const handleRun = async (overrideParams?: Record<string, any>, isSilent: boolean = false) => {
@@ -57,6 +59,7 @@ export function useBacktestEngine(
     setProgress(0)
     setProgressStage('')
     setError(null)
+    setStopped(false)
     if (!isSilent) setBacktestResult(null)
     setRawReturns([])
 
@@ -171,7 +174,8 @@ export function useBacktestEngine(
         if (!isSilent) toast({ variant: 'destructive', title: '回测失败', description: finalData.message })
       }
     } catch (e: any) {
-      if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED' || e.message === 'canceled') return
+      // 手动中止（AbortController.abort）不算失败：fetch 抛 AbortError，apiClient 抛 CanceledError
+      if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED' || e.name === 'AbortError' || e.message === 'canceled') return
       setError(`网络异常：${e.message}`)
       if (!isSilent) toast({ variant: 'destructive', title: '网络异常', description: e.message })
     } finally {
@@ -182,7 +186,7 @@ export function useBacktestEngine(
   }
 
   return {
-    running, done, progress, progressStage, error, rawReturns,
+    running, done, progress, progressStage, error, rawReturns, stopped,
     handleRun, handleCancel, setDone, setProgress, setError,
   }
 }

@@ -111,6 +111,48 @@ export function getZhLabel(key: string) {
   return FIELD_ZH_MAP[key] || key;
 }
 
+// UIRF: 列序按扫读习惯分组 —— 价格 → 涨跌 → 规模 → 估值 → 成长，其余字段字母序殿后
+type ColumnGroup = (base: string) => boolean
+const SCAN_ORDER_GROUPS: ColumnGroup[] = [
+  // 价格
+  (k) => k === 'price' || k === 'lot_price' || k.includes('52w'),
+  // 涨跌/活跃度（涨跌幅、振幅、量比、换手、委比）
+  (k) =>
+    k === 'chg' ||
+    k.startsWith('change_') ||
+    k === 'price_change_pct' ||
+    k === 'amplitude' ||
+    k.startsWith('volume') ||
+    k.startsWith('turnover') ||
+    k.startsWith('avg_') ||
+    k === 'bid_ask_ratio',
+  // 规模（市值、股本、上市天数）
+  (k) => k === 'mktcap' || k.includes('market_cap') || k.endsWith('_share') || k === 'listed_days',
+  // 估值（PE/PB/PS/PCF、股息率、历史分位）
+  (k) =>
+    k.startsWith('pe') ||
+    k.startsWith('pb') ||
+    k.startsWith('ps') ||
+    k.startsWith('pcf') ||
+    k.startsWith('dividend') ||
+    k.startsWith('hist_percentile'),
+  // 成长（各增长率）
+  (k) => k.includes('growth'),
+]
+
+/** 动态列按扫读分组排序：组内与未命中字段保持字母序 */
+export function sortColumnsByScanOrder(cols: string[]): string[] {
+  const buckets: string[][] = SCAN_ORDER_GROUPS.map(() => [])
+  const rest: string[] = []
+  for (const col of cols) {
+    const base = (col.match(/^([^(]+)/)?.[1] ?? col).trim()
+    const gi = SCAN_ORDER_GROUPS.findIndex((g) => g(base))
+    if (gi === -1) rest.push(col)
+    else buckets[gi].push(col)
+  }
+  return [...buckets.flat(), ...rest.sort()]
+}
+
 // 💡 股票代码展示格式化器 (去掉首缀，更符合人类与主流软件习惯)
 export function formatDisplaySymbol(sym: string) {
   if (!sym) return sym;

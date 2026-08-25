@@ -32,7 +32,12 @@ export function SnapshotPicker({
         <Database className="h-3 w-3" aria-hidden />
         数据快照
         {latest?.stale_warning && (
-          <span className="text-amber-500 font-mono">STALE ≥3d</span>
+          <span
+            className="text-amber-500 font-mono cursor-help"
+            title="最新 published 快照距今 ≥3 个交易日，行情/财务快照已过期；回测结果仅反映快照时点口径。可在下方切换到更早的 published 快照。"
+          >
+            STALE ≥3d
+          </span>
         )}
       </p>
       <select

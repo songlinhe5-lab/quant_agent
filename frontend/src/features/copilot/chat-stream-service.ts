@@ -3,6 +3,8 @@ import { fetchWithAuth, API_BASE_URL, clearTokens, emitAuthRequired, ApiError } 
 /** SSE 流式解析回调——由 useChat hook 注入，service 不直接依赖 store */
 export interface StreamCallbacks {
   onTextChunk: (content: string) => void
+  /** COPILOT-03/P0-4: 真实推理片段（Plan 阶段），不再静默丢弃 */
+  onReasoningChunk: (content: string) => void
   onThinkEnd: () => void
   onToolStart: (name: string, input: string) => void
   onToolResult: (name: string, result: unknown) => void
@@ -75,6 +77,9 @@ export async function runChatStream(params: StreamParams, cb: StreamCallbacks): 
         if (data.type === 'text_chunk') {
           cb.onTextChunk(data.content)
           if (data.content?.includes('</think>')) cb.onThinkEnd()
+        } else if (data.type === 'reasoning_chunk') {
+          // 后端 hermes_agent 在思考阶段推送的真实推理流；计入 flush 节流
+          cb.onReasoningChunk(data.content)
         } else if (data.type === 'tool_start') {
           cb.onToolStart(data.name, data.input)
         } else if (data.type === 'tool_result') {
