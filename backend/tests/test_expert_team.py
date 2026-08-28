@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -947,3 +948,111 @@ class TestFedWatchInExpertTeam:
         assert "fed_watch" in result
         assert result["fed_watch"].get("status") == "success"
         registry.execute.assert_called_once()
+
+
+# ─── 问题文本解析 ticker（未绑定标的场景稳定性） ──────────────────────
+
+
+class TestResolveTickerFromQuestion:
+    """_resolve_ticker_from_question 稳定性：中文名/标准代码/普通英文词不误判
+
+    覆盖用户反馈：查询标的/quote/fundamental/technicals 偶发「未识别到标的」。
+    根因：贪婪截断 `{2,6}` 把动词杂质带入关键词（如「腾讯控股值得买」→「腾讯控股值得」），
+    词库与 Futu 联想均失配。修复后改为从长到短逐级缩短候选，并收紧裸英文词判定。
+    """
+
+    def _patch_deps(self, local_data=None, futu_data=None, llm_ticker=None):
+        """mock 本地词库 / Futu search_quote / LLM 兜底，避免真实外部依赖"""
+
+        async def fake_search_tickers(kw):
+            return {"status": "success", "data": local_data or []}
+
+        async def fake_search_quote(keyword, max_count=10):
+            mock = MagicMock()
+            mock.is_success = bool(futu_data)
+            mock.data = futu_data or []
+            return mock
+
+        async def fake_llm(question, keyword):
+            return llm_ticker
+
+        stack = ExitStack()
+        stack.enter_context(
+            patch(
+                "backend.services.fund_flow.ticker.ticker_service.search_tickers",
+                new=AsyncMock(side_effect=fake_search_tickers),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "backend.services.datasource.business.data_service.search_quote",
+                new=AsyncMock(side_effect=fake_search_quote),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "backend.services.expert_team.expert_team_service._resolve_ticker_via_llm",
+                new=AsyncMock(side_effect=fake_llm),
+            )
+        )
+        return stack
+
+    @pytest.mark.asyncio
+    async def test_standard_code_us_prefix(self):
+        """带 US. 前缀的标准代码应直接标准化，不经过联想"""
+        from backend.services.expert_team.expert_team_service import _resolve_ticker_from_question
+
+        with self._patch_deps():
+            assert await _resolve_ticker_from_question("US.AAPL 值得投资吗？") == "US.AAPL"
+
+    @pytest.mark.asyncio
+    async def test_standard_code_hk_suffix(self):
+        """00700.HK 后缀标准代码应直接标准化"""
+        from backend.services.expert_team.expert_team_service import _resolve_ticker_from_question
+
+        with self._patch_deps():
+            assert await _resolve_ticker_from_question("00700.HK 怎么样") == "HK.00700"
+
+    @pytest.mark.asyncio
+    async def test_chinese_name_with_noise_verb(self):
+        """中文名后带动词杂质（值得/买入/吗）时，应逐级缩短到词库可命中的名称"""
+        from backend.services.expert_team.expert_team_service import _resolve_ticker_from_question
+
+        local_data = [{"symbol": "HK.00700", "code": "HK.00700", "name": "腾讯控股", "type": "STOCK"}]
+        with self._patch_deps(local_data=local_data):
+            # 「腾讯控股值得买吗」→ 剔除杂质后候选含「腾讯控股」→ 词库命中
+            assert await _resolve_ticker_from_question("腾讯控股值得买吗？") == "HK.00700"
+
+    @pytest.mark.asyncio
+    async def test_chinese_name_short(self):
+        """短中文名（宁德时代）应直接命中词库"""
+        from backend.services.expert_team.expert_team_service import _resolve_ticker_from_question
+
+        local_data = [{"symbol": "US.300750", "code": "US.300750", "name": "宁德时代", "type": "STOCK"}]
+        with self._patch_deps(local_data=local_data):
+            assert await _resolve_ticker_from_question("宁德时代怎么样") == "US.300750"
+
+    @pytest.mark.asyncio
+    async def test_no_false_positive_on_english_word(self):
+        """普通英文词（AI/ETF）不得被误判为股票代码，词库/LLM 无命中时应返回 None"""
+        from backend.services.expert_team.expert_team_service import _resolve_ticker_from_question
+
+        with self._patch_deps(local_data=[], futu_data=[], llm_ticker=None):
+            assert await _resolve_ticker_from_question("AI板块怎么看") is None
+
+    @pytest.mark.asyncio
+    async def test_futu_fallback_when_local_miss(self):
+        """本地词库未命中时应降级走 Futu SEARCH_QUOTE 联想"""
+        from backend.services.expert_team.expert_team_service import _resolve_ticker_from_question
+
+        futu_data = [{"code": "US.AAPL", "symbol": "US.AAPL", "name": "苹果", "sec_type": "STOCK"}]
+        with self._patch_deps(local_data=[], futu_data=futu_data):
+            assert await _resolve_ticker_from_question("苹果值得持有吗") == "US.AAPL"
+
+    @pytest.mark.asyncio
+    async def test_llm_fallback_when_all_miss(self):
+        """词库与 Futu 均未命中时，LLM 语义推导兜底（如"白酒龙头"→贵州茅台）"""
+        from backend.services.expert_team.expert_team_service import _resolve_ticker_from_question
+
+        with self._patch_deps(local_data=[], futu_data=[], llm_ticker="SH.600519"):
+            assert await _resolve_ticker_from_question("白酒龙头现在能买吗") == "SH.600519"

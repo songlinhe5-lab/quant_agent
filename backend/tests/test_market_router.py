@@ -136,10 +136,17 @@ class TestGetQuote:
         assert resp.json()["source"] == "futu"
 
     @patch("backend.routers.market.data_source_router")
-    def test_futu_fail_returns_400(self, mock_ds):
+    def test_futu_fail_returns_200(self, mock_ds):
+        """上游 Futu 源不可用时属服务端降级：返回 200 + 结构化 error，而非 HTTP 400。
+        （HTTP 400 表示客户端请求错误，不应用于描述上游数据源故障）"""
         mock_ds.fetch_futu = AsyncMock(return_value={"status": "error", "message": "数据源超时"})
         resp = client.get("/market/quote?ticker=US.AAPL")
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "error"
+        assert body["code"] == "FUTU_SOURCE_UNAVAILABLE"
+        assert body["source"] == "futu"
+        assert body["retryable"] is True
 
     @patch("backend.routers.market._facade_market")
     def test_non_futu_uses_facade(self, mock_facade):
@@ -158,15 +165,21 @@ class TestGetQuote:
         assert resp.json()["last_price"] == 1.0
 
     @patch("backend.routers.market._facade_market")
-    def test_facade_error_returns_400(self, mock_facade):
-        """Facade 返回 ERROR 状态时返回 400"""
+    def test_facade_error_returns_200(self, mock_facade):
+        """Facade 返回 ERROR 状态时属服务端降级：返回 200 + 结构化 error，而非 HTTP 400。"""
         mock_facade.get_quote = AsyncMock(
             return_value=Result(
                 status=ResultStatus.ERROR, error=ErrorInfo(code="TIMEOUT", message="数据源超时"), source="test"
             )
         )
         resp = client.get("/market/quote?ticker=BTC-USD")
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "error"
+        assert body["code"] == "TIMEOUT"
+        assert body["source"] == "test"
+        # ErrorInfo 默认 retryable=False，路由透传而非强行覆盖
+        assert body["retryable"] is False
 
 
 # ─── /market/fundamental/{ticker} ─────────────────────────────────────

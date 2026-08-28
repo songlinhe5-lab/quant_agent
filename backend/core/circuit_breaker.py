@@ -370,9 +370,15 @@ def get_circuit_breaker(
     return CircuitBreaker(max_failures=max_failures, recovery_timeout=recovery_timeout)
 
 
-def get_cooldown_seconds() -> float:
+def get_cooldown_seconds(source: Optional[str] = None) -> float:
     """熔断冷却时间（秒），来自 env CIRCUIT_BREAKER_COOLDOWN_S。
 
     供遗留手写时间戳熔断逻辑复用，统一冷却时长、禁止硬编码 60。
+
+    源级覆盖：易限流/不稳定的兜底源（如 yfinance）可单独配置更短冷却，
+    加速半开自愈——避免 60s 冷却期内 HISTORY 等依赖它的请求全部黑屏。
+    优先级：YFINANCE_CIRCUIT_BREAKER_COOLDOWN_S > 全局 CIRCUIT_BREAKER_COOLDOWN_S。
     """
+    if source == "yfinance":
+        return float(os.getenv("YFINANCE_CIRCUIT_BREAKER_COOLDOWN_S", str(_CIRCUIT_BREAKER_COOLDOWN_S)))
     return _CIRCUIT_BREAKER_COOLDOWN_S

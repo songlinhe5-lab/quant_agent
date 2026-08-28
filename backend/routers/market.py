@@ -455,7 +455,15 @@ async def get_quote(ticker: str):
                 "cached": futu_res.get("cached", False),
             }
         err_msg = futu_res.get("message", "Futu 数据源失败") if isinstance(futu_res, dict) else str(futu_res)
-        raise HTTPException(status_code=400, detail=err_msg)
+        # 上游 Futu 节点不可用属服务端降级，返回 200 + 结构化错误而非 HTTP 400
+        return {
+            "status": "error",
+            "code": "FUTU_SOURCE_UNAVAILABLE",
+            "message": err_msg,
+            "data": None,
+            "source": "futu",
+            "retryable": True,
+        }
 
     # 非 futu 标的走通用 Facade（经 DataSourceRegistry 选源 + 融合 + Stale 检测）
     try:
@@ -465,8 +473,16 @@ async def get_quote(ticker: str):
         raise HTTPException(status_code=500, detail=f"数据源调用异常: {exc}")
 
     if not facade_res.is_success:
+        # 数据源不可用属服务端降级，返回 200 + 结构化错误而非 HTTP 400
         err_msg = facade_res.error.message if facade_res.error else "所有数据源失败"
-        raise HTTPException(status_code=400, detail=err_msg)
+        return {
+            "status": "error",
+            "code": facade_res.error.code if facade_res.error else "DATA_SOURCE_UNAVAILABLE",
+            "message": err_msg,
+            "data": None,
+            "source": facade_res.source,
+            "retryable": facade_res.error.retryable if facade_res.error else True,
+        }
 
     # BE-13 方案 B：直接返回扁平 payload，由 response_envelope_middleware 统一包成 {code,msg,data,ts}
     # 前端统一读 res.data（含业务字段 + source 元数据），不再二次解包 .data
@@ -1082,8 +1098,17 @@ async def get_market_snapshot(tickers: str):
         raise HTTPException(status_code=400, detail="tickers 不能为空")
     facade_res = await _facade_market.get_market_snapshot(ticker_list)
     if facade_res.is_error:
+        # 上游数据源不可用属于服务端降级(非客户端请求错误)，返回 200 + 结构化错误，
+        # 让前端以「该项数据暂不可用」优雅展示，而非把 HTTP 400 当成接口报错抛给用户。
         err_msg = facade_res.error.message if facade_res.error else "快照数据不可用"
-        raise HTTPException(status_code=400, detail=err_msg)
+        return {
+            "status": "error",
+            "code": facade_res.error.code if facade_res.error else "DATA_SOURCE_UNAVAILABLE",
+            "message": err_msg,
+            "data": None,
+            "source": facade_res.source,
+            "retryable": facade_res.error.retryable if facade_res.error else True,
+        }
     # BE-13 方案 B：扁平 payload 交由中间件统一包信封（data 非 dict 时降级而非 500）
     return _flat_facade_payload(facade_res, "快照数据不可用")
 

@@ -144,6 +144,62 @@ RECOVERY_PROBE_INTERVAL: float = 60.0
 # 最大 fallback 数量（防止配置错误导致无限链）
 MAX_FALLBACKS: int = 3
 
+# ========================================================================
+# AGENT-22: 全局 LLM 调用速率限制器（并发令牌桶）
+#   从源头限制同时发出的 LLM 请求数 + 每秒请求率(RPM)，避免并行 agent / 并行工具
+#   在瞬间打爆提供商的 RPM/TPM 配额而触发 429。与 AGENT-18 的「事后退避重试」互补：
+#   - AGENT-18：已 429 后再退避重试（治标）
+#   - 本限制器：请求发出前就排队限流（治本），尽量让绝大多数请求根本不踩限流窗口
+#
+# 环境变量（均可选）：
+#   HERMES_LLM_MAX_CONCURRENCY: 最大并发 LLM 请求数（默认 2；<=0 表示不限制并发）
+#   HERMES_LLM_RPM:             每 period 秒允许的最大请求数（默认 0=不限制速率）
+#   HERMES_LLM_RATE_PERIOD:     速率统计窗口（秒，默认 60）
+# ========================================================================
+
+DEFAULT_MAX_CONCURRENCY: int = 2
+DEFAULT_RPM: float = 0.0
+DEFAULT_RATE_PERIOD: float = 60.0
+
+
+class _LLMRateLimiter:
+    """
+    LLM 调用速率限制器：并发信号量 + 滑动窗口 RPM 令牌桶。
+
+    - 并发上限：asyncio.Semaphore，限制同一时刻在飞的 LLM 请求数。
+    - RPM 上限：滑动窗口记录最近 period 秒内的请求时间戳，超过则按最早过期时间 sleep。
+    两者均只用 async 原语，不阻塞事件循环。
+    """
+
+    def __init__(self, max_concurrency: int, rpm: float, period: float = 60.0):
+        self._sem = asyncio.Semaphore(max_concurrency) if max_concurrency > 0 else None
+        self._rpm = float(rpm)
+        self._period = float(period)
+        self._lock = asyncio.Lock()
+        self._timestamps: List[float] = []
+
+    async def acquire(self) -> None:
+        if self._sem is not None:
+            await self._sem.acquire()
+        if self._rpm and self._rpm > 0:
+            while True:
+                async with self._lock:
+                    now = time.monotonic()
+                    cutoff = now - self._period
+                    # 清理已过期的时间戳
+                    self._timestamps = [t for t in self._timestamps if t > cutoff]
+                    if len(self._timestamps) < self._rpm:
+                        self._timestamps.append(now)
+                        return
+                    # 窗口已满，等最早的一次过期后再试（释锁期间不阻塞并发）
+                    sleep_for = self._timestamps[0] + self._period - now
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
+
+    def release(self) -> None:
+        if self._sem is not None:
+            self._sem.release()
+
 
 # ========================================================================
 # LLM Provider Router
@@ -178,6 +234,15 @@ class LLMProviderRouter:
         self._active_index: int = 0  # 0 = primary, 1+ = fallback
         self._failover_events: List[FailoverEvent] = []
         self._lock = asyncio.Lock()
+        # AGENT-22: 全局 LLM 并发 / RPM 速率限制器（从源头避免瞬时打爆提供商配额触发 429）
+        _max_conc = int(
+            os.getenv("HERMES_LLM_MAX_CONCURRENCY", str(DEFAULT_MAX_CONCURRENCY)) or DEFAULT_MAX_CONCURRENCY
+        )
+        _rpm = float(os.getenv("HERMES_LLM_RPM", str(DEFAULT_RPM)) or DEFAULT_RPM)
+        _period = float(os.getenv("HERMES_LLM_RATE_PERIOD", str(DEFAULT_RATE_PERIOD)) or DEFAULT_RATE_PERIOD)
+        self._rate_limiter: Optional[_LLMRateLimiter] = (
+            _LLMRateLimiter(_max_conc, _rpm, _period) if (_max_conc > 0 or _rpm > 0) else None
+        )
 
     @classmethod
     def from_env(cls) -> LLMProviderRouter:
@@ -428,6 +493,10 @@ class LLMProviderRouter:
             backoff.reset()
 
             while current_provider_attempt < retry_budget.max_attempts:
+                # AGENT-22: 发出请求前先获取并发/速率令牌；无论成败都在 finally 释放，
+                # 让并发上限与 RPM 限速作用于每一次 LLM 调用（含重试），从源头抑制 429 突发。
+                if self._rate_limiter is not None:
+                    await self._rate_limiter.acquire()
                 try:
                     response = await create_func(provider.client, provider.model)
                     await self.report_success(provider)
@@ -508,6 +577,11 @@ class LLMProviderRouter:
 
                     # Apply backoff
                     await asyncio.sleep(delay)
+
+                finally:
+                    # AGENT-22: 无论本次尝试成功/失败/重试，都归还并发/速率令牌
+                    if self._rate_limiter is not None:
+                        self._rate_limiter.release()
 
             # Current provider exhausted, try next provider
             event = await self.report_failure(provider)

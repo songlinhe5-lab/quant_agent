@@ -26,10 +26,14 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
     供后续个股数据采集使用（quote/fundamental/technicals）。
 
     关键设计（get_search_quote 是联想搜索，非精确查单个代码）：
-      1. 若问题含**标准代码**（US.AAPL / 00700.HK / AAPL / 00700）→ 直接 format_ticker
-         标准化，不经过 search_quote（避免联想搜索返回多个相关标的导致误匹配）。
-      2. 仅当是**中文名/非标输入**时才走 Futu SEARCH_QUOTE 联想，并精确筛选候选：
-         优先选 sec_type=STOCK 且名称匹配的标的，而非盲目取第一个候选。
+     1. 仅当问题含**带市场前缀的标准代码**（US.AAPL / HK.00700 / 00700.HK）→ 直接
+        format_ticker 标准化，不经过 search_quote（避免联想搜索返回多个相关标的导致
+        误匹配）。裸英文词（AI/ETF/Apple 等）一律不在此处认定，交给下方词库/联想匹配，
+        避免把普通英文单词误判成错误代码（如 US.AI）。
+     2. 中文名/非标输入走统一模糊匹配（本地词库 → Futu SEARCH_QUOTE），并精确筛选候选：
+        优先选 sec_type=STOCK 且名称匹配的标的，而非盲目取第一个候选。
+     3. 中文片段从长到短逐级缩短生成候选（如"腾讯控股值得买"→"腾讯控股值得"→
+        "腾讯控股"→"腾讯"），避免贪婪截断把杂质动词带入关键词导致词库/联想失配。
     """
     import re
 
@@ -37,12 +41,12 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
         return None
     from backend.core.ticker_format import format_ticker
 
-    # 1) 显式标准代码 → 直接标准化，不查联想
-    # 覆盖: US.AAPL / HK.00700 / HK.0772 / 00700.HK / AAPL / 00700
+    # 1) 显式标准代码（带市场前缀） → 直接标准化，不查联想
+    # 覆盖: US.AAPL / HK.00700 / HK.0772 / 00700.HK
+    # 注意: 不再匹配裸 [A-Za-z]{1,5}，防止"AI/ETF/IPO"等普通英文词被误判为代码
     m_code = re.search(
         r"(?:US\.|HK\.)[A-Za-z0-9]{1,5}"
-        r"|\d{4,5}\.HK"
-        r"|\b[A-Za-z]{1,5}(?:\.[A-Z]{2})?\b",
+        r"|\d{4,5}\.HK",
         question,
     )
     if m_code:
@@ -53,7 +57,8 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
             except Exception:  # noqa: BLE001
                 return raw
 
-    # 2) 中文股票名：剔除常见动词/语气词后，取第一个中文片段
+    # 2) 中文股票名：剔除常见动词/语气词后，取第一个连续中文段，
+    #    并生成从长到短的候选列表（避免贪婪截断把杂质带进关键词）
     _STOP = (
         "研究",
         "分析",
@@ -98,54 +103,81 @@ async def _resolve_ticker_from_question(question: str) -> Optional[str]:
         "和",
         "吗",
         "呢",
+        "值得",
+        "买入",
+        "卖出",
+        "持有",
+        "涨",
+        "跌",
+        "多少",
+        "什么",
+        "哪个",
+        "哪里",
+        "了",
+        "的",
+        "吧",
+        "啊",
+        "呀",
+        "还",
+        "很",
+        "太",
+        "更",
+        "我",
+        "你",
+        "他",
+        "它",
+        "这",
+        "那",
+        "该",
+        "个",
     )
     _clean = question
     for w in sorted(_STOP, key=len, reverse=True):
         _clean = re.sub(w, "", _clean)
-    _frag = re.search(r"[\u4e00-\u9fa5]{2,6}", _clean)
-    keyword = None
-    if _frag:
-        _kw = _frag.group(0)
-        for w in ("吗", "呢", "怎么样", "怎么"):
-            if _kw.endswith(w):
-                _kw = _kw[: -len(w)]
-                break
-        keyword = _kw if len(_kw) >= 2 else None
-    if not keyword:
+    _frag = re.search(r"[\u4e00-\u9fa5]+", _clean)
+    if not _frag:
         return None
+    _full = _frag.group(0)
+    # 候选：完整段（截 8 字）→ 逐字缩短到 2 字，保留前缀（股票名一般在句首）
+    candidates_kw: list[str] = []
+    for _end in range(min(len(_full), 8), 1, -1):
+        candidates_kw.append(_full[:_end])
+    keyword = candidates_kw[0] if candidates_kw else None
 
     # 3) 中文名 → 统一模糊匹配（复用 /market/search 级联：本地词库 → Futu SEARCH_QUOTE）
-    #    精确筛选候选（优先 STOCK 类型，其次名称匹配）
+    #    逐候选匹配，第一个命中的候选即采用（精确筛选 STOCK 类型，其次名称匹配）
     try:
         # 注意: search_quote 在 DataServiceFacade(data_service) 上，不在 MarketDataService(market_data_service)
         from backend.services.datasource.business import data_service
         from backend.services.fund_flow.ticker import ticker_service
 
-        candidates: list[dict] = []
-        local = await ticker_service.search_tickers(keyword)
-        # 本地词库命中（无论 success/error，只要 data 非空即采用）
-        if local.get("data"):
-            candidates = local["data"]
-        # 兜底降级：本地词库未覆盖该标的（data 为空，含 success 空结果或异常）时，
-        # 主动走 Futu SEARCH_QUOTE 实时联想，避免词库不全导致解析失败（如港股小票）。
-        if not candidates:
-            try:
-                res = await data_service.search_quote(keyword=keyword, max_count=10)
-                if res.is_success and res.data:
-                    candidates = res.data if isinstance(res.data, list) else []
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"[expert-team] Futu search_quote 降级失败 ({keyword}): {e}")
-        if candidates:
+        for kw in candidates_kw:
+            candidates: list[dict] = []
+            local = await ticker_service.search_tickers(kw)
+            # 本地词库命中（无论 success/error，只要 data 非空即采用）
+            if local.get("data"):
+                candidates = local["data"]
+            # 兜底降级：本地词库未覆盖该标的（data 为空，含 success 空结果或异常）时，
+            # 主动走 Futu SEARCH_QUOTE 实时联想，避免词库不全导致解析失败（如港股小票）。
+            if not candidates:
+                try:
+                    res = await data_service.search_quote(keyword=kw, max_count=10)
+                    if res.is_success and res.data:
+                        candidates = res.data if isinstance(res.data, list) else []
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"[expert-team] Futu search_quote 降级失败 ({kw}): {e}")
+            if not candidates:
+                continue
             # 优先 STOCK 类型
             for c in candidates:
                 if str(c.get("sec_type") or c.get("type") or "").upper() == "STOCK":
                     code = c.get("code") or c.get("symbol") or c.get("ticker")
                     if code:
                         return format_ticker(code)
-            # 无 STOCK 时，取名称含 keyword 的候选（如中文名联想）
+            # 无 STOCK 时，取名称含 kw 的候选（如中文名联想）
             for c in candidates:
                 name = str(c.get("name", ""))
-                if name and keyword in name:
+                if name and kw in name:
                     code = c.get("code") or c.get("symbol") or c.get("ticker")
                     if code:
                         return format_ticker(code)

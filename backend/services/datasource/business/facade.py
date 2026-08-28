@@ -717,10 +717,18 @@ class DataServiceFacade:
           - 显式标红 ``consensus_is_third_party_expectation=True``，禁止把卖方观点当事实结论
         原始数据原样保留；任一缺失则对应字段给 None + note（零幻觉红线，不臆造价格）。
         """
-        # 防御：任一子任务抛异常不导致整体 500（返回 None，后续零幻觉降级为缺失字段）
+
+        # 防御：任一子任务抛异常不导致整体 500（捕获后返回 None，后续零幻觉降级为缺失字段）
+        async def _safe(label: str, coro):
+            try:
+                return label, await coro
+            except Exception as e:  # noqa: BLE001 - 单源崩溃不应拖垮交叉验证
+                logging.warning("get_analyst_vs_actual: 子任务 %s 异常: %s", label, e)
+                return label, None
+
         _pairs = await asyncio.gather(
-            self._safe("analyst_consensus", self.get_analyst_consensus(ticker, prefer_sources=prefer_sources)),
-            self._safe("fundamental_merged", self.get_fundamental_merged(ticker)),
+            _safe("analyst_consensus", self.get_analyst_consensus(ticker, prefer_sources=prefer_sources)),
+            _safe("fundamental_merged", self.get_fundamental_merged(ticker)),
         )
         res_cons = _pairs[0][1] if _pairs and isinstance(_pairs[0], tuple) else None
         res_fund = _pairs[1][1] if len(_pairs) > 1 and isinstance(_pairs[1], tuple) else None
