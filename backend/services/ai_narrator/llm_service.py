@@ -190,6 +190,16 @@ class LLMRouter:
         return self._in_fallback
 
 
+def _is_rate_limit(err: Exception) -> bool:
+    """判断是否为限流(429)：覆盖 openai RateLimitError / httpx 429 / 文本匹配。"""
+    if isinstance(err, RateLimitError):
+        return True
+    status = getattr(err, "status_code", None)
+    if status == 429:
+        return True
+    return "429" in str(err)
+
+
 class LLMService:
     """
     统一的大语言模型 (LLM) 服务收口。
@@ -315,22 +325,40 @@ class LLMService:
         client = self.get_client(tier)
         model = self.get_model(tier)
 
-        try:
-            response = await client.chat.completions.create(
-                model=model,
-                temperature=kwargs.get("temperature", 0.0),
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": enhanced_system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-            )
-            if tier is not None:
-                self.router.record_success(tier)
-        except Exception:
+        # 429 限流指数退避重试：最多额外重试 3 次（退避 2/4/8s），仍失败再上抛。
+        # 非流式调用可整体安全重试；限流不计入 router 失败计数（Ollama 不可达时误降级无意义）。
+        MAX_RETRY = 3
+        backoff = 2.0
+        response = None
+        last_err: Optional[Exception] = None
+        for attempt in range(MAX_RETRY + 1):
+            try:
+                response = await client.chat.completions.create(
+                    model=model,
+                    temperature=kwargs.get("temperature", 0.0),
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": enhanced_system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if not _is_rate_limit(e):
+                    break
+                if attempt < MAX_RETRY:
+                    await asyncio.sleep(backoff * (2**attempt))
+                    continue
+                break
+        if response is None:
             if tier is not None:
                 self.router.record_failure(tier)
-            raise
+            if last_err is not None:
+                raise last_err
+            raise RuntimeError("LLM 结构化生成失败")
+        if tier is not None:
+            self.router.record_success(tier)
 
         content = response.choices[0].message.content or ""
         content = content.strip()
@@ -423,15 +451,6 @@ class LLMService:
             if err is not None:
                 raise err
 
-        def _is_rate_limit(err: Exception) -> bool:
-            """判断是否为限流(429)：覆盖 openai RateLimitError / httpx 429 / 文本匹配。"""
-            if isinstance(err, RateLimitError):
-                return True
-            status = getattr(err, "status_code", None)
-            if status == 429:
-                return True
-            return "429" in str(err)
-
         # 429 限流指数退避重试：最多额外重试 3 次（退避 2/4/8s），仍失败再上抛。
         # 仅在"尚未收到首个 token"的建立阶段重试，避免重复消费已流出的内容；
         # 限流不计入 router 失败计数（Ollama 不可达时误降级无意义）。
@@ -501,19 +520,37 @@ class LLMService:
             await self._record_token_usage(response)
             return response.choices[0].message.content.strip()
 
-        try:
-            response = await client.chat.completions.create(
-                model=model_name,
-                temperature=temperature,
-                messages=messages,
-                **kwargs,
-            )
-            if tier is not None:
-                self.router.record_success(tier)
-        except Exception:
+        # 429 限流指数退避重试：最多额外重试 3 次（退避 2/4/8s），仍失败再上抛。
+        # 非流式调用可整体安全重试；限流不计入 router 失败计数（Ollama 不可达时误降级无意义）。
+        MAX_RETRY = 3
+        backoff = 2.0
+        response = None
+        last_err: Optional[Exception] = None
+        for attempt in range(MAX_RETRY + 1):
+            try:
+                response = await client.chat.completions.create(
+                    model=model_name,
+                    temperature=temperature,
+                    messages=messages,
+                    **kwargs,
+                )
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if not _is_rate_limit(e):
+                    break
+                if attempt < MAX_RETRY:
+                    await asyncio.sleep(backoff * (2**attempt))
+                    continue
+                break
+        if response is None:
             if tier is not None:
                 self.router.record_failure(tier)
-            raise
+            if last_err is not None:
+                raise last_err
+            raise RuntimeError("LLM 文本生成失败")
+        if tier is not None:
+            self.router.record_success(tier)
 
         content = response.choices[0].message.content or ""
         await self._record_token_usage(response)
