@@ -1123,7 +1123,7 @@ class DataServiceFacade:
                 # 实质空数据（如 yfinance 对港股返回 success + 空 financials）不应算成功，
                 # 否则单源成功即停、永远不会 failover 到真正有数据的源。判为实质失败时继续下一源。
                 if (
-                    action_upper in ("FUNDAMENTAL", "INFO")
+                    action.upper() in ("FUNDAMENTAL", "INFO")
                     and isinstance(res.data, dict)
                     and not res.data.get("financials")
                 ):
