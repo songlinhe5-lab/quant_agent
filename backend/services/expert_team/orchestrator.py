@@ -36,6 +36,7 @@ from hermes_agent.tool_registry import ToolRegistry
 _EXPERT_TIMEOUT = 60.0  # 单个专家超时（真流式下为整段生成+限速滴播的总时限）
 _ROUND_TIMEOUT = 180.0  # 整轮超时（与 _EXPERT_TIMEOUT 叠加，双保险）
 _CHIEF_TIMEOUT = 120.0  # 首席报告更长，单独放宽
+_EXPERT_CONCURRENCY = 3  # 同时进行的专家 LLM 流上限；其余排队，避免瞬时并发打爆网关配额(429)
 _STREAM_CHUNK_DELAY = 0.02  # 打字机效果：切片间隔（秒），仅降级/占位路径使用；真流式无需人造延迟
 # 打字机限速（真流式）：每 _STREAM_EMIT_INTERVAL 秒最多推 _STREAM_CHARS_PER_TICK 字符，
 # 防止快速模型数秒内把全文一次性砸满屏幕来不及阅读；若生成先于节奏结束，剩余缓冲按同速率滴播。
@@ -436,21 +437,23 @@ class DebateOrchestrator:
         事件直接透传给上层，哨兵用于归集观点与判定占位。
         """
         q: "asyncio.Queue[Any]" = asyncio.Queue()
+        sem = asyncio.Semaphore(_EXPERT_CONCURRENCY)  # 限制同时发起的 LLM 流数量
 
         async def _worker(expert: ExpertRole) -> None:
-            stream = (
-                self._call_expert_round1(expert, question, shared_text)
-                if round_index == 1
-                else self._call_expert_round2(expert, question, shared_text, prev_opinions or [])
-            )
             opinion: Optional[ExpertOpinion] = None
-            async for ev in stream:
-                await q.put(ev)
-                if ev.data and ev.data.get("expert_id") == expert.id:
-                    try:
-                        opinion = ExpertOpinion.model_validate(ev.data)  # 末帧结构化完成帧
-                    except Exception:  # noqa: BLE001 — 校验失败不得中断调度（否则丢哨兵→整轮阻塞+占位串混入已流内容）
-                        opinion = None
+            async with sem:  # 进入才占用一个 LLM 连接槽，流结束即释放；其余专家排队，避免瞬时并发触发 429
+                stream = (
+                    self._call_expert_round1(expert, question, shared_text)
+                    if round_index == 1
+                    else self._call_expert_round2(expert, question, shared_text, prev_opinions or [])
+                )
+                async for ev in stream:
+                    await q.put(ev)
+                    if ev.data and ev.data.get("expert_id") == expert.id:
+                        try:
+                            opinion = ExpertOpinion.model_validate(ev.data)  # 末帧结构化完成帧
+                        except Exception:  # noqa: BLE001 — 校验失败不得中断调度（否则丢哨兵→整轮阻塞+占位串混入已流内容）
+                            opinion = None
             await q.put(_WorkerDone(expert.id, opinion))
 
         tasks = [asyncio.create_task(_worker(e)) for e in experts]

@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Any, AsyncGenerator, Dict, Optional, Type, TypeVar
 
 import httpx
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
 from pydantic import BaseModel, ValidationError
 
 from backend.core.middleware import httpx_log_request, httpx_log_response
@@ -403,24 +403,57 @@ class LLMService:
 
         # 优先请求计量 (include_usage)；个别兼容端点不支持该参数时去掉它重试，不阻断生成。
         # 流式响应的 usage 挂在最后一个 chunk 上（delta 为空，不产生 yield）。
+        async def _create_stream():
+            """建立流式连接；先带 include_usage，失败则去掉该参数重试（兼容旧端点）。"""
+            err: Optional[Exception] = None
+            for use_usage in (True, False):
+                try:
+                    kwargs: Dict[str, Any] = {"stream": True}
+                    if use_usage:
+                        kwargs["stream_options"] = {"include_usage": True}
+                    return await client.chat.completions.create(
+                        model=model,
+                        temperature=temperature,
+                        messages=messages,
+                        **kwargs,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    err = e
+            if err is not None:
+                raise err
+
+        def _is_rate_limit(err: Exception) -> bool:
+            """判断是否为限流(429)：覆盖 openai RateLimitError / httpx 429 / 文本匹配。"""
+            if isinstance(err, RateLimitError):
+                return True
+            status = getattr(err, "status_code", None)
+            if status == 429:
+                return True
+            return "429" in str(err)
+
+        # 429 限流指数退避重试：最多额外重试 3 次（退避 2/4/8s），仍失败再上抛。
+        # 仅在"尚未收到首个 token"的建立阶段重试，避免重复消费已流出的内容；
+        # 限流不计入 router 失败计数（Ollama 不可达时误降级无意义）。
+        MAX_RETRY = 3
+        backoff = 2.0
         stream = None
-        for use_usage in (True, False):
+        last_err: Optional[Exception] = None
+        for attempt in range(MAX_RETRY + 1):
             try:
-                kwargs: Dict[str, Any] = {"stream": True}
-                if use_usage:
-                    kwargs["stream_options"] = {"include_usage": True}
-                stream = await client.chat.completions.create(
-                    model=model,
-                    temperature=temperature,
-                    messages=messages,
-                    **kwargs,
-                )
+                stream = await _create_stream()
                 break
-            except Exception:
-                if not use_usage:
-                    if tier is not None:
-                        self.router.record_failure(tier)
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if not _is_rate_limit(e):
                     raise
+                if attempt < MAX_RETRY:
+                    await asyncio.sleep(backoff * (2**attempt))
+                    continue
+                raise
+        if stream is None:
+            if last_err is not None:
+                raise last_err
+            raise RuntimeError("流式连接建立失败")
 
         try:
             async for chunk in stream:
