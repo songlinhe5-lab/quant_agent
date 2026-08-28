@@ -6,6 +6,7 @@ LLM 服务 + 多模型路由 (AI-02)
 - Ollama 降级: 主供应商连续失败 N 次后自动切换本地 Ollama
 """
 
+import asyncio
 import json
 import logging
 import os
