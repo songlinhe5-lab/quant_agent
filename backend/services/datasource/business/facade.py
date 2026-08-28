@@ -146,12 +146,14 @@ _MARKET_CAPITAL_DIST_PREFERENCE: dict[str, list[str]] = {
 
 # 基本面类 action (FUNDAMENTAL / INFO) 的市场感知源优先级。
 # DIST-SEC-05(2026-08-14): 此前 FUNDAMENTAL 无市场感知策略，默认退化为首个可用源（多为 FMP）。
-# FMP 免费档对港股/中股基本面覆盖稀疏（profile/income_statement 常返回空），而 yfinance 对
-# 港股(0772.HK)/美股覆盖稳定、akshare 对 A股覆盖稳定。故港股/中股基本面优先 yfinance/akshare，
-# 美股仍 futu 首选（真实财务）+ fmp 兜底。
+# FMP 免费档对港股/中股基本面覆盖稀疏（profile/income_statement 常返回空）。
+# 注意（2026-08-28 修正）：此前港股把 yfinance 放在第一优先，但实际观测到 yfinance 对港股
+# (如 0772.HK) 返回的是 success + 空 financials（"数据可用但为空"），导致 facade 单源成功即停、
+# 永远不会 failover 到真正有港股财务的 Futu。故港股基本面改为 Futu 首选（港股原生财务覆盖好），
+# yfinance/akshare 作为兜底；同时 _dispatch 对"空 financials"判为实质失败继续下一源（双保险）。
 _MARKET_FUNDAMENTAL_PREFERENCE: dict[str, list[str]] = {
     "US": ["futu", "fmp", "yfinance"],
-    "HK": ["yfinance", "akshare", "futu", "fmp"],  # FMP 港股稀疏，降到末位兜底
+    "HK": ["futu", "yfinance", "akshare", "fmp"],  # Futu 港股财务首选，yfinance 末位兜底；FMP 港股稀疏末位
     "CN": ["akshare", "tushare", "yfinance"],
 }
 
@@ -1118,6 +1120,28 @@ class DataServiceFacade:
                 )
                 continue
             if res.is_success:
+                # 实质空数据（如 yfinance 对港股返回 success + 空 financials）不应算成功，
+                # 否则单源成功即停、永远不会 failover 到真正有数据的源。判为实质失败时继续下一源。
+                if (
+                    action_upper in ("FUNDAMENTAL", "INFO")
+                    and isinstance(res.data, dict)
+                    and not res.data.get("financials")
+                ):
+                    logging.warning(
+                        "facade._dispatch 源 %s action=%s 返回空 financials，判为实质失败继续下一源",
+                        src,
+                        action,
+                    )
+                    if not (res.error and res.error.is_rate_limit_type):
+                        last_err = Result.make_error(
+                            ErrorInfo.normal(
+                                "EMPTY_FUNDAMENTAL",
+                                f"[{src}] 基本面数据为空 (financials 缺失)",
+                                retryable=True,
+                            ),
+                            source=src,
+                        )
+                    continue
                 results.append(res)
                 # 单源成功即可停止（除非需要多源融合）
                 if not enable_merge:
