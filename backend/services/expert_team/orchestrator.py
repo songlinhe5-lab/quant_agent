@@ -460,6 +460,7 @@ class DebateOrchestrator:
         gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
 
         served: set[str] = set()
+        streamed: set[str] = set()  # 正文增量片已上屏的专家（超时抢救时避免全文重发）
         deadline = asyncio.get_running_loop().time() + _ROUND_TIMEOUT
 
         def _consume_item(item: Any) -> Optional[StreamEvent]:
@@ -469,6 +470,10 @@ class DebateOrchestrator:
                 if item.opinion is not None:
                     out_opinions.append(item.opinion)
                 return None
+            if getattr(item, "type", "") == "expert_opinion" and getattr(item, "content", ""):
+                eid = getattr(item, "expert_id", "")
+                if eid:
+                    streamed.add(eid)
             return item
 
         # 按哨兵数终止；跨迭代复用同一个 get 任务（不取消）——
@@ -498,6 +503,48 @@ class DebateOrchestrator:
         finally:
             if get_task is not None and not get_task.done():
                 get_task.cancel()
+
+        # 超时收尾（BE-EXPERT-TIMEOUT-RACE）：等 worker 终止后非阻塞排干队列，
+        # 抢救"正文已流完、只差完成帧/哨兵落地"的专家——否则其真实观点被
+        # 超时占位覆盖，前端出现"超时占位 stance + 完整正文"的矛盾卡片
+        try:
+            await asyncio.gather(gather_task, return_exceptions=True)
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 — 取消传播不得中断收尾
+            pass
+        rescued: dict[str, ExpertOpinion] = {}
+        while True:
+            try:
+                item = q.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if isinstance(item, _WorkerDone):
+                served.add(item.expert_id)
+                if item.opinion is not None:
+                    item.opinion.expert_id = item.expert_id
+                    rescued[item.expert_id] = item.opinion
+                continue
+            data = getattr(item, "data", None)
+            eid = getattr(item, "expert_id", "")
+            if not eid and isinstance(data, dict):
+                eid = data.get("expert_id", "")
+            if eid and data:
+                try:
+                    op = ExpertOpinion.model_validate(data)
+                    op.expert_id = eid
+                    rescued[eid] = op
+                except Exception:  # noqa: BLE001 — 残留帧校验失败直接丢弃
+                    pass
+        for eid, opinion in rescued.items():
+            served.add(eid)  # 已有真实产出，跳过下方占位
+            out_opinions.append(opinion)
+            if eid in streamed:
+                # 正文已上屏：仅补结构化完成帧（真实 stance/置信度），不重发全文
+                yield StreamEvent(
+                    type="expert_opinion", expert_id=eid, round=round_index, content="", data=opinion.model_dump()
+                )
+            else:
+                async for ev in self._yield_opinion_stream(opinion, round_index=round_index):
+                    yield ev
 
         # 未完成/失败的专家补占位观点，保证出战阵容人人有产出（绝不泄底层报错）
         for expert in experts:

@@ -821,6 +821,48 @@ class TestOrchestratorDebateExtensions:
             assert ev.expert_id == op.expert_id
             assert ev.round == 2
 
+    @pytest.mark.asyncio
+    async def test_round_timeout_rescues_completed_opinions(self, monkeypatch):
+        """回归 BE-EXPERT-TIMEOUT-RACE：整轮超时但 worker 已产出完成观点时，
+        应抢救真实观点（补发完成帧），而非补"超时占位"覆盖已上屏正文，
+        否则前端出现"超时占位 stance + 完整正文"的矛盾卡片"""
+        import backend.services.expert_team.orchestrator as orch_mod
+
+        monkeypatch.setattr(orch_mod, "_ROUND_TIMEOUT", 0.3)
+        orch = DebateOrchestrator(tool_registry=None)
+        expert = get_expert("fundamental_analyst")
+        real_data = {
+            "expert_id": expert.id,
+            "round": 1,
+            "stance": "看多",
+            "confidence": 70,
+            "key_evidence": ["ROE>20%"],
+        }
+
+        async def fake_round1(expert_role, question, shared_text):
+            # 增量帧（正文上屏）→ 完成帧（结构化 data），瞬间完成入队
+            yield StreamEvent(type="expert_opinion", expert_id=expert_role.id, round=1, content="基本面强劲。", data={})
+            yield StreamEvent(type="expert_opinion", expert_id=expert_role.id, round=1, content="", data=real_data)
+
+        with patch.object(orch, "_call_expert_round1", fake_round1):
+            out_opinions: list[ExpertOpinion] = []
+            events = []
+            async for ev in orch._run_round_stream([expert], "q", "", 1, out_opinions, None):
+                events.append(ev)
+                if len(events) == 1:
+                    # 模拟下游背压：主循环挂起在 yield 期间整轮 deadline（0.3s）到期，
+                    # 哨兵/完成帧滞留队列——正是线上"占位覆盖正文"的竞态窗口
+                    await asyncio.sleep(0.5)
+
+        # 抢救成功：真实观点完成帧上屏，stance/置信度为真实值
+        final = [e for e in events if e.data and e.data.get("stance")]
+        assert final, "应补发真实观点完成帧"
+        assert final[-1].data["stance"] == "看多"
+        assert final[-1].data["confidence"] == 70
+        # 不再补超时占位
+        assert not any("超时" in (e.data.get("stance") or "") for e in events if e.data)
+        assert out_opinions and out_opinions[0].stance == "看多"
+
     # ─── 真流式协议测试（研判文本实时流出 + 末尾 JSON 补全结构化字段）───
 
     def test_stream_splitter_separates_markdown_and_json(self):
