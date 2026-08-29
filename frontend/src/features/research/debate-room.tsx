@@ -91,9 +91,13 @@ export function DebateRoom({ question, config, runToken, onDone, onRerun, onAskC
             case 'status':
               setStatusText(e.message)
               break
-            case 'expert_opinion':
-              appendOrUpdate(e.expert_id, e.round, e.content, true)
+            case 'expert_opinion': {
+              // 完成帧（携带结构化 data 的末帧）到达即视为该专家落定，收起流式光标；
+              // 否则超时占位观点会一直卡在"撰写中…"
+              const isFinalFrame = !!e.data && Object.keys(e.data).length > 0
+              appendOrUpdate(e.expert_id, e.round, e.content, !isFinalFrame)
               break
+            }
             case 'round_complete':
               setCurrentRound(e.round)
               setOpinions((prev) => prev.map((o) => (o.round === e.round ? { ...o, streaming: false } : o)))

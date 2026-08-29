@@ -11,6 +11,7 @@ sys.path 注入与主工程其余测试一致。
 
 import os
 import sys
+import time
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -177,3 +178,47 @@ class TestFetchFutuLocalBranch:
         # 远程失败后透传子服务真实错误信封（message=node down），无本地 SDK 降级兜底
         assert out["message"] == "node down"
         assert out["source"] == "futu"
+
+
+class TestFutuBreakerMessageSeparation:
+    """action 级熔断与节点级熔断必须报不同的错。
+
+    旧实现把两者合并为同一条 "No healthy Futu remote node (local SDK disabled)"，
+    导致「单个 action 冷却」被误报成「整节点不可用」——监控显示 healthy 却在报
+    节点挂，严重误导排查方向（2026-08-29 实战：QUOTE 冷却被误判为 Futu 节点宕机）。
+    """
+
+    @pytest.mark.asyncio
+    async def test_action_cooldown_is_not_reported_as_node_down(self, remote_router):
+        node = remote_router._nodes["futu_master"]
+        node.status = "healthy"  # 节点整体健康，仅单个 action 在冷却
+        node.action_breaker_until["QUOTE"] = time.time() + 30
+
+        out = await remote_router.fetch_futu("QUOTE", ticker="HK.00700")
+        assert out["status"] == "error"
+        assert "No healthy Futu remote node" not in out["message"]
+        assert "QUOTE" in out["message"]
+
+    @pytest.mark.asyncio
+    async def test_action_cooldown_does_not_block_other_actions(self, remote_router):
+        """QUOTE 冷却不得误伤同节点其它 action（action 级隔离仍然有效）"""
+        node = remote_router._nodes["futu_master"]
+        node.status = "healthy"
+        node.action_breaker_until["QUOTE"] = time.time() + 30
+
+        ok_resp = {"status": "success", "data": {"status": "success", "data": {"last_price": 12}}}
+        with patch.object(remote_router, "_send_request", new=AsyncMock(return_value=ok_resp)):
+            out = await remote_router.fetch_futu("HISTORY", ticker="HK.00700")
+        assert out["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_node_level_breaker_reports_node_fault(self, remote_router):
+        """整节点熔断（进程级故障）须与单 action 冷却明确区分开"""
+        node = remote_router._nodes["futu_master"]
+        node.status = "unhealthy"
+        node.circuit_breaker_until = time.time() + 60  # 冷却中，半开未到期
+
+        out = await remote_router.fetch_futu("QUOTE", ticker="HK.00700")
+        assert out["status"] == "error"
+        assert "节点熔断中" in out["message"]
+        assert "No healthy Futu remote node" not in out["message"]

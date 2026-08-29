@@ -375,10 +375,18 @@ def get_cooldown_seconds(source: Optional[str] = None) -> float:
 
     供遗留手写时间戳熔断逻辑复用，统一冷却时长、禁止硬编码 60。
 
-    源级覆盖：易限流/不稳定的兜底源（如 yfinance）可单独配置更短冷却，
-    加速半开自愈——避免 60s 冷却期内 HISTORY 等依赖它的请求全部黑屏。
-    优先级：YFINANCE_CIRCUIT_BREAKER_COOLDOWN_S > 全局 CIRCUIT_BREAKER_COOLDOWN_S。
+    源级覆盖：易限流/不稳定的兜底源（如 yfinance、futu）可单独配置更短冷却，
+    加速半开自愈——避免 60s 冷却期内 HISTORY/QUOTE 等依赖它的请求全部黑屏。
+    优先级：源级 *_CIRCUIT_BREAKER_COOLDOWN_S > 全局 CIRCUIT_BREAKER_COOLDOWN_S。
+
+    FUTU (2026-08-29)：投研会高频调用 QUOTE，而 QUOTE 不在熔断豁免集内，
+    上游 OpenD 抖动 3 次即停 60s，整场投研会取不到行情。缩短冷却让高频
+    实时行情快速自愈，代价是冷却期内多几次探测请求。
     """
     if source == "yfinance":
         return float(os.getenv("YFINANCE_CIRCUIT_BREAKER_COOLDOWN_S", str(_CIRCUIT_BREAKER_COOLDOWN_S)))
+    if source == "futu":
+        # 经验值 20s（默认即推荐值，无需配置）：QUOTE 高频调用，60s 冷却 =
+        # 整场投研会取不到行情；20s 足够上游抖动自愈，代价仅是冷却期内多几次探测
+        return float(os.getenv("FUTU_CIRCUIT_BREAKER_COOLDOWN_S", "20"))
     return _CIRCUIT_BREAKER_COOLDOWN_S

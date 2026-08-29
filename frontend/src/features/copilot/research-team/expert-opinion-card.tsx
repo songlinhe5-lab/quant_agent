@@ -103,7 +103,13 @@ export function ExpertOpinionCard({ opinion, campBorder = false }: { opinion: Ex
       )}
 
       <div className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-300 dark:text-slate-300">
-        {opinion.content || <span className="text-muted-foreground/60">等待发言…</span>}
+        {opinion.content || (
+          // 非流式且无正文（如超时占位：仅有 stance 无 reasoning）时，
+          // 再说"等待发言…"会与上方"观点：本轮研判超时…"自相矛盾
+          <span className="text-muted-foreground/60">
+            {opinion.streaming ? '等待发言…' : '本轮未输出研判正文'}
+          </span>
+        )}
         {opinion.streaming && <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-scene align-middle" />}
       </div>
     </div>

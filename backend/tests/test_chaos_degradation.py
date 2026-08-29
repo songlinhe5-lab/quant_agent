@@ -308,7 +308,9 @@ async def test_futu_total_outage_no_local_fallback(monkeypatch):
 
     result = await router.fetch_futu("quote", symbol="HK.00700")
     assert result["status"] == "error"
-    assert "local SDK disabled" in result["message"]
+    # 3 次无 action 失败累计 = 整节点熔断（进程级故障）。消息须明确点出「节点级」，
+    # 不再伪装成含糊的 "local SDK disabled"，以便与单 action 冷却区分开。
+    assert "节点熔断中" in result["message"]
 
 
 # ─────────────────────────────────────────────────────────────

@@ -376,7 +376,9 @@ class TestDataCollector:
         import backend.services.expert_team.data_collector as dc
 
         original_timeout = dc._COLLECT_TIMEOUT
+        original_retries = dc._COLLECT_MAX_RETRIES
         dc._COLLECT_TIMEOUT = 0.1
+        dc._COLLECT_MAX_RETRIES = 0  # 本用例仅验证单次超时返回，不触发重试路径
 
         try:
             result = await collect_shared_data(
@@ -387,6 +389,99 @@ class TestDataCollector:
             assert result["quote"]["status"] == "timeout"
         finally:
             dc._COLLECT_TIMEOUT = original_timeout
+            dc._COLLECT_MAX_RETRIES = original_retries
+
+    @pytest.mark.asyncio
+    async def test_collect_same_serial_group_runs_sequentially(self):
+        """同 serial_group 的数据项必须串行执行（避免并发打爆同一上游）
+
+        背景：投研会开场一次性并发 6 个数据项，其中 4 个打到 Futu OpenD，
+        瞬时并发触发限流/超时 → 计入熔断 → 整源停摆。
+        """
+        concurrent = 0
+        max_concurrent = 0
+
+        async def tracked_execute(tool_name, **kwargs):
+            nonlocal concurrent, max_concurrent
+            concurrent += 1
+            max_concurrent = max(max_concurrent, concurrent)
+            await asyncio.sleep(0.05)
+            concurrent -= 1
+            return {"status": "success", "data": {"tool": tool_name}}
+
+        registry = MagicMock()
+        registry.execute = tracked_execute
+
+        # quote / fundamental 同属 "futu" 串行组
+        result = await collect_shared_data(
+            data_requirements=["quote", "fundamental"],
+            tool_registry=registry,
+            ticker="AAPL",
+        )
+        assert result["quote"]["status"] == "success"
+        assert result["fundamental"]["status"] == "success"
+        assert max_concurrent == 1, f"同组任务应串行执行，实测最大并发 {max_concurrent}"
+
+    @pytest.mark.asyncio
+    async def test_collect_retries_transient_failure(self):
+        """瞬时错误（网络抖动）应重试并最终成功"""
+        import backend.services.expert_team.data_collector as dc
+
+        calls = {"n": 0}
+
+        async def flaky_execute(tool_name, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return {"status": "error", "message": "connection reset by peer"}
+            return {"status": "success", "data": {"price": 1.0}}
+
+        registry = MagicMock()
+        registry.execute = flaky_execute
+
+        orig_retries = dc._COLLECT_MAX_RETRIES
+        orig_backoff = dc._COLLECT_RETRY_BACKOFF
+        dc._COLLECT_MAX_RETRIES = 1
+        dc._COLLECT_RETRY_BACKOFF = 0.01  # 测试加速
+        try:
+            result = await collect_shared_data(
+                data_requirements=["quote"],
+                tool_registry=registry,
+                ticker="AAPL",
+            )
+        finally:
+            dc._COLLECT_MAX_RETRIES = orig_retries
+            dc._COLLECT_RETRY_BACKOFF = orig_backoff
+
+        assert result["quote"]["status"] == "success"
+        assert calls["n"] == 2, f"首次失败后应重试 1 次，实际调用 {calls['n']} 次"
+
+    @pytest.mark.asyncio
+    async def test_collect_does_not_retry_circuit_breaker(self):
+        """熔断/限流冷却期内重试无意义 → 不重试，快速失败（避免加重上游负担）"""
+        import backend.services.expert_team.data_collector as dc
+
+        calls = {"n": 0}
+
+        async def breaker_execute(tool_name, **kwargs):
+            calls["n"] += 1
+            return {"status": "error", "message": "Futu QUOTE 接口熔断冷却中（约 30s 后重试，节点本身健康）"}
+
+        registry = MagicMock()
+        registry.execute = breaker_execute
+
+        orig_retries = dc._COLLECT_MAX_RETRIES
+        dc._COLLECT_MAX_RETRIES = 2
+        try:
+            result = await collect_shared_data(
+                data_requirements=["quote"],
+                tool_registry=registry,
+                ticker="AAPL",
+            )
+        finally:
+            dc._COLLECT_MAX_RETRIES = orig_retries
+
+        assert result["quote"]["status"] == "error"
+        assert calls["n"] == 1, f"熔断冷却期内不应重试，实际调用 {calls['n']} 次"
 
     def test_format_shared_data(self):
         """数据格式化"""

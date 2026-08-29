@@ -248,7 +248,13 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
               // 身份字段: 顶层优先(新协议每片携带), 缺失时回退首片 data(兼容旧后端);
               // 无身份的帧丢弃, 避免观点落入匿名 tab
               const eid = e.expert_id ?? e.data?.expert_id
-              if (eid) appendOrUpdate(eid, e.round ?? e.data?.round ?? 1, e.content, true, e.data)
+              if (eid) {
+                // 完成帧识别：增量片不带 data，结构化 data 仅由末帧携带。
+                // 收到即判定该专家本轮落定、立即收起流式光标——否则超时/异常的占位观点
+                // （content 为空、仅带 stance）会一直卡在"撰写中…"，明明已是终态
+                const isFinalFrame = !!e.data && Object.keys(e.data).length > 0
+                appendOrUpdate(eid, e.round ?? e.data?.round ?? 1, e.content, !isFinalFrame, e.data)
+              }
               break
             }
             case 'round_complete':
