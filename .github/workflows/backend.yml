@@ -493,16 +493,16 @@ jobs:
               echo "✅ 无旧项目名 node-s1 孤儿容器，跳过清理"
             fi
 
-            # 🔧 FIX(2026-08-29): node-s1 子服务镜像此前仅 up -d 无显式 pull，
-            #   compose 的 pull_policy: missing 在本地已有 :us 镜像时直接复用旧镜像
-            #   → S1 长期跑旧镜像（复现: 容器内 option_fund_handler.py 1006 行 vs
-            #     仓库 2708 行，FINANCIALS 报 'str' object has no attribute 'get'）。
-            #   与从节点 (deploy-data-nodes 先 pull 再 up) 对齐：先显式 pull :us 再 up。
-            timeout 1200 docker compose -f docker-compose.node-s1.yml --env-file .env.data-node pull \
-              || { echo "❌ node-s1 docker compose pull 超时或失败 (1200s)"; exit 1; }
+            # 🔧 FIX(2026-08-29 v2): `docker compose pull` 会尊重 pull_policy: missing，
+            #   本地已有 :us 固定 tag 镜像时【直接跳过且无输出】→ 上一版"显式 compose pull"
+            #   修复实际无效，S1 子服务仍跑 8/18 旧镜像（复现: SEARCH_QUOTE/HK_SECTOR_FLOW
+            #   报 "未知 futu action"，容器内无 P1.2 handler）。
+            #   改为显式 `docker pull`（绕过 pull_policy，强制校验远端 digest）后再 up。
+            timeout 1200 docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us \
+              || { echo "❌ node-s1 显式 docker pull :us 失败 (1200s)"; exit 1; }
 
             docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --remove-orphans
-            echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001 (已显式 pull :us 新镜像)"
+            echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001 (已显式 docker pull :us 新镜像)"
           EOF
 
   # ----------------------------------------------------------------
@@ -770,8 +770,10 @@ jobs:
               exit 1
             fi
 
-            timeout 600 docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull \
-              || { echo "❌ docker compose pull 超时或失败 (600s)，疑似 ghcr.io 不可达"; exit 1; }
+            # 🔧 FIX(2026-08-29): compose pull 尊重 pull_policy: missing，固定 :us tag 本地已存在时
+            #   直接跳过（无输出）→ 从节点同样长期跑旧镜像。改为显式 docker pull 强制拉取。
+            timeout 600 docker pull "$IMAGE" \
+              || { echo "❌ docker pull $IMAGE 超时或失败 (600s)，疑似 ghcr.io 不可达"; exit 1; }
 
             OLD_NODE_ORPHANS=$(docker ps -a --filter name='quant-data-subservice-node-' --format '{{.Names}}' | grep -E '^quant-data-subservice-node-(s1|bj|s2|s3|s4)$' || true)
             if [ -n "${OLD_NODE_ORPHANS}" ]; then
