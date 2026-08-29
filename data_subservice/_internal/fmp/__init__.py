@@ -21,7 +21,10 @@ import httpx
 from data_subservice._internal.logger import logger
 from data_subservice._internal.metrics import observe_credit_consume
 
-_BASE = "https://financialmodelingprep.com/api/v3"
+# 🔧 FIX(2026-08-29): FMP 已下线 legacy 端点 /api/v3/*（仅 2025-08-31 前老订阅可用，
+#   实测全部 HTTP 403 "Legacy Endpoint"）。迁移到新版 /stable/* 端点（同一 key 实测 200），
+#   symbol 从路径参数改为 query 参数，响应 JSON 结构不变（数组透传）。
+_BASE = "https://financialmodelingprep.com/stable"
 
 # ── FMP 每日 credit 预算（免费档约 250/天；env 可覆盖）──
 _FMP_DAILY_CREDIT = int(os.getenv("FMP_DAILY_CREDIT", "250"))
@@ -75,14 +78,14 @@ class FMPService:
         if not _consume_credit(1):
             return {"status": "error", "message": "FMP credit budget exhausted", "error_category": "quota"}
         async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.get(f"{_BASE}/quote/{symbol}", params={"apikey": self._key()})
+            r = await c.get(f"{_BASE}/quote", params={"symbol": symbol, "apikey": self._key()})
         return self._parse(r, credit=1)
 
     async def get_profile(self, symbol: str) -> dict[str, Any]:
         if not _consume_credit(1):
             return {"status": "error", "message": "FMP credit budget exhausted", "error_category": "quota"}
         async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.get(f"{_BASE}/profile/{symbol}", params={"apikey": self._key()})
+            r = await c.get(f"{_BASE}/profile", params={"symbol": symbol, "apikey": self._key()})
         return self._parse(r, credit=1)
 
     async def get_income_statement(self, symbol: str, limit: int = 4) -> dict[str, Any]:
@@ -91,8 +94,8 @@ class FMPService:
             return {"status": "error", "message": "FMP credit budget exhausted", "error_category": "quota"}
         async with httpx.AsyncClient(timeout=10.0) as c:
             r = await c.get(
-                f"{_BASE}/income-statement/{symbol}",
-                params={"apikey": self._key(), "limit": limit},
+                f"{_BASE}/income-statement",
+                params={"symbol": symbol, "apikey": self._key(), "limit": limit},
             )
         return self._parse(r, credit=_FMP_BATCH_CREDIT_COST)
 
