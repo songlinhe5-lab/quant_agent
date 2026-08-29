@@ -1394,13 +1394,30 @@ class DataSourceRouter:
                     f"[Futu] 非行情通道 action={remote_action} 失败(不触发熔断, 隔离行情通道): {result.get('message')}"
                 )
                 return result
-            await self._update_node_status(
-                remote_node.name,
-                success=False,
-                error=str(result.get("message")),
-                action=remote_action,
-                record_breaker=record_breaker,
-            )
+            # BE-ARCH-08d 同款透传 (对齐 fmp/finnhub): 失败可能带 error_category
+            # (如 futu 对 ^VIX/ES=F 返回 data_unavailable), 此类标的层面问题不计熔断,
+            # 否则情绪风向标/市场复盘轮询宏观标的会持续累积失败 → QUOTE 死循环熔断,
+            # 误杀所有正常标的行情 (2026-08-29 实战: 连续失败 30 次, BRK-B 也被拒)。
+            ec = result.get("error_category")
+            if ec:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    error_category=ErrorCategory(ec)
+                    if ec in {e.value for e in ErrorCategory}
+                    else ErrorCategory.NORMAL,
+                    action=remote_action,
+                    record_breaker=record_breaker,
+                )
+            else:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    action=remote_action,
+                    record_breaker=record_breaker,
+                )
             # 透传子服务原始信封（含真实 message/status），避免被下方硬编码错误覆盖；
             # 子服务失败信封可能缺 source 字段，此处补齐以便上层识别来源
             result.setdefault("source", "futu")
