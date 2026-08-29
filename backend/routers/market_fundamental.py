@@ -540,6 +540,13 @@ async def get_fundamental(ticker: str):
 
     # Step 1: 尝试 Facade 基本面（Futu 优先 by weight）
     fund_res = await data_service.get_fundamental(ticker)
+    # 记录 Step1 真实失败原因（此前被完全丢弃，导致 Futu 侧故障无法溯源）
+    step1_msg = ""
+    if not (fund_res.is_success and fund_res.data):
+        step1_msg = fund_res.error.message if fund_res.error else ""
+        if not step1_msg and not fund_res.data:
+            step1_msg = "返回空数据"
+
     if fund_res.is_success and fund_res.data:
         final_data.update(fund_res.data if isinstance(fund_res.data, dict) else {})
     else:
@@ -549,9 +556,14 @@ async def get_fundamental(ticker: str):
         yf_msg = info_res.error.message if info_res.error else ""
         if not info_res.is_success or not yf_info:
             # Futu 与 YFinance 均未取得可用基本面数据：返回 warning (200) 而非 500
+            # 同时透出 Step1/Step2 各自真实失败原因，避免故障黑盒
             warning_msg = f"Futu 与 YFinance 均未能获取标的 {ticker} 的基本面数据。"
+            if step1_msg:
+                warning_msg += f" Futu: {step1_msg}"
             if yf_msg:
                 warning_msg += f" YFinance: {yf_msg}"
+            if not yf_msg and not yf_info:
+                warning_msg += " YFinance: 返回空数据"
             return {
                 "status": "warning",
                 "message": warning_msg,

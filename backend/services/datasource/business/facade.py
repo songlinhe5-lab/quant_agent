@@ -65,6 +65,26 @@ def _business_weight(name: str) -> int:
     return int(os.getenv(f"DATASOURCE_{name.upper()}_BUSINESS_WEIGHT", str(default)))
 
 
+def _is_empty_fundamental(data: Any) -> bool:
+    """基本面数据「实质为空」判定（通用，不依赖单一字段名）。
+
+    各源返回结构不同，不可按某个固定字段判空：
+      - yfinance: {symbol, kind, financials: [...], source}  空时 financials = []
+      - fmp:      {symbol, profile: {...}, income_statement: [...]}
+      - futu:     {ticker, company_name, ...}                （无 financials 字段）
+
+    判定规则：
+      1. 非 dict 或空 dict → 空
+      2. 存在 financials 键且为空 → 空（yfinance 返回结构壳但无财报）
+      3. 所有值均为 None/空串/空容器 → 空
+    """
+    if not isinstance(data, dict) or not data:
+        return True
+    if "financials" in data and not data.get("financials"):
+        return True
+    return all(v in (None, "", [], {}) for v in data.values())
+
+
 def _detect_market(ticker: str) -> str:
     """按 ticker 判定市场（US / HK / CN）。
 
@@ -1120,15 +1140,13 @@ class DataServiceFacade:
                 )
                 continue
             if res.is_success:
-                # 实质空数据（如 yfinance 对港股返回 success + 空 financials）不应算成功，
-                # 否则单源成功即停、永远不会 failover 到真正有数据的源。判为实质失败时继续下一源。
-                if (
-                    action.upper() in ("FUNDAMENTAL", "INFO")
-                    and isinstance(res.data, dict)
-                    and not res.data.get("financials")
-                ):
+                # 实质空数据不应算成功（否则单源成功即停、永不 failover 到真正有数据的源）。
+                # 判空必须用「通用实质判空」而非单一字段名：各源返回结构不同
+                # (yfinance 用 financials / fmp 用 profile+income_statement / futu 用
+                # ticker+company_name)，按 financials 判空会把 futu、fmp 的成功数据误杀。
+                if action.upper() in ("FUNDAMENTAL", "INFO") and _is_empty_fundamental(res.data):
                     logging.warning(
-                        "facade._dispatch 源 %s action=%s 返回空 financials，判为实质失败继续下一源",
+                        "facade._dispatch 源 %s action=%s 返回实质空数据，判为失败继续下一源",
                         src,
                         action,
                     )
@@ -1136,7 +1154,7 @@ class DataServiceFacade:
                         last_err = Result.make_error(
                             ErrorInfo.normal(
                                 "EMPTY_FUNDAMENTAL",
-                                f"[{src}] 基本面数据为空 (financials 缺失)",
+                                f"[{src}] 基本面数据为空",
                                 retryable=True,
                             ),
                             source=src,
@@ -1357,13 +1375,13 @@ class DataServiceFacade:
                     out["time"] = out[k]
                     break
 
-        # 币种标注：缺失则按 ticker 后缀推断
+        # 币种标注：缺失则按 ticker 所属市场推断（复用 _detect_market）
+        # FIX(2026-08-29): 旧逻辑只认 ".HK" 后缀与裸 0 开头，Futu 前缀格式
+        # (HK.00772)、A 股 (SH.600519 / SZ.000001 / 裸代码 600519) 全被误判为 USD。
+        # 改为市场感知推断：HK→HKD, CN→CNY, US→USD。
         if "currency" not in out and "ticker" in out:
-            t = str(out["ticker"])
-            if t.endswith(".HK") or t.startswith("0") and len(t) >= 5:
-                out["currency"] = "HKD"
-            else:
-                out["currency"] = "USD"
+            mkt = _detect_market(str(out["ticker"]))
+            out["currency"] = {"HK": "HKD", "CN": "CNY"}.get(mkt, "USD")
 
         # 复权标记默认 qfq
         if action == "HISTORY" and "adjust" not in out:
