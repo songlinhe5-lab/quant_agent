@@ -217,6 +217,21 @@ def _node_breaker_threshold(node: "DataSourceNode") -> int:
     return max(_ACTION_BREAKER_NODE_MIN_THRESHOLD, math.ceil(total * _ACTION_BREAKER_NODE_RATIO))
 
 
+def _cooldown_source_for_node(node_name: str) -> Optional[str]:
+    """按节点名推断源级冷却覆盖（易限流/上游不稳的源用更短冷却加速自愈）。
+
+    - yfinance: 易限流兜底源，早已单独配置
+    - futu: 上游 OpenD 稳定性差且 QUOTE 高频调用，60s 冷却代价过高
+    其余节点沿用全局 CIRCUIT_BREAKER_COOLDOWN_S。
+    """
+    name = node_name or ""
+    if "yfinance" in name or name.startswith("yf_"):
+        return "yfinance"
+    if "futu" in name:
+        return "futu"
+    return None
+
+
 # Yahoo/子服务限流类错误的文本特征（BE-ARCH-08d 补漏：某些子服务——如 yfinance——
 # 未在响应 body 里携带 error_category，仅返回 "Too Many Requests" 文本，需在主服务侧兜底识别，
 # 避免限流被误判为普通失败计入熔断器）。
@@ -922,8 +937,8 @@ class DataSourceRouter:
                 cnt = node.action_errors.get(action_key, 0) + 1
                 node.action_errors[action_key] = cnt
                 if cnt >= _ACTION_MAX_FAILURES:
-                    # 易限流兜底源（如 yfinance）用更短冷却，加速半开自愈
-                    _cd = get_cooldown_seconds(source="yfinance" if "yfinance" in node_name else None)
+                    # 易限流/上游不稳的源（yfinance / futu）用更短冷却，加速半开自愈
+                    _cd = get_cooldown_seconds(source=_cooldown_source_for_node(node_name))
                     node.action_breaker_until[action_key] = time.time() + _cd
                     logger.warning(
                         f"[CircuitBreaker] 节点 {node_name} action={action} 连续失败 {cnt} 次，"
@@ -1296,14 +1311,31 @@ class DataSourceRouter:
         norm_params = self._futu_normalize_params(remote_action, params)
 
         remote_node = self._nodes.get("futu_master")
-        if (
-            not self._enabled
-            or not remote_node
-            or not self._pin_node_usable(remote_node)
-            or not self._action_usable(remote_node, remote_action)
-        ):
-            logger.warning("[Futu] 远程节点不可用（后端已移除本地兜底）")
+        if not self._enabled or not remote_node:
+            logger.warning("[Futu] 远程节点未配置或路由未启用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Futu remote node (local SDK disabled)"}
+
+        # 两种熔断必须分开报错：旧实现共用 "No healthy Futu remote node"，把
+        # 「单个 action 冷却」误报成「整节点不可用」——监控显示 healthy 却在报节点挂，
+        # 严重误导排查（2026-08-29 实战：QUOTE 冷却被误判为 Futu 节点宕机）。
+        if not self._pin_node_usable(remote_node):
+            logger.warning("[Futu] 节点级熔断中（进程级故障：子服务崩/HMAC 错/网络断）")
+            return {
+                "status": "error",
+                "message": "Futu 节点熔断中（进程级故障，非单接口问题）",
+                "reason": "futu_master node unhealthy",
+            }
+
+        if not self._action_usable(remote_node, remote_action):
+            # action 级熔断：节点整体健康，仅该 action 在冷却中，冷却到期自动半开重试
+            until = remote_node.action_breaker_until.get(remote_action, 0.0)
+            remain = max(0, int(until - time.time()))
+            logger.warning(f"[Futu] action={remote_action} 熔断冷却中（剩 {remain}s，节点健康）")
+            return {
+                "status": "error",
+                "message": f"Futu {remote_action} 接口熔断冷却中（约 {remain}s 后重试，节点本身健康）",
+                "reason": f"action {remote_action} circuit breaker cooldown",
+            }
 
         # DIST-23 + DIST-SEC-03: 交易类 / 权限依赖型 action 与行情类 action 熔断隔离
         # 根因(2026-08-11 实战): OpenD 行情已 CONNECTED, 但交易连接(TrdCtx)因未解锁

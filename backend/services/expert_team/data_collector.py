@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import os
 import traceback
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -15,21 +16,26 @@ if TYPE_CHECKING:
 # param_key: 标的代码映射（'ticker' 时从请求 ticker 传入；None 表示该工具不需要 ticker）
 # default_kwargs: 工具的固定参数（如 BrokerMarketTool 需要 action）
 _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
+    # serial_group: 同组数据项串行执行（避免同一上游被并发打爆），不同组并行。
+    # 以下 4 项底层均打到 Futu OpenD，归入 "futu" 组排队执行。
     "quote": {
         "tool": "get_broker_market_data",
         "param_key": "ticker",
         "default_kwargs": {"action": "QUOTE"},
         "description": "实时行情报价",
+        "serial_group": "futu",
     },
     "fundamental": {
         "tool": "get_fundamental_data",
         "param_key": "ticker",
         "description": "基本面财务数据",
+        "serial_group": "futu",
     },
     "technicals": {
         "tool": "calculate_technical_indicators",
         "param_key": "ticker",
         "description": "技术指标",
+        "serial_group": "futu",
     },
     "macro_news": {
         "tool": "get_macro_news",
@@ -51,6 +57,7 @@ _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
         "tool": "get_fed_watch",
         "param_key": None,  # 市场级，无需 ticker
         "description": "FedWatch FOMC 目标利率隐含概率(Tier1 前瞻)",
+        "serial_group": "futu",
     },
     "code_context": {
         "tool": None,  # 由请求直接提供，不需要工具采集
@@ -61,6 +68,34 @@ _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
 
 # 单个工具采集超时 (秒)
 _COLLECT_TIMEOUT = 30.0
+
+# ── 采集并发控制（EXPERT-TEAM-SERIAL）────────────────────────────────
+# 背景：投研会开场会一次性并发发起 6 个数据项（quote/fundamental/technicals/...），
+# 其中 4 个打到同一上游（Futu OpenD）。瞬时并发会把上游打爆 → 限流/超时 →
+# 失败计入熔断 → 3 次即停 60s，表现就是用户感知的"数据源不稳定、经常失败"。
+# 策略（三层，逐级收敛压力）：
+#   1) serial_group 相同的数据项串行执行（同组排队，避免同一上游被并发冲击）
+#   2) 不同组之间并行，但受全局并发上限 _COLLECT_CONCURRENCY 约束
+#   3) EXPERT_TEAM_COLLECT_SERIAL=1 时强制全串行（压力最小，耗时最长）
+# 正常路径下单请求多为亚秒级，串行化的耗时代价远小于失败重来的代价。
+# 以下默认值即经验值，普通用户零配置；env 仅留作线上紧急调参入口，不在 .env.example 暴露。
+_COLLECT_CONCURRENCY = int(os.getenv("EXPERT_TEAM_COLLECT_CONCURRENCY", "3"))
+_COLLECT_FORCE_SERIAL = os.getenv("EXPERT_TEAM_COLLECT_SERIAL", "0") == "1"
+# 失败重试：仅对超时/网络类瞬时错误重试，指数退避
+_COLLECT_MAX_RETRIES = int(os.getenv("EXPERT_TEAM_COLLECT_MAX_RETRIES", "1"))
+_COLLECT_RETRY_BACKOFF = float(os.getenv("EXPERT_TEAM_COLLECT_RETRY_BACKOFF", "1.5"))
+
+# 熔断/限流冷却期内重试必然失败，且会加重上游负担 → 直接放弃，快速失败
+_NON_RETRYABLE_KEYWORDS = (
+    "熔断",
+    "circuit",
+    "限流",
+    "rate limit",
+    "rate-limit",
+    "ratelimit",
+    "cooldown",
+    "429",
+)
 
 
 async def collect_shared_data(
@@ -89,6 +124,30 @@ async def collect_shared_data(
     shared_data: dict[str, Any] = {}
     tasks: list[tuple[str, asyncio.Task]] = []
     kwargs_for_tasks: dict[asyncio.Task, dict[str, Any]] = {}
+
+    # 串行组锁（同组内排队，避免同一上游被并发冲击）+ 全局并发槽（限制总并发数）
+    group_locks: dict[str, asyncio.Lock] = {}
+    sem = asyncio.Semaphore(max(1, _COLLECT_CONCURRENCY))
+
+    async def _run_collect(
+        req_key: str,
+        tool: str,
+        call_kwargs: dict[str, Any],
+        group: Optional[str],
+    ) -> Any:
+        """按组串行 + 全局并发受限地执行一次采集（含瞬时错误重试）。
+
+        加锁顺序固定为「先抢并发槽、再抢组内锁」，避免与同组任务形成死锁。
+        """
+        # 强制全串行：所有数据项共用一个锁，等价于整体排队
+        lock_key = group or ("__all__" if _COLLECT_FORCE_SERIAL else None)
+        lock = group_locks.setdefault(lock_key, asyncio.Lock()) if lock_key else None
+
+        async with sem:
+            if lock is not None:
+                async with lock:
+                    return await _collect_with_retry(tool_registry, tool, req_key, call_kwargs, _COLLECT_MAX_RETRIES)
+            return await _collect_with_retry(tool_registry, tool, req_key, call_kwargs, _COLLECT_MAX_RETRIES)
 
     for req in data_requirements:
         collector = _DATA_COLLECTORS.get(req)
@@ -149,7 +208,8 @@ async def collect_shared_data(
             kwargs["ticker"] = ticker
 
         # 创建异步采集任务（记录请求参数，供折叠展示请求内容）
-        task = asyncio.create_task(_safe_collect(tool_registry, tool_name, req, kwargs))
+        # 串行组由 _DATA_COLLECTORS[x]["serial_group"] 声明 → 控制「串行到哪个任务」
+        task = asyncio.create_task(_run_collect(req, tool_name, kwargs, collector.get("serial_group")))
         tasks.append((req, task))
         kwargs_for_tasks[task] = kwargs
 
@@ -226,6 +286,39 @@ async def _safe_collect(
             "status": "error",
             "message": f"{data_type} 采集失败: {str(e)}",
         }
+
+
+def _is_retryable(result: Any) -> bool:
+    """判定采集结果是否值得重试。
+
+    仅超时/网络类瞬时错误值得重试；熔断/限流冷却期内重试必然失败，
+    且会持续消耗上游额度、延长恢复时间，故直接放弃、快速失败。
+    """
+    if not isinstance(result, dict):
+        return False
+    if result.get("status") not in ("timeout", "error"):
+        return False
+    text = f"{result.get('message', '')} {result.get('reason', '')}".lower()
+    return not any(k in text for k in _NON_RETRYABLE_KEYWORDS)
+
+
+async def _collect_with_retry(
+    registry: Any,
+    tool_name: str,
+    data_type: str,
+    kwargs: dict[str, Any],
+    max_retries: int,
+) -> Any:
+    """带重试的单工具采集：仅对瞬时错误做指数退避重试，避免抖动直接判死。"""
+    result: Any = None
+    for attempt in range(max(0, max_retries) + 1):
+        result = await _safe_collect(registry, tool_name, data_type, kwargs)
+        if not _is_retryable(result) or attempt >= max(0, max_retries):
+            return result
+        delay = _COLLECT_RETRY_BACKOFF * (2**attempt)
+        print(f"↻ [DataCollector] {data_type} 瞬时失败，{delay:.1f}s 后第 {attempt + 1} 次重试")
+        await asyncio.sleep(delay)
+    return result
 
 
 def _summarize_result(result: Any, max_chars: int = 600) -> str:
