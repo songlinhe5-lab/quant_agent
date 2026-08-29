@@ -33,8 +33,10 @@ x-common-env: &common-env
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us
-    # missing: 本地已有 :us 镜像则复用, 本地缺失才从 GHCR 拉。既避免复用旧 bug 镜像,
-    # 又兼容手动部署(无需先 docker login GHCR)。CI deploy-master 本地无镜像时仍会拉 GHCR。
+    # missing: 本地已有 :us 镜像则复用, 本地缺失才从 GHCR 拉。兼容手动部署(无需先 docker login GHCR)。
+    # ⚠️ 注意: missing 在本地已有同名 tag 时【复用旧镜像】, 不会自动拉新。
+    #   CI deploy-master 已在 up 前显式 `docker compose pull` 拉取最新 :us (2026-08-29 修复,
+    #   此前仅 up -d + missing → S1 长期复用本地旧镜像, 子服务代码更新不生效)。
     pull_policy: missing
     restart: unless-stopped
     env_file:
