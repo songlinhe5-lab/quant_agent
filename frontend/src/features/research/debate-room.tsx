@@ -123,6 +123,13 @@ export function DebateRoom({ question, config, runToken, onDone, onRerun, onAskC
           setInterrupted(true)
           setPhase('error')
         },
+        // NET-RETRY: 传输层瞬断自动重连（客户端指数退避）。重连 = 从头重跑，
+        // 先清空半程内容，避免重跑后同一专家卡片文本叠加
+        onRetry: (attemptNo, maxRetries) => {
+          reset()
+          setPhase('running')
+          setStatusText(`网络中断，正在自动重连（第 ${attemptNo}/${maxRetries} 次）…`)
+        },
       },
     )
     abortRef.current = ctrl
