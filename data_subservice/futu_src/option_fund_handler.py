@@ -5,6 +5,7 @@ Futu 期权与资金流处理模块
 
 import asyncio
 import logging
+import math
 import time
 from typing import Any, Dict, List, Optional
 
@@ -981,23 +982,31 @@ class OptionFundHandler:
 
         row = data.iloc[0]
 
+        def _snap_float(key: str) -> Optional[float]:
+            """snapshot 数值取值：0/NaN 视为无数据返回 None；负值保留（如亏损股 PE 为负是有效信息）。
+
+            ⚠️ futu 10.10 get_market_snapshot 实测列名为 pb_ratio/total_market_val/pe_ttm_ratio/
+            earning_per_share/net_asset_per_share（无 pb_rate/market_val/dividend_yield 列，
+            row.get 对不存在列安全降级为默认值）。
+            """
+            v = safe_float(row.get(key, 0.0))
+            if v == 0.0 or (isinstance(v, float) and math.isnan(v)):
+                return None
+            return v
+
+        _div = safe_float(row.get("dividend_yield", 0.0))
         result = {
             "status": "success",
             "data": {
                 "ticker": ticker,
                 "company_name": str(row.get("name", "")),
-                "trailing_PE": safe_float(row.get("pe_ratio", 0.0))
-                if safe_float(row.get("pe_ratio", 0.0)) > 0
-                else None,  # noqa: E501
-                "price_to_book": safe_float(row.get("pb_rate", 0.0))
-                if safe_float(row.get("pb_rate", 0.0)) > 0
-                else None,  # noqa: E501
-                "dividend_yield": f"{safe_float(row.get('dividend_yield', 0.0))}%"
-                if safe_float(row.get("dividend_yield", 0.0)) > 0
-                else None,  # noqa: E501
-                "market_cap": safe_float(row.get("market_val", 0.0))
-                if safe_float(row.get("market_val", 0.0)) > 0
-                else None,  # noqa: E501
+                "trailing_PE": _snap_float("pe_ratio"),
+                "pe_ttm": _snap_float("pe_ttm_ratio"),
+                "price_to_book": _snap_float("pb_ratio"),
+                "earnings_per_share": _snap_float("earning_per_share"),
+                "net_asset_per_share": _snap_float("net_asset_per_share"),
+                "market_cap": _snap_float("total_market_val"),
+                "dividend_yield": f"{_div}%" if _div > 0 else None,
             },
         }
         result["data"] = {k: v for k, v in result["data"].items() if v is not None}

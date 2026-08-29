@@ -5,7 +5,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, Crown, AlertTriangle, Square, Database, ChevronRight } from 'lucide-react'
+import { Loader2, Crown, AlertTriangle, Square, Database, ChevronRight, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ChiefReportPanel } from './chief-report-panel'
 import { ExpertOpinionCard, type ExpertOpinionState } from './expert-opinion-card'
@@ -294,9 +294,19 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
           }
         },
         onError: (err) => {
+          // 网络中断：把缓冲里已收到的残片吐出（部分内容总比空白好），再进入错误态
+          flushAllNow()
           setErrorMsg(err.message || '网络异常，分析中断')
           setPhase('error')
           onRunningChange?.(false)
+        },
+        // NET-RETRY: 传输层瞬断自动重连（客户端指数退避）。重连 = 从头重跑，
+        // 必须清空已收到的半程内容，否则重跑后同一专家卡片文本会叠加重复
+        onRetry: (attemptNo, maxRetries) => {
+          reset()
+          setPhase('running')
+          onRunningChange?.(true)
+          setStatusText(`网络中断，正在自动重连（第 ${attemptNo}/${maxRetries} 次）…`)
         },
       },
     )
@@ -459,7 +469,17 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
 
         {errorMsg && (
           <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-2 text-[11px] text-red-300">
-            {errorMsg}
+            <div className="flex items-start gap-2">
+              <span className="min-w-0 flex-1 break-words">{errorMsg}</span>
+              {/* NET-RETRY: 自动重连耗尽后的手动兜底——重新发起整场投研会 */}
+              <button
+                type="button"
+                onClick={run}
+                className="flex shrink-0 items-center gap-1 rounded-md border border-red-400/40 px-2 py-0.5 text-[10px] text-red-200 transition-colors hover:bg-red-500/20"
+              >
+                <RotateCcw className="h-2.5 w-2.5" /> 重新发起
+              </button>
+            </div>
           </div>
         )}
 

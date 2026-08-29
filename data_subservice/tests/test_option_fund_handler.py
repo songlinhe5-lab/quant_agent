@@ -487,10 +487,19 @@ class TestGetFundamental:
 
     async def test_success(self):
         qctx = MagicMock()
+        # 列名对齐 futu 10.10 get_market_snapshot 实测（pb_ratio/total_market_val，非 pb_rate/market_val）
         qctx.get_market_snapshot = lambda *a, **k: (
             RET_OK,
             pd.DataFrame(
-                [{"name": "Apple", "pe_ratio": 30.0, "pb_rate": 40.0, "dividend_yield": 0.5, "market_val": 3e12}]
+                [
+                    {
+                        "name": "Apple",
+                        "pe_ratio": 30.0,
+                        "pe_ttm_ratio": 28.0,
+                        "pb_ratio": 40.0,
+                        "total_market_val": 3e12,
+                    }
+                ]
             ),
         )
         conn = _make_conn_mgr(quote_ctx=qctx)
@@ -498,6 +507,9 @@ class TestGetFundamental:
         assert res["status"] == "success"
         assert res["data"]["company_name"] == "Apple"
         assert res["data"]["trailing_PE"] == 30.0
+        assert res["data"]["pe_ttm"] == 28.0
+        assert res["data"]["price_to_book"] == 40.0
+        assert res["data"]["market_cap"] == 3e12
 
     async def test_failure(self):
         qctx = MagicMock()

@@ -144,13 +144,20 @@ export interface AnalyzeParams {
 export interface TeamStreamHandlers {
   onEvent: (e: TeamStreamEvent) => void
   onError?: (err: Error) => void
+  /** 网络瞬断自动重连通知（attempt: 即将进行的第几次重试，从 1 起；maxRetries: 自动重试上限） */
+  onRetry?: (attempt: number, maxRetries: number) => void
 }
 
 /**
  * COPILOT-08: 发起专家团分析，fetchWithAuth + ReadableStream 解析 SSE。
  * 对齐 chat-stream-service 口径，带 401 自动续期重试。
- * 返回 AbortController，调用方可在组件卸载/用户中止时 abort。
+ * NET-RETRY: 传输层瞬时故障（fetch 失败 / 流中途断开 / 网关静默断流 / 5xx）
+ * 自动指数退避重连（最多 2 次，1.5s → 3s）；4xx 业务错误与用户中止不重试。
+ * 返回 AbortController，调用方可在组件卸载/用户中止时 abort（贯穿所有重试尝试）。
  */
+const MAX_AUTO_RETRIES = 2
+const RETRY_DELAYS_MS = [1500, 3000]
+
 export function startTeamAnalysis(params: AnalyzeParams, handlers: TeamStreamHandlers): AbortController {
   const controller = new AbortController()
 
@@ -164,50 +171,87 @@ export function startTeamAnalysis(params: AnalyzeParams, handlers: TeamStreamHan
   if (params.expert_ids && params.expert_ids.length > 0) body.expert_ids = params.expert_ids
   if (params.code_context) body.code_context = params.code_context
 
-  fetchWithAuth(`${API_BASE_URL}/expert-team/analyze`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  })
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
-      }
-      if (!res.body) throw new Error('响应无流主体')
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+  // 是否传输层瞬时故障：TypeError(fetch 网络失败) 或报文特征匹配；
+  // ApiError(业务错误) 与 4xx 不在此列，重试无意义
+  const isTransientNetworkError = (err: unknown): boolean => {
+    if (err instanceof ApiError) return false
+    if (err instanceof TypeError) return true
+    const msg = err instanceof Error ? err.message : String(err)
+    return /network error|failed to fetch|load failed|err_network|socket|econnreset|流中断/i.test(msg)
+  }
 
-      const pump = (): Promise<void> =>
-        reader.read().then(({ done, value }) => {
-          if (done) return
-          buffer += decoder.decode(value, { stream: true })
-          // SSE 以 \n\n 分隔事件块
-          const chunks = buffer.split('\n\n')
-          buffer = chunks.pop() ?? ''
-          for (const chunk of chunks) {
-            const line = chunk.split('\n').find((l) => l.startsWith('data:'))
-            if (!line) continue
-            const payload = line.slice(5).trim()
-            if (!payload) continue
-            try {
-              const evt = JSON.parse(payload) as TeamStreamEvent
-              handlers.onEvent(evt)
-            } catch {
-              /* 忽略无法解析的落单帧 */
+  // n: 当前第几次尝试（从 1 起）
+  const attempt = (n: number): void => {
+    // 流静默关闭检测：连接被网关/代理掐断时 read() 正常返回 done 而非 reject，
+    // 若始终未收到 done/error 终态事件，视为传输中断走重连
+    let sawTerminalEvent = false
+    const onEvent = (e: TeamStreamEvent) => {
+      if (e.type === 'done' || e.type === 'error') sawTerminalEvent = true
+      handlers.onEvent(e)
+    }
+
+    fetchWithAuth(`${API_BASE_URL}/expert-team/analyze`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) {
+          const err = new Error(`HTTP ${res.status}: ${res.statusText}`)
+          // 5xx 视为服务端瞬时故障 → 走重连通道；4xx 直接失败
+          if (res.status >= 500) return Promise.reject(Object.assign(err, { transient: true }))
+          throw err
+        }
+        if (!res.body) throw new Error('响应无流主体')
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        const pump = (): Promise<void> =>
+          reader.read().then(({ done, value }) => {
+            if (done) return
+            buffer += decoder.decode(value, { stream: true })
+            // SSE 以 \n\n 分隔事件块
+            const chunks = buffer.split('\n\n')
+            buffer = chunks.pop() ?? ''
+            for (const chunk of chunks) {
+              const line = chunk.split('\n').find((l) => l.startsWith('data:'))
+              if (!line) continue
+              const payload = line.slice(5).trim()
+              if (!payload) continue
+              try {
+                const evt = JSON.parse(payload) as TeamStreamEvent
+                onEvent(evt)
+              } catch {
+                /* 忽略无法解析的落单帧 */
+              }
             }
-          }
-          return pump()
+            return pump()
+          })
+
+        return pump().then(() => {
+          if (sawTerminalEvent || controller.signal.aborted) return
+          throw new Error('流中断：连接被关闭且未收到完成事件')
         })
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        const retryable =
+          isTransientNetworkError(err) || (err as { transient?: boolean })?.transient === true
+        if (retryable && n <= MAX_AUTO_RETRIES) {
+          const delay = RETRY_DELAYS_MS[Math.min(n - 1, RETRY_DELAYS_MS.length - 1)]
+          handlers.onRetry?.(n, MAX_AUTO_RETRIES)
+          setTimeout(() => {
+            if (!controller.signal.aborted) attempt(n + 1)
+          }, delay)
+          return
+        }
+        const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : '分析启动失败'
+        handlers.onError?.(new Error(msg))
+      })
+  }
 
-      return pump()
-    })
-    .catch((err: unknown) => {
-      if (controller.signal.aborted) return
-      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : '分析启动失败'
-      handlers.onError?.(new Error(msg))
-    })
-
+  attempt(1)
   return controller
 }
 

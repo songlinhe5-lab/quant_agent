@@ -500,15 +500,21 @@ class TestOptionFundHandler:
 
     @pytest.mark.asyncio
     async def test_get_fundamental_success_filters_zero_fields(self):
-        """成功时应过滤掉值为 0 的字段"""
+        """成功时应过滤掉值为 0/NaN 的字段，负值（亏损 PE）保留。
+
+        ⚠️ mock 列名须与 futu 10.10 get_market_snapshot 实测一致：
+        pb_ratio/total_market_val（旧用例的 pb_rate/market_val 列不存在，曾致全字段被剔）。
+        """
         handler, _, _ = _make_handler()
         snapshot_df = pd.DataFrame(
             {
                 "name": ["腾讯控股"],
                 "pe_ratio": [15.5],
-                "pb_rate": [0.0],  # 应被过滤
-                "dividend_yield": [0.0],  # 应被过滤
-                "market_val": [50000000000.0],
+                "pe_ttm_ratio": [14.2],
+                "pb_ratio": [0.0],  # 应被过滤
+                "earning_per_share": [12.3],
+                "net_asset_per_share": [180.5],
+                "total_market_val": [50000000000.0],
             }
         )
         with patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, snapshot_df))):
@@ -517,9 +523,34 @@ class TestOptionFundHandler:
         data = result["data"]
         assert data["company_name"] == "腾讯控股"
         assert data["trailing_PE"] == 15.5
+        assert data["pe_ttm"] == 14.2
+        assert data["earnings_per_share"] == 12.3
+        assert data["net_asset_per_share"] == 180.5
         assert data["market_cap"] == 50000000000.0
         assert "price_to_book" not in data
         assert "dividend_yield" not in data
+
+    @pytest.mark.asyncio
+    async def test_get_fundamental_keeps_negative_pe(self):
+        """亏损股负 PE 是有效信息，不得被 >0 过滤丢弃（HK.00772 阅文集团实测 pe_ratio=-23.763）。"""
+        handler, _, _ = _make_handler()
+        snapshot_df = pd.DataFrame(
+            {
+                "name": ["阅文集团"],
+                "pe_ratio": [-23.763],
+                "pe_ttm_ratio": [-11.902],
+                "pb_ratio": [1.015],
+                "total_market_val": [20428735725.36],
+            }
+        )
+        with patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, snapshot_df))):
+            result = await handler.get_fundamental("HK.00772")
+        assert result["status"] == "success"
+        data = result["data"]
+        assert data["trailing_PE"] == -23.763
+        assert data["pe_ttm"] == -11.902
+        assert data["price_to_book"] == 1.015
+        assert data["market_cap"] == 20428735725.36
 
 
 # ── F2: 三大财务报表（P0 阶段，零幻觉解析真实返回结构）────────────────
