@@ -94,3 +94,26 @@ class TestMethodsSuccess:
         with patch.object(fmp_mod.httpx, "AsyncClient", return_value=fake_client):
             out = await svc.get_quote("AAPL")
         assert out["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_stable_endpoint_url_and_query_params(self):
+        """FIX(2026-08-29): FMP legacy /api/v3 已下线(403)，须走 /stable 且 symbol 在 query。"""
+        svc = fmp_mod.FMPService()
+        fake_resp = MagicMock(status_code=200)
+        fake_resp.json.return_value = []
+        fake_client = AsyncMock()
+        mock_get = AsyncMock(return_value=fake_resp)
+        fake_client.__aenter__.return_value.get = mock_get
+        with patch.object(fmp_mod.httpx, "AsyncClient", return_value=fake_client):
+            await svc.get_quote("AAPL")
+            url, kwargs = mock_get.call_args[0][0], mock_get.call_args[1]
+            assert url == f"{fmp_mod._BASE}/quote"
+            assert fmp_mod._BASE.endswith("/stable")
+            assert kwargs["params"]["symbol"] == "AAPL"
+            assert "apikey" in kwargs["params"]
+            mock_get.reset_mock()
+            await svc.get_income_statement("MSFT", limit=2)
+            url, kwargs = mock_get.call_args[0][0], mock_get.call_args[1]
+            assert url == f"{fmp_mod._BASE}/income-statement"
+            assert kwargs["params"]["symbol"] == "MSFT"
+            assert kwargs["params"]["limit"] == 2
