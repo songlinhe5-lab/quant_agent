@@ -82,7 +82,13 @@ class QuoteHandler:
     async def get_quote(self, ticker: str, format_ticker_func, is_unsupported_func) -> Dict[str, Any]:  # noqa: E501
         """获取实时行情（带L1缓存）"""
         if is_unsupported_func(ticker):
-            return {"status": "error", "message": "富途原生不支持该大类资产"}
+            # DIST-SEC-04 对齐: 标的层面"不支持"属数据不可用, 带 error_category 供主服务
+            # 豁免熔断计数, 避免情绪风向标(^VIX/ES=F/DX-Y.NYB)轮询误杀整条行情通道
+            return {
+                "status": "error",
+                "error_category": "data_unavailable",
+                "message": "富途原生不支持该大类资产",
+            }
 
         market_ticker = format_ticker_func(ticker)
 
@@ -483,7 +489,12 @@ class QuoteHandler:
         from .utils import format_ticker, is_futu_unsupported
 
         if is_futu_unsupported(ticker):
-            return {"status": "error", "message": "富途原生不支持该大类资产"}
+            # 同 get_quote: 标的层面不支持 → data_unavailable, 主服务不计熔断
+            return {
+                "status": "error",
+                "error_category": "data_unavailable",
+                "message": "富途原生不支持该大类资产",
+            }
 
         market_ticker = format_ticker(ticker)
 
@@ -623,7 +634,13 @@ class QuoteHandler:
         的实时订阅回传闭环。逻辑与 get_quote 内联订阅段保持一致 (LRU 容量 + 双类型订阅)。
         """
         if is_unsupported_func(ticker):
-            return {"status": "error", "message": "富途原生不支持该大类资产"}
+            # DIST-SEC-04 对齐: 标的层面"不支持"属数据不可用, 带 error_category 供主服务
+            # 豁免熔断计数, 避免情绪风向标(^VIX/ES=F/DX-Y.NYB)轮询误杀整条行情通道
+            return {
+                "status": "error",
+                "error_category": "data_unavailable",
+                "message": "富途原生不支持该大类资产",
+            }
 
         market_ticker = format_ticker_func(ticker)
 
@@ -691,7 +708,13 @@ class QuoteHandler:
     async def get_order_book(self, ticker: str, format_ticker_func, is_unsupported_func) -> Dict[str, Any]:  # noqa: E501
         """获取实时 Level 2 盘口深度数据"""
         if is_unsupported_func(ticker):
-            return {"status": "error", "message": "富途原生不支持该大类资产"}
+            # DIST-SEC-04 对齐: 标的层面"不支持"属数据不可用, 带 error_category 供主服务
+            # 豁免熔断计数, 避免情绪风向标(^VIX/ES=F/DX-Y.NYB)轮询误杀整条行情通道
+            return {
+                "status": "error",
+                "error_category": "data_unavailable",
+                "message": "富途原生不支持该大类资产",
+            }
 
         market_ticker = format_ticker_func(ticker)
 

@@ -187,6 +187,30 @@ def _declared_capabilities() -> set:
     return {c.strip().lower() for c in raw.split(",") if c.strip()}
 
 
+def _json_safe(obj: Any) -> Any:
+    """递归将响应对象转为 JSON 可序列化结构（出口统一兜底）。
+
+    修复 (2026-08-29): Futu 部分接口 (如 get_fed_watch_target_rate / get_fed_watch_dot_plot)
+    返回的 DataFrame 列名是 pandas.Timestamp, to_dict("records") 后 dict key 非 str,
+    JSONResponse 序列化抛 "TypeError: keys must be str" → 整个请求 500, 主服务侧表现为
+    该 action 持续失败并累积熔断 (fed_watch 恒为 None 的根因)。此处统一兜底:
+    非 str dict key 转 str, Timestamp/datetime 等时间对象转 isoformat, 其余转 str。
+    """
+    if isinstance(obj, dict):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    isoformat = getattr(obj, "isoformat", None)
+    if callable(isoformat):
+        try:
+            return isoformat()
+        except Exception:  # noqa: BLE001
+            pass
+    return str(obj)
+
+
 @app.post("/api/v1/data", dependencies=[Depends(verify_hmac)])
 async def fetch_data(request: Request):
     """统一数据源获取端点。仅响应本节点 DS_CAPABILITIES 声明的能力。"""
@@ -232,7 +256,7 @@ async def fetch_data(request: Request):
     else:
         raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
 
-    return JSONResponse({"code": 0, "data": result})
+    return JSONResponse({"code": 0, "data": _json_safe(result)})
 
 
 @app.get("/metrics/circuit")
