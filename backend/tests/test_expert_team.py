@@ -919,6 +919,31 @@ class TestOrchestratorDebateExtensions:
         assert final.data.get("reasoning", "").startswith("基本面强劲")
 
     @pytest.mark.asyncio
+    async def test_expert_stream_timeout_rescues_partial_text(self, monkeypatch):
+        """回归：单专家流式超时但已有部分正文上屏时，应降级提取部分产出
+        （stance 用"部分产出"语义），而非补"超时异常"占位与正文自相矛盾"""
+        import backend.services.expert_team.orchestrator as orch_mod
+
+        monkeypatch.setattr(orch_mod, "_EXPERT_TIMEOUT", 0.2)
+        orch = DebateOrchestrator()
+        expert = get_expert("macro_strategist")
+
+        async def fake_stream(*args, **kwargs):
+            yield "## 宏观策略师独立研判\n流动性宽松利好权益资产。"
+            await asyncio.sleep(0.4)  # 越过单专家 deadline，下一片到达时触发流式超时
+            yield "永远不会到达"
+
+        with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
+            mock_llm.generate_stream = fake_stream
+            events = [ev async for ev in orch._call_expert_round1(expert, "全球宏观?", "## 数据\n" + "有效内容。" * 20)]
+
+        final = events[-1]
+        assert final.content == ""
+        # 部分产出语义，而非"超时异常"占位
+        assert final.data.get("stance") == orch_mod._STANCE_TIMEOUT_PARTIAL
+        assert final.data.get("reasoning", "").startswith("## 宏观策略师独立研判")
+
+    @pytest.mark.asyncio
     async def test_chief_stream_yields_completion_frame(self):
         """首席收敛真流式：报告增量流出，完成帧携带结构化数据并写入 session"""
         orch = DebateOrchestrator()

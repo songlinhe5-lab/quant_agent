@@ -34,9 +34,13 @@ from hermes_agent.tool_registry import ToolRegistry
 
 # ─── 超时配置 ──────────────────────────────────────────────────
 _EXPERT_TIMEOUT = 60.0  # 单个专家超时（真流式下为整段生成+限速滴播的总时限）
-_ROUND_TIMEOUT = 180.0  # 整轮超时（与 _EXPERT_TIMEOUT 叠加，双保险）
+_ROUND_TIMEOUT = 180.0  # 整轮超时下限；实际按阵容动态放宽：ceil(专家数/并发)×单专家时限+缓冲
 _CHIEF_TIMEOUT = 120.0  # 首席报告更长，单独放宽
 _EXPERT_CONCURRENCY = 3  # 同时进行的专家 LLM 流上限；其余排队，避免瞬时并发打爆网关配额(429)
+# 占位/降级 stance 文案：区分"无产出"与"部分产出"，避免占位文案与卡片内已上屏的正文自相矛盾
+_FALLBACK_STANCE_DEFAULT = "数据不足，无法给出明确研判，建议等待数据补充后再作判断。"
+_STANCE_TIMEOUT_PARTIAL = "本轮研判未在时限内完成，以上为部分产出，仅供参考。"
+_STANCE_TIMEOUT_NONE = "本轮研判超时或异常，未能在时限内产出有效观点。"
 _STREAM_CHUNK_DELAY = 0.02  # 打字机效果：切片间隔（秒），仅降级/占位路径使用；真流式无需人造延迟
 # 打字机限速（真流式）：每 _STREAM_EMIT_INTERVAL 秒最多推 _STREAM_CHARS_PER_TICK 字符，
 # 防止快速模型数秒内把全文一次性砸满屏幕来不及阅读；若生成先于节奏结束，剩余缓冲按同速率滴播。
@@ -374,7 +378,7 @@ class DebateOrchestrator:
         """
         import re as _re
 
-        stance = "数据不足，无法给出明确研判，建议等待数据补充后再作判断。"
+        stance = _FALLBACK_STANCE_DEFAULT
         confidence = 0
         evidence: list[str] = []
         reasoning = text.strip()[:500] if text else ""
@@ -461,7 +465,11 @@ class DebateOrchestrator:
 
         served: set[str] = set()
         streamed: set[str] = set()  # 正文增量片已上屏的专家（超时抢救时避免全文重发）
-        deadline = asyncio.get_running_loop().time() + _ROUND_TIMEOUT
+        # 整轮超时动态下限：排队批次 × 单专家时限 + 缓冲。7 专家 3 并发时固定 180s
+        # 恰好等于 3×60s 理论上限，零余量，任何抖动即整轮超时（宏观策略师只流出一行即被打断的根因）
+        batches = -(-len(experts) // _EXPERT_CONCURRENCY)
+        round_timeout = max(_ROUND_TIMEOUT, batches * _EXPERT_TIMEOUT + 30.0)
+        deadline = asyncio.get_running_loop().time() + round_timeout
 
         def _consume_item(item: Any) -> Optional[StreamEvent]:
             """哨兵 → 归集观点；事件 → 透传"""
@@ -553,7 +561,8 @@ class DebateOrchestrator:
             placeholder = ExpertOpinion(
                 expert_id=expert.id,
                 round=round_index,
-                stance="本轮研判超时或异常，未能在时限内产出有效观点。",
+                # 有部分正文已上屏时用"部分产出"语义，避免与卡片内正文自相矛盾
+                stance=_STANCE_TIMEOUT_PARTIAL if expert.id in streamed else _STANCE_TIMEOUT_NONE,
                 confidence=0,
             )
             out_opinions.append(placeholder)
@@ -653,6 +662,17 @@ class DebateOrchestrator:
             opinion = self._assemble_opinion(expert, round_index, markdown, structured, output_model, data_missing)
         except asyncio.TimeoutError:
             print(f"⚠️ [Orchestrator] {expert.id} Round{round_index} 流式超时 ({_EXPERT_TIMEOUT}s)")
+            # 与异常分支一致：已流出的部分研判文本走降级提取，不丢弃已展示内容
+            markdown, _ = splitter.finish()
+            if markdown.strip():
+                opinion = self._parse_text_fallback(markdown, round_index)
+                opinion.expert_id = expert.id
+                opinion.reasoning = markdown[:2000]
+                if data_missing:
+                    opinion.confidence = min(opinion.confidence, 30)
+                if opinion.stance == _FALLBACK_STANCE_DEFAULT:
+                    # 未提取到任何结构化线索 → 用"部分产出"语义，避免与已上屏正文矛盾
+                    opinion.stance = _STANCE_TIMEOUT_PARTIAL
         except Exception as e:  # noqa: BLE001
             print(f"⚠️ [Orchestrator] {expert.id} Round{round_index} 流式生成失败: {e}")
             # 已流出部分研判文本时走文本降级提取，不丢弃已展示内容；绝不外泄底层报错
@@ -667,7 +687,7 @@ class DebateOrchestrator:
             opinion = ExpertOpinion(
                 expert_id=expert.id,
                 round=round_index,
-                stance="本轮研判超时或异常，未能在时限内产出有效观点。",
+                stance=_STANCE_TIMEOUT_NONE,
                 confidence=0,
             )
         # 结构化完成帧：无增量文本，仅补全结构化字段（前端卡片据此点亮观点/置信度徽章）
