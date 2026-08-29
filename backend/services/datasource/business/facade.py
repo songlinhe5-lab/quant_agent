@@ -1375,13 +1375,13 @@ class DataServiceFacade:
                     out["time"] = out[k]
                     break
 
-        # 币种标注：缺失则按 ticker 后缀推断
+        # 币种标注：缺失则按 ticker 所属市场推断（复用 _detect_market）
+        # FIX(2026-08-29): 旧逻辑只认 ".HK" 后缀与裸 0 开头，Futu 前缀格式
+        # (HK.00772)、A 股 (SH.600519 / SZ.000001 / 裸代码 600519) 全被误判为 USD。
+        # 改为市场感知推断：HK→HKD, CN→CNY, US→USD。
         if "currency" not in out and "ticker" in out:
-            t = str(out["ticker"])
-            if t.endswith(".HK") or t.startswith("0") and len(t) >= 5:
-                out["currency"] = "HKD"
-            else:
-                out["currency"] = "USD"
+            mkt = _detect_market(str(out["ticker"]))
+            out["currency"] = {"HK": "HKD", "CN": "CNY"}.get(mkt, "USD")
 
         # 复权标记默认 qfq
         if action == "HISTORY" and "adjust" not in out:
