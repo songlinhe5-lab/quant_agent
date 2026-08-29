@@ -97,6 +97,13 @@ _NON_RETRYABLE_KEYWORDS = (
     "429",
 )
 
+# 前端"协议 请求/响应"面板的单条响应展示上限（经验值，普通用户零配置）。
+# 背景：原先固定 600 字符，macro_news/sentiment/technicals/fed_watch 等响应
+# 均在 JSON 中途被腰斩（截断处语法不完整、无法阅读），用户无法核对采集到的数据。
+# 单条 SSE 事件承载数万字符无压力，此处仅对病态大包（MB 级）兜底截断。
+# env 仅留作线上紧急调参入口，不在 .env.example 暴露。
+_RESPONSE_MAX_CHARS = int(os.getenv("EXPERT_TEAM_COLLECT_RESPONSE_MAX_CHARS", "50000"))
+
 
 async def collect_shared_data(
     data_requirements: list[str],
@@ -321,25 +328,36 @@ async def _collect_with_retry(
     return result
 
 
-def _summarize_result(result: Any, max_chars: int = 600) -> str:
-    """把工具返回结果摘要成短文本（供前端折叠展示响应内容），避免把超大数据整包透传。"""
+def _truncate(text: str, max_chars: int) -> str:
+    """按字符上限截断，超出时显式标注总长度（避免截断成半截 JSON 却无任何提示）。"""
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}\n... [响应过长已截断，共 {len(text)} 字符]"
+
+
+def _summarize_result(result: Any, max_chars: int = _RESPONSE_MAX_CHARS) -> str:
+    """把工具返回结果序列化为文本，供前端"协议 请求/响应"面板展示。
+
+    默认保留完整响应：投研会场景需要逐项核对实际采集到的数据，中途腰斩会破坏
+    JSON 结构与可读性。仅在病态大包（超过 _RESPONSE_MAX_CHARS）时兜底截断。
+    """
     import json as _json
 
     try:
         if isinstance(result, dict):
             # 错误/超时：返回 message
             if result.get("status") in ("error", "timeout", "skipped"):
-                return str(result.get("message", ""))[:max_chars]
-            # 成功：返回关键字段摘要
+                return _truncate(str(result.get("message", "")), max_chars)
+            # 成功：返回数据体
             data = result.get("data", result)
             if isinstance(data, (dict, list)):
-                return _json.dumps(data, ensure_ascii=False, default=str)[:max_chars]
-            return str(data)[:max_chars]
+                return _truncate(_json.dumps(data, ensure_ascii=False, default=str), max_chars)
+            return _truncate(str(data), max_chars)
         if isinstance(result, (list, dict)):
-            return _json.dumps(result, ensure_ascii=False, default=str)[:max_chars]
-        return str(result)[:max_chars]
+            return _truncate(_json.dumps(result, ensure_ascii=False, default=str), max_chars)
+        return _truncate(str(result), max_chars)
     except Exception:  # noqa: BLE001
-        return str(result)[:max_chars]
+        return _truncate(str(result), max_chars)
 
 
 def format_shared_data_for_prompt(shared_data: dict[str, Any], max_chars: int = 8000) -> str:

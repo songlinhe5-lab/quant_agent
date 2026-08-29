@@ -537,7 +537,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                           <summary className="cursor-pointer select-none text-[10px] text-muted-foreground hover:text-foreground">
                             协议 请求/响应
                           </summary>
-                          <div className="space-y-1 pt-1 text-[10px] leading-relaxed">
+                          <div className="max-h-72 space-y-1 overflow-y-auto pt-1 text-[10px] leading-relaxed">
                             {s.request && (
                               <div className="text-foreground/70">
                                 <span className="text-muted-foreground/70">请求 </span>
