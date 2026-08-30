@@ -784,9 +784,24 @@ class DataServiceFacade:
 
         # --- 解析分析师目标价（防御式，不硬编码 Futu 列名）---
         target_price = None
-        if isinstance(res_cons, Result) and res_cons.is_success and isinstance(res_cons.data, dict):
-            cons_rows = res_cons.data.get("data") or []
-            if isinstance(cons_rows, list) and cons_rows:
+        if isinstance(res_cons, Result) and res_cons.is_success:
+            # ⚠️ 形态兼容（2026-08-30 二次修复）：经 registry/router 链路后，
+            # res_cons.data 有两种形态：
+            #   ① dict 信封 —— {"status": "success", "data": [...], "count": N}
+            #   ② list 记录数组 —— 信封已在链路中被解包
+            # 旧代码只认 ① → 拿到 ② 时整个分支不进入，直接落到 else 追加
+            # "分析师共识源不可用"，而数据其实已经完整到手（实测 AAPL 的
+            # analyst_consensus 字段有值，notes 却仍报不可用）。
+            _cons_payload = res_cons.data
+            if isinstance(_cons_payload, dict):
+                cons_rows = _cons_payload.get("data") or []
+            elif isinstance(_cons_payload, list):
+                cons_rows = _cons_payload
+            else:
+                cons_rows = []
+            if not isinstance(cons_rows, list):
+                cons_rows = []
+            if cons_rows:
                 # Futu F4-4 共识字段是 average/highest/lowest（不含 "price" 子串），
                 # 旧匹配要求 "price" 在列名里 → 永远命中不了 → target_price 恒 None。
                 # 先按语义映射键取值（average = 分析师平均目标价，G7 上行空间基准）。
