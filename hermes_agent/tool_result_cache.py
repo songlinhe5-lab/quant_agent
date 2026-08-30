@@ -17,9 +17,10 @@ from typing import Any, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
 
-# 默认不缓存的工具（写操作 / 副作用 / 会话态）
+# 默认不缓存的工具（写操作 / 副作用 / 会话态 / 高频变化数据）
 _DEFAULT_NO_CACHE: Set[str] = {
     "delete_global_knowledge",
+    "get_order_book",  # L2 盘口逐笔变化，缓存任何时长都会误导
 }
 
 # 按工具默认 TTL（秒）——对齐下游数据新鲜度
@@ -87,9 +88,11 @@ def cache_key(tool_name: str, kwargs: Dict[str, Any]) -> str:
 
 
 def should_cache_result(result: Any) -> bool:
-    """错误 / 限流 / 空结果 / 显式 skip_cache 不落缓存。
+    """错误 / 限流 / 降级 / 空结果 / 显式 skip_cache 不落缓存。
 
     skip_cache 由检索类工具在"未命中"时置位，避免 0 命中结果被缓存遮蔽修复。
+    degraded 响应（数据源降级，可能无 status 字段）与空 data 一律不缓存，
+    避免降级/空面板在 TTL 窗口内遮蔽数据源恢复。
     """
     if result is None:
         return False
@@ -98,6 +101,11 @@ def should_cache_result(result: Any) -> bool:
         if status in ("error", "rate_limited", "failed"):
             return False
         if result.get("error") and not result.get("data"):
+            return False
+        if result.get("degraded"):
+            return False
+        data = result.get("data")
+        if isinstance(data, (dict, list)) and not data:
             return False
         if result.get("skip_cache"):
             return False
