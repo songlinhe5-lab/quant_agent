@@ -1,0 +1,9 @@
+{
+  "result": "[{\"FILE_INFO\": \"5316KB\", \"NEWS_ID\": \"2765432\", \"SHORT_TEXT\": \"Interim Results\", \"TOTAL_COUNT\": \"13\", \"DOD_WEB_PATH\": \"\", \"STOCK_NAME\": \"CHINA LITERATURE\", \"TITLE\": \"INTERIM RESULTS ANNOUNCEMENT\\nFOR THE SIX MONTHS ENDED JUNE 30, 2026\", \"FILE_TYPE\": \"PDF\", \"DATE_TIME\": \"11/08/2026 16:30\", \"LONG_TEXT\": \"Interim Results Announcement\", \"STOCK_CODE\": \"00772\", \"FILE_LINK\": \"/listedco/listconews/sehk/2026/20260811/ltn20260811650.pdf\"}, {\"FILE_INFO\": \"1234KB\", \"NEWS_ID\": \"2765999\", \"SHORT_TEXT\": \"Monthly Return\", \"TOTAL_COUNT\": \"13\", \"DOD_WEB_PATH\": \"\", \"STOCK_NAME\": \"CHINA LITERATURE\", \"TITLE\": \"Monthly Return of Equity Issuer on Movements in Securities for the month ended 31 July 2026\", \"FILE_TYPE\": \"PDF\", \"DATE_TIME\": \"04/08/2026 18:11\", \"LONG_TEXT\": \"Monthly Return\", \"STOCK_CODE\": \"00772\", \"FILE_LINK\": \"/listedco/listconews/sehk/2026/20260804/ltn20260804512.pdf\"}]",
+  "hasNextRow": false,
+  "sortList": "[[0,1]]",
+  "rowRange": 100,
+  "lang": "E",
+  "loadedRecord": 2,
+  "recordCnt": 2
+}
