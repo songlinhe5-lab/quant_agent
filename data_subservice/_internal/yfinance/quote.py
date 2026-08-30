@@ -168,35 +168,43 @@ def fetch_option_chain(ticker: str) -> Dict:
     之前实现只取了 list(chain)（到期日列表），丢掉了全部合约数据，
     导致主服务拿不到 IV/定价字段，期权 IV 面板全空。
     """
-    import pandas as pd  # noqa: F401  (row 类型标注用)
+    import pandas as pd  # row 类型标注 + 下方 isinstance 校验用
 
     yf_code = format_yf_ticker(ticker)
     try:
         t = yf.Ticker(yf_code)
         chain = t.option_chain()
+        if chain is None:
+            return {
+                "symbol": ticker,
+                "expirations": [],
+                "calls": [],
+                "puts": [],
+                "options": [],
+                "count": 0,
+                "source": "yfinance",
+            }
         expirations = list(chain)
 
         calls: List[Dict] = []
         puts: List[Dict] = []
         for exp in expirations:
-            try:
-                calls_df = (
-                    chain.calls[chain.calls["expirationDate"] == exp]
-                    if "expirationDate" in chain.calls.columns
-                    else chain.calls
-                )
-                puts_df = (
-                    chain.puts[chain.puts["expirationDate"] == exp]
-                    if "expirationDate" in chain.puts.columns
-                    else chain.puts
-                )
-            except Exception:
-                calls_df = chain.calls
-                puts_df = chain.puts
-            for _, r in calls_df.iterrows():
-                calls.append(_normalize_option_row(r, "CALL", exp))
-            for _, r in puts_df.iterrows():
-                puts.append(_normalize_option_row(r, "PUT", exp))
+            # ⚠️ 无期权链标的（港股 / 无期权品种）yfinance 的 chain.calls/.puts
+            # 可能为 None。旧代码在 except 兜底后直接 iterrows() →
+            # 'NoneType' object has no attribute 'iterrows' → 被主服务判为
+            # 「源级失败」计入 throttler，累积后触发 yfinance 全节点 300s 退避
+            # （2026-08-30 S1 实战：0772.HK 触发，consecutive=15 / wait=300.4s），
+            # 连累所有走 yfinance 的请求，表现为工具长时间无响应。
+            for raw, kind in ((chain.calls, "CALL"), (chain.puts, "PUT")):
+                if not isinstance(raw, pd.DataFrame) or raw.empty:
+                    continue
+                try:
+                    df_ = raw[raw["expirationDate"] == exp] if "expirationDate" in raw.columns else raw
+                except Exception:  # noqa: BLE001 - 列缺失/类型异常时回退整表
+                    df_ = raw
+                bucket = calls if kind == "CALL" else puts
+                for _, r in df_.iterrows():
+                    bucket.append(_normalize_option_row(r, kind, exp))
 
         all_opts = calls + puts
         return {

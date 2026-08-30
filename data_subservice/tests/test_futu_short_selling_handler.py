@@ -69,7 +69,8 @@ class TestShortSellingHandler:
                 "date": ["2026-08-15"],
             }
         )
-        ctx.get_daily_short_volume.return_value = (0, df, "")
+        # 真实签名 (ret_code, us_df, hk_df)：港股走第 3 张表
+        ctx.get_daily_short_volume.return_value = (0, pd.DataFrame(), df)
         result = await handler.get_daily_short_volume("HK.00700")
         assert result["status"] == "success"
         assert result["data"][0]["code"] == "HK.00700"
@@ -150,10 +151,41 @@ class TestShortSellingHandler:
         handler, _, ctx = _make_handler()
         from futu import RET_OK
 
-        ctx.get_daily_short_volume.return_value = (RET_OK, [])
+        # 真实签名是 (ret_code, us_df, hk_df) 三元组；两张表皆空 → no_data
+        ctx.get_daily_short_volume.return_value = (RET_OK, pd.DataFrame(), pd.DataFrame())
         result = await handler.get_daily_short_volume("HK.00700")
         assert result["status"] == "no_data"
         assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_daily_short_volume_hk_uses_hk_table(self):
+        """回归：港股数据在 [2]（hk_df）。旧实现恒取 [1]（us_df）→ 港股恒 no_data。
+
+        即便美股表有数据也不得采用，否则会把美股行当成港股返回。
+        """
+        handler, _, ctx = _make_handler()
+        from futu import RET_OK
+
+        us_df = pd.DataFrame({"short_percent": [1.0]})  # 美股表有数据（诱饵）
+        hk_df = pd.DataFrame({"short_sell_turnover": [1.2e7], "turnover": [5.0e7]})
+        ctx.get_daily_short_volume.return_value = (RET_OK, us_df, hk_df)
+
+        result = await handler.get_daily_short_volume("HK.00700")
+        assert result["status"] == "success"
+        assert result["data"][0]["short_sell_turnover"] == 1.2e7
+
+    @pytest.mark.asyncio
+    async def test_get_daily_short_volume_us_uses_us_table(self):
+        """美股数据在 [1]（us_df），港股表为空时不得误取。"""
+        handler, _, ctx = _make_handler()
+        from futu import RET_OK
+
+        us_df = pd.DataFrame({"short_percent": [13.785]})
+        ctx.get_daily_short_volume.return_value = (RET_OK, us_df, pd.DataFrame())
+
+        result = await handler.get_daily_short_volume("US.AAPL")
+        assert result["status"] == "success"
+        assert result["data"][0]["short_percent"] == 13.785
 
     async def test_get_daily_short_volume_exception(self):
         handler, _, ctx = _make_handler()

@@ -48,7 +48,7 @@ export function MicroPanel({ symbol }: { symbol: string }) {
       <CapitalDistributionPanel ticker={futu} />
       <CapitalFlowPanel symbol={futu} />
       <AnalystVsFundamentalPanel ticker={futu} />
-      {hk && <ShortSellingPanel ticker={futu} mode="overview" />}
+      {hk && <ShortSellingPanel ticker={futu} mode="daily" />}
       <details className="glass-card rounded-lg overflow-hidden group">
         <summary className="px-3 py-2.5 border-b border-border/30 flex items-center gap-2 cursor-pointer list-none">
           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />

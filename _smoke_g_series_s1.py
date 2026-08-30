@@ -66,7 +66,7 @@ REQUIRED_DERIVED_FIELDS = {
     # G7：卖方共识 vs 实际基本面
     "analyst-vs-fundamental": {
         "ticker": US,
-        "path": f"/api/v1/market-fundamental/analyst-vs-fundamental/{US}",
+        "path": f"/api/v1/market/analyst-vs-fundamental/{US}",
         "must_have": ["upside_pct", "verdict", "consensus_is_third_party_expectation"],
         "desc": "G7 卖方共识 vs 基本面（上行空间/结论/第三方观点标记）",
     },
