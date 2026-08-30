@@ -1,0 +1,71 @@
+{
+  "cik": 320193,
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {
+        "label": "Revenue from Contract with Customer",
+        "units": {
+          "USD": [
+            {
+              "end": "2023-09-30",
+              "start": "2022-09-25",
+              "val": 383285000000,
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "accn": "000032019323000106",
+              "frame": "CY2023"
+            },
+            {
+              "end": "2022-09-24",
+              "start": "2021-09-26",
+              "val": 365817000000,
+              "fy": 2022,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2022-10-28",
+              "accn": "000032019322000107"
+            }
+          ]
+        }
+      },
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "USD": [
+            {
+              "end": "2023-09-30",
+              "val": 352583000000,
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "accn": "000032019323000106",
+              "frame": "CY2023Q4I"
+            }
+          ]
+        }
+      }
+    },
+    "dei": {
+      "EntityCommonStockSharesOutstanding": {
+        "label": "Entity Common Stock",
+        "units": {
+          "shares": [
+            {
+              "end": "2023-10-13",
+              "val": 15618355293,
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "accn": "000032019323000106"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
