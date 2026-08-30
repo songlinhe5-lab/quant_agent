@@ -22,7 +22,9 @@ class TestToFmpSymbol:
             ("SZ.000001", "000001.sz"),
             ("BJ.830799", "830799.bj"),
             ("AAPL", "AAPL"),
-            ("US.AAPL", "US.AAPL"),
+            # 2026-08-30 实测: FMP /stable 对美股 symbol 期望裸代码(US.NVDA 前缀 → 402,
+            # NVDA → 200)，与 HK/SH 同属格式适配，剥离前缀。
+            ("US.AAPL", "AAPL"),
         ],
     )
     def test_cases(self, inp, expected):
