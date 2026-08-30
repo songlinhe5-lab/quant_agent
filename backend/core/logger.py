@@ -11,6 +11,9 @@ from rich.logging import RichHandler
 from rich.text import Text
 from rich.theme import Theme
 
+# FE-DEBUG-01: 进程内日志环形缓冲（前端 DEBUG 面板实时拉取）
+from backend.core.log_buffer import ring_buffer_handler
+
 # 定义控制台不同级别的高亮主题 (针对日志级别标签 [INFO], [ERROR] 等)
 custom_theme = Theme(
     {
@@ -162,13 +165,14 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
     warning_handler = _create_file_handler("logs/warning.log", [logging.WARNING])
     error_handler = _create_file_handler("logs/error.log", [logging.ERROR, logging.CRITICAL])  # noqa: E501
 
-    # 准备好分发列表：终端显示、各级文件落盘
+    # 准备好分发列表：终端显示、各级文件落盘、DEBUG 面板环形缓冲
     handlers_for_listener = [
         console_handler,
         debug_handler,
         info_handler,
         warning_handler,
         error_handler,
+        ring_buffer_handler,
     ]
 
     # 3. 🚨 全局严重错误报警拦截器

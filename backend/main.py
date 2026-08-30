@@ -94,6 +94,7 @@ from backend.routers.expert_team import router as expert_team_router  # noqa: E4
 from backend.routers.factor import router as factor_router  # noqa: E402
 from backend.routers.futu_admin import router as futu_admin_router  # noqa: E402
 from backend.routers.internal import router as internal_router  # noqa: E402
+from backend.routers.log_stream import router as log_stream_router  # noqa: E402  # FE-DEBUG-01
 from backend.routers.logs import router as logs_router  # noqa: E402
 from backend.routers.macro import router as macro_router  # noqa: E402
 from backend.routers.market import router as market_router  # noqa: E402
@@ -197,6 +198,7 @@ def create_app() -> FastAPI:
     application.include_router(alert_router, prefix=API_PREFIX)
     application.include_router(ai_narrator_router, prefix=API_PREFIX)  # AI-01
     application.include_router(logs_router, prefix=API_PREFIX)
+    application.include_router(log_stream_router, prefix=API_PREFIX)  # FE-DEBUG-01
     application.include_router(eval_router, prefix=API_PREFIX)
     application.include_router(earnings_router, prefix=API_PREFIX)
     application.include_router(rag_router, prefix=API_PREFIX)  # EARN-02/03
