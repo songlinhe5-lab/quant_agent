@@ -140,6 +140,23 @@ def test_backoff_jitter_bounds():
         assert 0 <= raw <= expected_cap + 1e-6
 
 
+def test_backoff_min_delay_lower_bound():
+    # AGENT-18 补丁：full-jitter 加最小间隔硬下限，消除 <min_delay 的无效重试
+    b = ExponentialBackoff(base_delay=2.0, max_delay=100.0, exponent=2.0, min_delay=0.5)
+    for attempt in range(5):
+        raw = b.get_delay(attempt)
+        expected_cap = min(2.0 * (2.0**attempt), 100.0)
+        assert 0.5 <= raw <= expected_cap + 1e-6
+
+
+def test_backoff_min_delay_capped_degrade():
+    # capped 低于 min_delay 时退化为固定 capped（不超过上限）
+    b = ExponentialBackoff(base_delay=0.2, max_delay=0.3, exponent=1.0, min_delay=0.5)
+    for _ in range(20):
+        d = b.next_attempt_delay()
+        assert d <= 0.3
+
+
 # ── 预算测试 ──────────────────────────────────────────────────────────────────
 
 
@@ -196,10 +213,12 @@ def test_config_from_env(monkeypatch):
     monkeypatch.setenv("AGENT18_MAX_ATTEMPTS", "5")
     monkeypatch.setenv("AGENT18_BASE_DELAY", "0.5")
     monkeypatch.setenv("AGENT18_MAX_DELAY", "10.0")
+    monkeypatch.setenv("AGENT18_MIN_DELAY", "0.3")
     cfg = RetryConfig.from_env()
     assert cfg.max_attempts == 5
     assert cfg.base_delay == 0.5
     assert cfg.max_delay == 10.0
+    assert cfg.min_delay == 0.3
 
 
 def test_config_from_env_invalid_fallback(monkeypatch):
