@@ -926,7 +926,7 @@ class OptionFundHandler:
 
         try:
             ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_research_analyst_consensus, market_ticker)
-            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+            if ret != RET_OK or data is None:
                 return {
                     "status": "error",
                     "source": "futu",
@@ -935,7 +935,32 @@ class OptionFundHandler:
                     "code": market_ticker,
                 }
 
-            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            # ⚠️ 返回类型兼容（2026-08-30 实战修复）：
+            # futu-api 10.10.7008 的 get_research_analyst_consensus 经
+            # GetResearchAnalystConsensusQuery.unpack 返回【单行 dict】
+            # (highest/average/lowest/rating/total/update_time/buy/hold/sell)，
+            # 并非 pd.DataFrame。旧断言 `not isinstance(data, pd.DataFrame)`
+            # 会把【已完整到手】的共识数据误判为失败，错误信息里反而带着
+            # 全部字段 → G7 交叉验证面板 target_price 恒为 None。
+            # 现按 DataFrame / dict / list[dict] 三种形态归一为 rows。
+            if isinstance(data, pd.DataFrame):
+                rows = [r for r in data.to_dict("records") if r]
+            elif isinstance(data, dict):
+                rows = [data] if data else []
+            elif isinstance(data, (list, tuple)):
+                rows = [r for r in data if isinstance(r, dict) and r]
+            else:
+                rows = []
+
+            if not rows:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"分析师共识返回空数据: {data}",
+                    "code": market_ticker,
+                }
+
             clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
 
             return {
