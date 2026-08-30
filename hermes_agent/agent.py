@@ -552,6 +552,7 @@ class HermesAgent(MemoryOperationsMixin):
 
                 # ── 3. 流式 chunk 拼接 ──────────────────────────────────
                 iter_content = ""
+                iter_reasoning = ""  # DeepSeek 思考模式 CoT（必须回传，见下 append）
                 tool_calls_dict = {}
                 chunk_count = 0
                 _last_usage = None
@@ -570,6 +571,7 @@ class HermesAgent(MemoryOperationsMixin):
                     # CoT 推理流
                     reasoning_content = getattr(delta, "reasoning_content", None)
                     if reasoning_content:
+                        iter_reasoning += reasoning_content
                         yield {"type": "reasoning_chunk", "content": reasoning_content}
 
                     content_val = delta.content
@@ -623,6 +625,12 @@ class HermesAgent(MemoryOperationsMixin):
 
                 # 组装 message dict 并加入上下文
                 msg_dict = {"role": "assistant", "content": iter_content if iter_content else None}
+                if iter_reasoning:
+                    # DeepSeek 思考模式硬约束: 下一轮请求（含 ReAct 工具轮次与下一会话轮次）
+                    # 必须原样回传 reasoning_content, 否则 400
+                    # "The reasoning_content in the thinking mode must be passed back to the API"。
+                    # 修复前此处丢弃 → 会话持久化(Redis/PG)与多轮请求全部缺失该字段。
+                    msg_dict["reasoning_content"] = iter_reasoning
                 if assembled_tool_calls:
                     msg_dict["tool_calls"] = assembled_tool_calls
                 self.messages.append({k: v for k, v in msg_dict.items() if v is not None})
@@ -855,6 +863,7 @@ class HermesAgent(MemoryOperationsMixin):
 
             _f_usage = None
             final_content = ""
+            final_reasoning = ""  # DeepSeek 思考模式 CoT（与主路径一致，append 时回传）
 
             # AGENT-17: 熔断恢复路径计时开始（inference）
             recovery_inference_start = time.monotonic()
@@ -868,6 +877,7 @@ class HermesAgent(MemoryOperationsMixin):
                 delta = chunk.choices[0].delta
                 reasoning = getattr(delta, "reasoning_content", None)
                 if reasoning:
+                    final_reasoning += reasoning
                     yield {"type": "reasoning_chunk", "content": reasoning}
                 if delta.content:
                     final_content += delta.content
@@ -877,7 +887,10 @@ class HermesAgent(MemoryOperationsMixin):
 
             # AGENT-17: 熔断恢复推理计时结束
             recovery_inference_ms = (time.monotonic() - recovery_inference_start) * 1000
-            self.messages.append({"role": "assistant", "content": final_content if final_content else None})
+            _recovery_msg = {"role": "assistant", "content": final_content if final_content else None}
+            if final_reasoning:
+                _recovery_msg["reasoning_content"] = final_reasoning
+            self.messages.append(_recovery_msg)
             # AGENT-01 + AGENT-17: 熔断恢复的最终回复入事件日志（携带计时）
             if final_content:
                 self.event_log.record_assistant_message(final_content)
