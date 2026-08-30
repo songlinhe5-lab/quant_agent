@@ -123,12 +123,23 @@ class MemoryOperationsMixin:
 
     # ── 记忆自愈 ────────────────────────────────────────────────────
     async def _heal_memory(self):
-        """修复因为异常中断导致的孤立 tool_calls 破坏上下文记录的问题"""
+        """修复因为异常中断导致的孤立 tool_calls 破坏上下文记录的问题
+
+        双向修复：
+        - 孤立 assistant(tool_calls)：其后无 tool 响应 → 剔除该 assistant 消息
+        - 孤立 tool 消息：其前无带 tool_calls 的 assistant（被压缩/截断裁掉）→ 丢弃，
+          否则下一轮 LLM 调用报 400 "role 'tool' must be a response to a preceding message with 'tool_calls'"
+        """
         healed = []
         for m in self.messages:
-            if healed and healed[-1].get("role") == "assistant" and healed[-1].get("tool_calls"):
-                if m.get("role") != "tool":
-                    healed.pop()
+            prev_is_toolcall = bool(healed and healed[-1].get("role") == "assistant" and healed[-1].get("tool_calls"))
+            if m.get("role") == "tool":
+                if not prev_is_toolcall:
+                    # 孤立 tool 响应：配对的 assistant(tool_calls) 已不在上下文中 → 丢弃
+                    continue
+            elif prev_is_toolcall:
+                # 孤立 assistant(tool_calls)：其后不是 tool 响应 → 剔除
+                healed.pop()
             healed.append(m)
 
         if healed and healed[-1].get("role") == "assistant" and healed[-1].get("tool_calls"):

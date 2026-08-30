@@ -169,6 +169,13 @@ class ContextCompressor:
         if cut_idx <= 1:
             print("ℹ️ [Agent-16] 无足够历史消息可压缩")
             return False
+        # 保护 tool 配对：保留窗口起点不能落在 tool 消息上。
+        # 若切点落在 tool 消息（其配对的 assistant(tool_calls) 已被裁进摘要区），
+        # 压缩后序列会以孤立 tool 开头，下一轮 LLM 调用报 400
+        # "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"。
+        # 向后推进 cut_idx，把无配对的 tool 结果一并裁掉（孤立 tool 无保留价值）。
+        while cut_idx < len(messages) and messages[cut_idx].get("role") == "tool":
+            cut_idx += 1
 
         items_to_compact = messages[1:cut_idx]  # 排除 system
         original_token_count = sum(len(str(item)) for item in items_to_compact)

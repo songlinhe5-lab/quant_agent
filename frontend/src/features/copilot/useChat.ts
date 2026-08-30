@@ -5,7 +5,7 @@ import { apiClient, clearTokens, emitAuthRequired } from '@/lib/api-client'
 import { useChatStore, injectSendImpl } from '@/stores/useChatStore'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
-import { runChatStream, classifyChatError } from '@/features/copilot/chat-stream-service'
+import { runChatStream, classifyChatError, isNewResearchTask } from '@/features/copilot/chat-stream-service'
 import type { ChatMessage } from '@/features/copilot/types'
 
 /**
@@ -30,8 +30,18 @@ export function useChat() {
     let finalContent = text.trim()
     if (!finalContent) return
 
+    // RESEARCH-01: 新投研任务自动开新会话（会话隔离）
+    // 同一会话内再次发起"深度研判/投研"视为独立新任务：先开新会话，
+    // 避免上次标的历史（工具结果/中间分析）污染本次研判。
+    // 仅对用户手动输入生效；跨模块自动查询（skipPageContext）不静默切会话。
+    if (!opts?.skipPageContext && s.messages.length > 0 && isNewResearchTask(finalContent)) {
+      store.getState().handleNewChat()
+      toast({ title: '已开启新投研会话', description: '为避免上次调研内容干扰，本次深度研判在独立会话中进行' })
+    }
+    const current = store.getState()
+
     // PROD-01: 会话首条消息自动注入当前页面上下文
-    if (!opts?.skipPageContext && s.messages.length === 0) {
+    if (!opts?.skipPageContext && current.messages.length === 0) {
       const ctx = useCopilotContextStore.getState().context
       if (ctx?.summary) {
         finalContent = `[当前页面上下文 · ${ctx.title}]\n${ctx.summary}\n[/上下文]\n\n${finalContent}`
@@ -49,7 +59,7 @@ export function useChat() {
       abortRef.current = new AbortController()
 
       await runChatStream(
-        { sessionId: s.sessionId, userContent: finalContent, signal: abortRef.current.signal },
+        { sessionId: current.sessionId, userContent: finalContent, signal: abortRef.current.signal },
         {
           onTextChunk: (content) => {
             const msgs = store.getState().messages
