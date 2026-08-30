@@ -484,7 +484,9 @@ class LLMProviderRouter:
         # AGENT-18: Retry budget（从环境变量读取 max_attempts / base_delay / max_delay）
         cfg = RetryConfig.from_env()
         retry_budget = RetryBudget(cfg)
-        backoff = ExponentialBackoff(base_delay=cfg.base_delay, max_delay=cfg.max_delay, exponent=cfg.exponent)
+        backoff = ExponentialBackoff(
+            base_delay=cfg.base_delay, max_delay=cfg.max_delay, exponent=cfg.exponent, min_delay=cfg.min_delay
+        )
         retry_budget.start()
 
         for attempt in range(max_providers):

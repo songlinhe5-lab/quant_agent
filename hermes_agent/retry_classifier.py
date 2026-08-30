@@ -66,12 +66,17 @@ class RetryConfig:
       - AGENT18_BASE_DELAY: 初始延迟秒（默认 1.0）
       - AGENT18_MAX_DELAY: 最大延迟秒（默认 30.0）
       - AGENT18_EXPONENT: 退避指数（默认 2.0）
+      - AGENT18_MIN_DELAY: 最小重试间隔秒（默认 0.5，给 full-jitter 加硬下限，
+        消除 <0.5s 的无效重试；仅当 capped 上限高于该值时才生效）
     """
 
     max_attempts: int = 3
     base_delay: float = 1.0
     max_delay: float = 30.0
     exponent: float = 2.0
+    # 最小重试间隔（秒）：full-jitter 在 [0, capped] 均匀采样可低至 0.2s 以下，
+    # 属无效重试（429 场景 provider 需要喘息）。AGENT18_MIN_DELAY 提供硬下限。
+    min_delay: float = 0.5
     # 单次重试总预算（秒），超时则放弃。None 表示不限
     total_timeout: Optional[float] = 120.0
 
@@ -104,6 +109,7 @@ class RetryConfig:
             base_delay=_float("AGENT18_BASE_DELAY", cls.base_delay),
             max_delay=_float("AGENT18_MAX_DELAY", cls.max_delay),
             exponent=_float("AGENT18_EXPONENT", cls.exponent),
+            min_delay=_float("AGENT18_MIN_DELAY", cls.min_delay),
             total_timeout=_float("AGENT18_TOTAL_TIMEOUT", cls.total_timeout)
             if os.getenv("AGENT18_TOTAL_TIMEOUT") is not None
             else cls.total_timeout,
@@ -311,8 +317,8 @@ class ExponentialBackoff:
     指数退避计算器（带随机抖动）。
 
     Formula: raw = base * (exponent ^ attempt) * multiplier
-             jitter = random(0, raw)            # full jitter (AWS)
-             delay = min(raw + jitter, max_delay)
+             capped = min(raw, max_delay)
+             delay = uniform(min(min_delay, capped), capped)  # full-jitter + 硬下限
 
     Features:
     - 随机抖动避免多请求同时重试造成拥塞（需求 3）
@@ -326,11 +332,14 @@ class ExponentialBackoff:
         max_delay: float = 30.0,
         exponent: float = 2.0,
         multiplier: float = 1.0,
+        min_delay: float = 0.5,
     ):
         self.base_delay = base_delay
         self.max_delay = max_delay
         self.exponent = exponent
         self.multiplier = multiplier
+        # 最小重试间隔（秒）：消除 full-jitter 在 [0, capped] 采样导致的 <min_delay 无效重试
+        self.min_delay = min_delay
         self._current_attempt = 0
 
     @property
@@ -345,11 +354,18 @@ class ExponentialBackoff:
             attempt = self._current_attempt
         # 指数增长基线（基准延迟）
         raw = self.base_delay * (self.exponent**attempt) * self.multiplier
-        # 上限截断：先 cap 再 full-jitter，确保抖动不会超过 max_delay
+        # 上限截断：先 cap 再抖动，确保延迟不会超过 max_delay
         capped = min(raw, self.max_delay)
-        # AWS full-jitter: 在 [0, capped] 区间均匀随机，打散重试洪峰（需求 3）
-        jitter = random.uniform(0, capped)
-        return round(jitter, 3)
+        # AWS full-jitter + 最小间隔硬下限（AGENT-18 补丁）：
+        #   full-jitter 原在 [0, capped] 均匀采样，可低至 0.2s 以下 → 无效重试
+        #   （429 场景 provider 需要喘息）。现收窄到 [min(min_delay, capped), capped]，
+        #   既消除无效重试又保留抖动打散重试洪峰的能力。
+        #   capped 低于 min_delay 时退化为固定 capped（不超过上限）。
+        if capped <= self.min_delay:
+            delay = capped
+        else:
+            delay = random.uniform(self.min_delay, capped)
+        return round(delay, 3)
 
     def next_attempt_delay(self) -> float:
         delay = self.get_delay(self._current_attempt)
@@ -357,7 +373,7 @@ class ExponentialBackoff:
         return delay
 
     def __repr__(self) -> str:
-        return f"ExponentialBackoff(attempt={self._current_attempt}, base={self.base_delay}s, max={self.max_delay}s)"
+        return f"ExponentialBackoff(attempt={self._current_attempt}, base={self.base_delay}s, min={self.min_delay}s, max={self.max_delay}s)"
 
 
 # ── Retry Budget & Logging ───────────────────────────────────────────────────
