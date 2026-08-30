@@ -221,7 +221,7 @@ class LLMService:
             lightweight_model=os.getenv("LLM_LIGHTWEIGHT_MODEL", "deepseek-v4-flash"),
             flagship_model=os.getenv("LLM_PRO_MODEL", "deepseek-v4-pro"),
             ollama_base_url=os.getenv("LLM_OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-            fallback_enabled=os.getenv("LLM_FALLBACK_ENABLED", "true").lower() == "true",
+            fallback_enabled=os.getenv("LLM_FALLBACK_ENABLED", "false").lower() == "true",
             fallback_threshold=int(os.getenv("LLM_FALLBACK_THRESHOLD", "3")),
         )
 
