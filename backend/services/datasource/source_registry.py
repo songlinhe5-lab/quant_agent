@@ -13,7 +13,7 @@ import threading
 import time
 from typing import Any, Optional
 
-from backend.core.circuit_breaker import CircuitBreakerOpenError
+from backend.core.circuit_breaker import CircuitBreakerOpenError, circuit_breaker
 from backend.core.circuit_breaker_integration import fetch_via_breaker_async
 from backend.core.metrics import (
     DATASOURCE_AVAILABILITY,
@@ -22,7 +22,7 @@ from backend.core.metrics import (
     DATASOURCE_RATE_LIMITS,
 )
 
-from . import ErrorInfo, Result, ResultStatus
+from . import ErrorCategory, ErrorInfo, Result, ResultStatus
 from .call_metrics_store import call_metrics
 from .protocol import DataSourceInterface
 from .registry import rate_limit_registry
@@ -109,22 +109,38 @@ class DataSourceRegistry:
         with self._lock:
             entries = list(self._sources.get(source_name, []))
         action_upper = action.upper() if action else None
+        available_entries = []
         for entry in entries:
             src = entry.source
             if not src.is_available():
                 continue
+            available_entries.append(entry)
             if action_upper is not None and action_upper not in [c.upper() for c in src.capabilities]:
                 continue
             return src
-        # 能力不匹配：显式告警，不再静默回退（除非显式开启 loose 兼容模式）
-        if action_upper is not None and entries:
+
+        # 选源失败：区分「实例不可用」与「能力未声明」两种成因。
+        # 此前二者共用一条"未声明能力"文案，导致实例健康度问题时出现自相矛盾的
+        # 日志（如「源 futu 未声明能力 QUOTE（已声明: ['QUOTE']）」），误导排障方向。
+        if entries:
             declared = sorted({c.upper() for e in entries for c in e.source.capabilities})
-            logger.warning(
-                "[Registry] 源 %s 未声明能力 %s（已声明: %s），按 action 选源失败，返回 None（不再静默回退首实例）",
-                source_name,
-                action_upper,
-                declared,
-            )
+            if not available_entries:
+                logger.warning(
+                    "[Registry] 源 %s 已注册 %d 个实例但全部不可用（is_available()=False），"
+                    "按 action=%s 选源失败，返回 None。此为实例健康度/连接问题，与能力声明无关"
+                    "（该源已声明: %s）",
+                    source_name,
+                    len(entries),
+                    action_upper,
+                    declared,
+                )
+            elif action_upper is not None:
+                logger.warning(
+                    "[Registry] 源 %s 未声明能力 %s（已声明: %s），按 action 选源失败，返回 None（不再静默回退首实例）",
+                    source_name,
+                    action_upper,
+                    declared,
+                )
             if loose:
                 for entry in entries:
                     if entry.source.is_available():
@@ -189,12 +205,18 @@ class DataSourceRegistry:
                 exempt_from_breaker=exempt_from_breaker,
             )
         except CircuitBreakerOpenError:
-            # 熔断器 OPEN：直接返回错误结果，不调用具体源（避免对熔断中服务施压）
+            # RL-14: 熔断器 OPEN — 冷却期内重试必然再次被拒，且会延长上游恢复时间。
+            # 此前此处 retryable=True 会诱导上层重试（投研会曾因此把 60s 冷却期
+            # 全部耗在无谓重试上）。现改为：不可重试 + 明确 error_category +
+            # 精确剩余冷却秒数，让调用方快速失败并如实展示"N 秒后恢复"。
+            cooldown = circuit_breaker.remaining_cooldown(source_name)
             result = Result.make_error(
-                ErrorInfo.normal(
-                    "CIRCUIT_OPEN",
-                    f"数据源 {source_name} 处于熔断状态，调用已跳过",
-                    retryable=True,
+                ErrorInfo(
+                    code="CIRCUIT_OPEN",
+                    message=f"数据源 {source_name} 处于熔断状态，调用已跳过（约 {max(0, int(cooldown))}s 后自动恢复）",
+                    retryable=False,
+                    category=ErrorCategory.CIRCUIT_OPEN,
+                    retry_after=cooldown,
                 ),
                 source=source_name,
             )

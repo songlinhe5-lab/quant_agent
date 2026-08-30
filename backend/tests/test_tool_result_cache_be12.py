@@ -71,6 +71,18 @@ class TestCacheKeyHelpers:
         assert should_cache_result({"status": "rate_limited"}) is False
         assert should_cache_result({"status": "success", "data": {"p": 1}}) is True
 
+    def test_should_not_cache_degraded_or_empty(self):
+        """降级响应（可能无 status 字段）与空 data 一律不缓存。"""
+        # analyst-vs-fundamental 降级形状：无 status、degraded=True、空 data
+        assert should_cache_result({"message": "不可用", "data": {}, "source": "facade+x", "degraded": True}) is False
+        # 有 status 但标记降级
+        assert should_cache_result({"status": "success", "data": {"p": 1}, "degraded": True}) is False
+        # 空 dict / 空 list data 不缓存（避免遮蔽数据源恢复）
+        assert should_cache_result({"status": "success", "data": {}}) is False
+        assert should_cache_result({"status": "success", "data": []}) is False
+        # 无 data 键的正常响应不受影响
+        assert should_cache_result({"status": "success", "message": "ok"}) is True
+
     def test_ttl_env_override(self, monkeypatch):
         monkeypatch.setenv("TOOL_CACHE_TTL_GET_BROKER_MARKET_DATA", "42")
         assert ttl_for_tool("get_broker_market_data") == 42
@@ -108,6 +120,30 @@ async def test_error_not_cached():
     )
     assert ok is False
     assert redis.store == {}
+
+
+@pytest.mark.asyncio
+async def test_degraded_response_not_cached():
+    """降级响应不落缓存：TTL 窗口内的二次调用必须真实重试。"""
+    redis = FakeRedis()
+    cache = ToolResultCache(redis_client=redis)
+    degraded = {"message": "交叉验证不可用", "data": {}, "source": "facade+x", "degraded": True}
+    ok = await cache.set("get_analyst_vs_fundamental", {"ticker": "HK.00772"}, degraded)
+    assert ok is False
+    assert redis.store == {}
+    assert await cache.get("get_analyst_vs_fundamental", {"ticker": "HK.00772"}) is None
+
+
+@pytest.mark.asyncio
+async def test_order_book_never_cached():
+    """盘口工具在 no_cache 表：set/get 均直通，不产生任何缓存键。"""
+    redis = FakeRedis()
+    cache = ToolResultCache(redis_client=redis)
+    payload = {"status": "success", "data": {"bids": [[1.0, 100]], "asks": [[1.1, 200]]}}
+    ok = await cache.set("get_order_book", {"ticker": "HK.00700"}, payload)
+    assert ok is False
+    assert redis.store == {}
+    assert await cache.get("get_order_book", {"ticker": "HK.00700"}) is None
 
 
 @pytest.mark.asyncio

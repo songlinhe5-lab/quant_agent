@@ -2,6 +2,7 @@ import asyncio
 import time
 from typing import Any, Dict, List, Optional
 
+from hermes_agent.cooldown import detect_cooldown
 from hermes_agent.middleware import (
     FailureTracker,
     ToolContext,
@@ -243,7 +244,17 @@ class ToolRegistry:
 
         # AGENT-09: 失败追踪（管线外，避免分类冲突）
         _st = str(output.get("status", "")).lower()
-        if _st in ("error", "failed"):
+
+        # RL-14: 冷却信号（熔断/限流退避）是上游主动停摆，不是工具缺陷。
+        # 若计入失败计数，本地熔断器会在上游熔断之上再叠一层（二次放大：
+        # 上游已恢复，本地仍需额外成功调用才解锁）。故按"跳过"处理，不计成败。
+        _signal = detect_cooldown(output)
+        if _signal is not None:
+            output["_cooldown"] = _signal.category
+            if _signal.retry_after is not None:
+                output["retry_after"] = _signal.retry_after
+            output["retryable"] = False
+        elif _st in ("error", "failed"):
             self.failure_tracker.record_failure(name, output.get("message", "未知错误"))
         elif _st != "rate_limited":
             # 成功 / 空 / 限流 → 重置计数（限流不计入 AGENTS.md §10.8）

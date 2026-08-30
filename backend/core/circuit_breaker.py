@@ -101,6 +101,20 @@ class CircuitBreaker:
         entry = self._get_entry(service)
         return self._check_state(entry)
 
+    def remaining_cooldown(self, service: str) -> float:
+        """RL-14: 熔断剩余冷却秒数（供调用方填充 retry_after）。
+
+        OPEN/HALF_OPEN → 距冷却结束的剩余秒数（>=0）；CLOSED → 0.0。
+        与抛异常时的日志/文案同源（recovery_timeout - 距上次失败的时长），
+        避免调用方各自硬编码 60s。
+        """
+        entry = self._get_entry(service)
+        state = self._check_state(entry)
+        if state == CircuitState.CLOSED:
+            return 0.0
+        remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)
+        return max(0.0, float(remaining))
+
     def _should_skip_failure(self, exc: Exception, error_classifier: Optional[Callable] = None) -> bool:
         """
         判断异常是否应跳过失败计数（限流类错误）。

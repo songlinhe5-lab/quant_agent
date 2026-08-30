@@ -45,6 +45,11 @@ class ErrorCategory(str, Enum):
     """数据不可用：该标的 Yahoo 无数据（如 $VIX/$IXIC 指数、停牌股）。属标的层面问题，
     非子服务故障，DIST-SEC-04 起不计入熔断器，避免单标的 miss 误杀整节点。"""
 
+    CIRCUIT_OPEN = "circuit_open"
+    """熔断器 OPEN：上游抖动后主动停摆，冷却期内调用被直接跳过。
+    RL-14：调用方须尊重此信号直接失败（快速失败），不得重试——冷却期内的重试
+    必然再次被拒，且会延长上游恢复时间。携带 retry_after（剩余冷却秒数）。"""
+
 
 # ─────────────────────────────────────────
 #  限流详情 (RateLimitInfo)
@@ -122,6 +127,9 @@ class ErrorInfo:
     rate_limit_info: Optional[RateLimitInfo] = None
     """限流详情，仅在 category != "normal" 时填充"""
 
+    retry_after: Optional[float] = None
+    """RL-14: 建议重试等待秒数（顶层字段，调用方无需深挖 rate_limit_info 即可判定）。"""
+
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "code": self.code,
@@ -131,6 +139,8 @@ class ErrorInfo:
         }
         if self.rate_limit_info is not None:
             result["rate_limit_info"] = self.rate_limit_info.to_dict()
+        if self.retry_after is not None:
+            result["retry_after"] = self.retry_after
         return result
 
     @classmethod
@@ -143,6 +153,7 @@ class ErrorInfo:
             retryable=data.get("retryable", False),
             category=ErrorCategory(data.get("category", "normal")),
             rate_limit_info=RateLimitInfo.from_dict(data.get("rate_limit_info")),
+            retry_after=data.get("retry_after"),
         )
 
     @classmethod
@@ -165,6 +176,7 @@ class ErrorInfo:
             message=message,
             retryable=True,
             category=ErrorCategory.RATE_LIMIT,
+            retry_after=retry_after,
             rate_limit_info=RateLimitInfo(
                 retry_after_seconds=retry_after,
                 limit_rpm=limit_rpm,
@@ -252,6 +264,10 @@ class Result:
         }
         if self.error is not None:
             result["error"] = self.error.to_dict()
+            # RL-14: 顶层冷却信号，调用方（工具层/前端）无需解析 error 结构即可判定
+            result["error_category"] = self.error.category.value
+            if self.error.retry_after is not None:
+                result["retry_after"] = self.error.retry_after
         return result
 
     @classmethod

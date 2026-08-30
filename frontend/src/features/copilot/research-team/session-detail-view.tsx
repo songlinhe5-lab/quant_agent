@@ -50,7 +50,7 @@ export function SessionDetailView({ session }: { session: SessionDetail }) {
       </div>
 
       {/* 滚动内容区：按轮次分组的全量时间线 */}
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 custom-scrollbar">
         {expertIds.length === 0 && !chief ? (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
             <Inbox className="mb-2 h-8 w-8 opacity-40" />

@@ -502,6 +502,54 @@ class TestDataCollector:
         text = format_shared_data_for_prompt(data, max_chars=1000)
         assert "截断" in text or "省略" in text
 
+    @pytest.mark.asyncio
+    async def test_collect_progress_response_is_complete(self):
+        """采集进度回调的 response 必须完整保留
+
+        回归：原先固定 600 字符，macro_news/sentiment/technicals/fed_watch
+        的响应在 JSON 中途被腰斩 → 语法不完整、无法阅读，用户核对不到采集到的数据。
+        """
+        long_news = {
+            "status": "success",
+            "data": [{"headline": f"news-{i}-" + "h" * 60, "summary": "s" * 60, "source": "CNBC"} for i in range(20)],
+        }
+        registry = MagicMock()
+        registry.execute = AsyncMock(return_value=long_news)
+
+        steps: list = []
+
+        async def on_progress(item):
+            steps.append(item)
+
+        await collect_shared_data(
+            data_requirements=["macro_news"],
+            tool_registry=registry,
+            on_progress=on_progress,
+        )
+
+        resp = steps[0]["response"]
+        assert len(resp) > 2000, f"响应应完整保留，实际仅 {len(resp)} 字符"
+        assert "已截断" not in resp
+        parsed = json.loads(resp)  # 完整 JSON：可解析
+        assert len(parsed) == 20
+
+    def test_summarize_result_truncates_oversized_payload(self):
+        """病态大包兜底截断，且必须显式标注原始总长度"""
+        from backend.services.expert_team.data_collector import _RESPONSE_MAX_CHARS, _summarize_result
+
+        raw_len = _RESPONSE_MAX_CHARS + 100
+        text = _summarize_result({"status": "success", "data": "x" * raw_len})
+        assert len(text) < raw_len
+        assert "已截断" in text
+        assert str(raw_len) in text
+
+    def test_summarize_result_error_returns_full_message(self):
+        """错误/超时态返回 message 全文（不再被截断）"""
+        from backend.services.expert_team.data_collector import _summarize_result
+
+        msg = "Futu QUOTE 接口熔断冷却中（约 30s 后重试，节点本身健康）"
+        assert _summarize_result({"status": "error", "message": msg}) == msg
+
 
 # ─── orchestrator.py 测试 ──────────────────────────────────────
 

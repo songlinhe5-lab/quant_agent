@@ -463,7 +463,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
             // 用户主动把内容滚回底部（距离 < 80px）视为恢复跟随
             if (distance < 80) userScrolledRef.current = false
           }}
-          className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
+          className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-3 custom-scrollbar"
         >
         {phase === 'idle' && (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
@@ -537,7 +537,7 @@ export function TeamSession({ question, config, customMode, runToken, onRunningC
                           <summary className="cursor-pointer select-none text-[10px] text-muted-foreground hover:text-foreground">
                             协议 请求/响应
                           </summary>
-                          <div className="space-y-1 pt-1 text-[10px] leading-relaxed">
+                          <div className="max-h-72 space-y-1 overflow-y-auto pt-1 text-[10px] leading-relaxed">
                             {s.request && (
                               <div className="text-foreground/70">
                                 <span className="text-muted-foreground/70">请求 </span>
