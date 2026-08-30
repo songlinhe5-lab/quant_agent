@@ -279,6 +279,20 @@ async def fetch_data(request: Request):
     return JSONResponse({"code": 0, "data": _json_safe(result)})
 
 
+@app.get("/logs/recent", dependencies=[Depends(verify_hmac)])
+async def logs_recent(after: int = 0, limit: int = 200):
+    """进程内日志环形缓冲增量 (FE-DEBUG-01)。
+
+    供主服务 /logs/stream/summary 聚合拉取（HMAC 签名 GET，body 为空）。
+    返回 {code: 0, data: {last_id, entries:[{id,ts,level,name,message}]}}。
+    """
+    from data_subservice._internal.log_buffer import ring_buffer
+
+    limit = max(1, min(limit, 500))
+    entries = ring_buffer.recent(after_id=max(after, 0), limit=limit)
+    return JSONResponse({"code": 0, "data": {"last_id": ring_buffer.last_id, "entries": entries}})
+
+
 @app.get("/metrics/circuit")
 async def circuit_metrics():
     return JSONResponse(circuit_breaker.status_snapshot())

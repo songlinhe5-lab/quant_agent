@@ -27,6 +27,7 @@ import { BackendStatusBanner } from './backend-status-banner'
 import { GlobalAlertGateway } from '@/features/alert/global-alert-gateway'
 import { hydrateTradingMode } from '@/features/trading/trading-mode-actions'
 import { MobileTabBar } from '@/components/layout/mobile-tab-bar'
+import { DebugLogPanel } from '@/components/debug/debug-log-panel'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { SCENE_META } from '@/features/scene/scene-mode-types'
 import { useSceneHotkey } from '@/features/scene/use-scene-hotkey'
@@ -280,6 +281,8 @@ export default function DashboardLayout() {
             </>
           )}
         </div>
+        {/* FE-DEBUG-01: 底部实时日志 DEBUG 面板（主服务 + 各数据子服务，高度可拖 ≤1/3 屏） */}
+        <DebugLogPanel />
         <div className="hidden md:block">
           <StatusBar />
         </div>

@@ -16,6 +16,9 @@ from rich.logging import RichHandler
 from rich.text import Text
 from rich.theme import Theme
 
+# FE-DEBUG-01: 进程内日志环形缓冲（前端 DEBUG 面板经主服务聚合拉取）
+from data_subservice._internal.log_buffer import ring_buffer_handler
+
 custom_theme = Theme(
     {
         "logging.level.debug": "dim white",
@@ -154,6 +157,7 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
         info_handler,
         warning_handler,
         error_handler,
+        ring_buffer_handler,
     ]
 
     webhook_url = os.getenv("ALERT_WEBHOOK_URL")

@@ -594,6 +594,7 @@ _BYPASS_AUTH_PREFIXES = (
     "/api/v1/screener",
     "/api/v1/strategy",
     "/api/v1/chat/suggestions",
+    "/api/v1/logs/stream",
 )
 
 
