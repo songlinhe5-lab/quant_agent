@@ -1008,9 +1008,25 @@ class DataServiceFacade:
                 source="futu",
             )
 
-        # T-1 红线：daily 0 行如实标 no_data
-        if futu_payload.get("status") == "no_data":
-            data["futu"] = futu_payload
+        # FutuDataSource.fetch 会**循环剥离** {status,data} 信封（adapters/futu.py:199-207），
+        # 直到不再是该结构为止。因此 res.data 可能是【list 记录数组】也可能是【dict 信封】
+        # ——两种形态都必须兼容，否则对 list 调 .get() 会 AttributeError → 接口 500
+        # （2026-08-30 实测：修好上游解包 bug 后 payload 终于有值，才暴露此问题）。
+        if isinstance(futu_payload, list):
+            futu_rows = futu_payload
+            futu_status = "success" if futu_payload else "no_data"
+        elif isinstance(futu_payload, dict):
+            futu_rows = futu_payload.get("data") or []
+            futu_status = futu_payload.get("status") or ("success" if futu_rows else "no_data")
+        else:
+            futu_rows = []
+            futu_status = "no_data"
+
+        # T-1 红线：daily 0 行如实标 no_data，严禁输出"卖空为 0"
+        if futu_status == "no_data" or not futu_rows:
+            data["futu"] = (
+                futu_payload if isinstance(futu_payload, dict) else {"status": "no_data", "count": 0, "data": []}
+            )
             data["sources"]["futu"] = "no_data"
             data["_merged_at"] = datetime.now().isoformat()
             return Result.make_success(data, source="facade")
@@ -1038,7 +1054,7 @@ class DataServiceFacade:
             data["sources"]["hkex_sfc"] = "unavailable"
 
         # ── 派生指标 ──
-        rows = futu_payload.get("data", [])
+        rows = futu_rows
 
         def _row_short_ratio(r: Dict[str, Any]) -> Optional[float]:
             """单行卖空占比（%）。港美股分表，列名不同（futu 10.10）：
