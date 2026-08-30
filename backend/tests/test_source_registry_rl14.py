@@ -61,6 +61,44 @@ async def test_circuit_open_returns_structured_cooldown_signal(monkeypatch):
     assert payload["error"]["category"] == "circuit_open"
 
 
+def test_circuit_open_is_not_rate_limit_type():
+    """熔断不得被判为限流类，否则会触发 Throttler 退避（双重惩罚）。"""
+    from backend.services.datasource import ErrorCategory, ErrorInfo
+
+    err = ErrorInfo(code="CIRCUIT_OPEN", message="熔断", category=ErrorCategory.CIRCUIT_OPEN)
+    assert err.is_rate_limit_type is False
+    # 限流类仍须为真（白名单未被误伤）
+    assert ErrorInfo.rate_limited().is_rate_limit_type is True
+
+
+@pytest.mark.asyncio
+async def test_circuit_open_does_not_trigger_throttle_suppression(monkeypatch):
+    """熔断后源不应进入 Throttler 抑制期。
+
+    回归背景: 熔断 category 曾因「非 NORMAL 即限流」的判定被计入 throttler.on_rate_limit，
+    触发 301s 抑制——熔断器 20~60s 冷却结束后，源仍被抑制 5 分钟不可用，
+    表现为 QUOTE 长时间取不到数据。
+    """
+    from backend.services.datasource.registry import rate_limit_registry
+
+    reg = DataSourceRegistry()
+    reg.register(_fake_source("futu_nothrottle", ["QUOTE"]))
+    throttler = rate_limit_registry.get_throttler("futu_nothrottle")
+    throttler.reset()
+
+    async def _boom(*args, **kwargs):
+        raise CircuitBreakerOpenError(msg="熔断中", service="futu_nothrottle")
+
+    monkeypatch.setattr("backend.services.datasource.source_registry.fetch_via_breaker_async", _boom)
+
+    try:
+        await reg.fetch("futu_nothrottle", "QUOTE", {"ticker": "HK.00772"})
+        assert throttler.should_throttle() is False
+        assert throttler.remaining_throttle_seconds() == 0.0
+    finally:
+        throttler.reset()
+
+
 def test_warns_instance_unavailable_not_capability(caplog):
     """实例全部不可用：不得再报"未声明能力"（此前二者共用一条文案，自相矛盾）。"""
     reg = DataSourceRegistry()

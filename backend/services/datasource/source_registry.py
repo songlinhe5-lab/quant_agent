@@ -224,6 +224,19 @@ class DataSourceRegistry:
         if result.latency_ms <= 0:
             result.latency_ms = latency
 
+        # RL-14: 熔断不是"新的上游失败"——调用在熔断器处就被跳过，未对上游施压。
+        # 不计入 Throttler 退避（否则与熔断器冷却叠加成双重惩罚），仅如实记账。
+        if result.error is not None and result.error.category == ErrorCategory.CIRCUIT_OPEN:
+            analyzer = rate_limit_registry.get_analyzer(source_name)
+            analyzer.record_error(latency_ms=result.latency_ms)
+            await call_metrics.record_business(
+                source_name,
+                "circuit_open",
+                latency_ms=result.latency_ms,
+            )
+            DATASOURCE_ERRORS.labels(source=source_name, error_type="circuit_open").inc()
+            return result
+
         if result.status == ResultStatus.RATE_LIMITED or (result.error and result.error.is_rate_limit_type):
             # 源已在内部自行记录 throttler 时（如 FinnhubService，Result.self_recorded=True），
             # 此处跳过 throttler 重复记录，但仍记录 analyzer 计数（含类别拆分）。

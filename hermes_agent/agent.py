@@ -33,6 +33,10 @@ _TURN_DURATION_HISTOGRAM: Any = None
 # 复用投研会 data_collector 的同款取值：一轮内工具调用多为同一上游通道（Futu），
 # 无闸并发会让 4~6 个请求同时打过去，既易触发限流，也把单点抖动放大成整批失败。
 _TOOL_CONCURRENCY = int(os.getenv("AGENT_TOOL_CONCURRENCY", "3"))
+# 同一工具的并发上限。同一工具通常打同一上游，需限制瞬时冲击；
+# 但不做严格串行：上游不健康时，串行会让 N 次同名调用总耗时放大为 N × 超时
+# （实测一轮 8 次 QUOTE 串行可达 120s），反而触发整轮超时。
+_TOOL_SAME_CONCURRENCY = int(os.getenv("AGENT_TOOL_SAME_CONCURRENCY", "2"))
 
 
 def _init_prometheus_metrics():
@@ -649,15 +653,15 @@ class HermesAgent(MemoryOperationsMixin):
 
                     result_queue: asyncio.Queue = asyncio.Queue()
 
-                    # RL-14: 并发闸 = 全局并发槽(3) + 同工具串行（同一上游排队）。
-                    # 加锁顺序固定「先抢并发槽、再抢工具锁」，与 data_collector 一致，避免死锁。
+                    # RL-14: 并发闸 = 全局并发槽(3) + 同工具并发上限(2)。
+                    # 加锁顺序固定「先抢全局槽、再抢工具槽」，与 data_collector 一致，避免死锁。
                     tool_sem = asyncio.Semaphore(max(1, _TOOL_CONCURRENCY))
-                    tool_locks: dict[str, asyncio.Lock] = {}
+                    tool_sems: dict[str, asyncio.Semaphore] = {}
 
                     async def run_and_queue(tc):
                         _name = tc["function"]["name"]
                         async with tool_sem:
-                            async with tool_locks.setdefault(_name, asyncio.Lock()):
+                            async with tool_sems.setdefault(_name, asyncio.Semaphore(max(1, _TOOL_SAME_CONCURRENCY))):
                                 res = await self._safe_execute_tool(_name, tc["function"]["arguments"])
                         await result_queue.put((tc, res))
 

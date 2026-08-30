@@ -51,6 +51,19 @@ class ErrorCategory(str, Enum):
     必然再次被拒，且会延长上游恢复时间。携带 retry_after（剩余冷却秒数）。"""
 
 
+# 需要 Throttler 独立退避的类别（限流类）。
+# 熔断**不在**其中：它由熔断器自身冷却管理，若按限流计入 Throttler，
+# 会在熔断冷却之上再叠一层退避抑制（实测 circuit_open 被当作封禁级别 →
+# 抑制 301s），熔断早已结束、源却仍长时间不可用。
+_THROTTLER_BACKOFF_CATEGORIES = frozenset(
+    {
+        ErrorCategory.RATE_LIMIT,
+        ErrorCategory.QUOTA_EXHAUSTED,
+        ErrorCategory.IP_BLOCKED,
+    }
+)
+
+
 # ─────────────────────────────────────────
 #  限流详情 (RateLimitInfo)
 # ─────────────────────────────────────────
@@ -218,8 +231,12 @@ class ErrorInfo:
 
     @property
     def is_rate_limit_type(self) -> bool:
-        """是否为限流类错误（不计入熔断器失败计数）"""
-        return self.category != ErrorCategory.NORMAL
+        """是否为限流类错误（不计入熔断器失败计数、且需 Throttler 独立退避）。
+
+        RL-14: 采用白名单而非「非 NORMAL 即限流」。后者会把熔断（circuit_open）
+        误判为限流，进而触发 Throttler 退避抑制——与熔断器冷却叠加成双重惩罚。
+        """
+        return self.category in _THROTTLER_BACKOFF_CATEGORIES
 
 
 # ─────────────────────────────────────────
