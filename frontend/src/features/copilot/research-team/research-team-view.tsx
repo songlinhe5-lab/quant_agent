@@ -93,9 +93,9 @@ export function ResearchTeamView() {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* 左：阵容配置 + 历史 */}
-      <div className="flex w-[44%] shrink-0 flex-col border-r border-border/40">
-        <div className="flex-1 overflow-y-auto p-3">
+      {/* 左：阵容配置 + 历史（1/3 宽度：内容量远小于右侧观点区，让右侧尽量宽） */}
+      <div className="flex w-1/3 min-w-[264px] max-w-[420px] shrink-0 flex-col border-r border-border/40">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 custom-scrollbar">
           <RosterPanel
             question={question}
             onQuestionChange={setQuestion}
@@ -187,8 +187,8 @@ export function ResearchTeamView() {
         </div>
       </div>
 
-      {/* 右：历史详情 or 会话流 */}
-      <div className="relative min-w-0 flex-1">
+      {/* 右：历史详情 or 会话流（独立滚动，滚动不向上冒泡到页面） */}
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         {viewingSession ? (
           <>
             {/* 关闭历史详情，回到会话流 */}
