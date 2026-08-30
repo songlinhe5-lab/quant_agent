@@ -9,9 +9,14 @@ docs/TODO-FUTU-INTERFACE-CAPABILITY.md F1 段与 memory 实测结论）：
   （注意并非直接 DataFrame），列含 ``security / name / close_price /
   change_ratio / volume / short_sell_volume / short_sell_ratio / ...``，
   反映当日卖空成交活跃度榜。
-- ``get_daily_short_volume(code=)`` → ``(ret, data, next_key)`` 三元组，DataFrame
-  **T-1 语义**：港股/美股卖空数据盘后结算，当日盘后查询通常为 0 行——
-  因此空返回必须如实标 ``no_data`` 而非 0，禁止臆造卖空量为 0（零幻觉红线）。
+- ``get_daily_short_volume(code=)`` → ``(ret_code, us_df, hk_df)`` 三元组。
+  ⚠️ 港美股**分表**：港股数据在 ``[2]``、美股在 ``[1]``（不是 (ret, data, next_key)，
+  历史注释与实现均据此写错，导致港股恒 no_data，2026-08-30 修复）。
+  美股列含 ``short_percent / total_shares_short / volume / close_price / ...``；
+  港股列含 ``short_sell_turnover / turnover / short_sell_shares_traded /
+  shares_traded / ...``——**港股表无 short_percent**，占比须自行计算。
+  **T-1 语义**：盘后结算，最新可得通常为前一交易日；但空返回必须如实标
+  ``no_data`` 而非 0，禁止臆造卖空量为 0（零幻觉红线）。
 
 约定（与 option_fund_handler 一致）：
 - ``format_ticker_func``：ticker → futu 代码（如 ``HK.00700``），缺失时回退原 ticker
@@ -195,9 +200,12 @@ class ShortSellingHandler:
             }
 
         try:
-            # get_daily_short_volume 返回 (ret, data, next_key) 三元组
+            # ⚠️ 真实签名是 (ret_code, us_df, hk_df) 三元组，不是 (ret, data, next_key)。
+            # 港股数据在 [2]、美股在 [1]；旧实现恒取 res[1]（美股表）→ 港股查询永远
+            # 拿到空表 → 恒 no_data。2026-08-30 实测：US.AAPL 返回 10 行真实数据，
+            # HK.00700 恒 0 行——后者并非 T-1 无数据，而是取错了表。
             res = ctx.get_daily_short_volume(code=code)
-            if not isinstance(res, (list, tuple)) or len(res) < 2:
+            if not isinstance(res, (list, tuple)) or len(res) < 3:
                 return {
                     "status": "error",
                     "source": "futu",
@@ -205,15 +213,22 @@ class ShortSellingHandler:
                     "message": f"卖空量接口返回形态异常: {type(res)}",
                     "code": code,
                 }
-            ret, data = res[0], res[1]
+            ret, us_df, hk_df = res[0], res[1], res[2]
             if ret != RET_OK:
                 return {
                     "status": "error",
                     "source": "futu",
                     "ticker": ticker,
-                    "message": str(data),
+                    "message": str(us_df),
                     "code": code,
                 }
+
+            # 按标的市场选表：港股 hk_df / 其它 us_df；目标表为空时回退另一张表
+            from futu import Market
+
+            hk_first = _market_from_code(code) == Market.HK
+            primary, fallback = (hk_df, us_df) if hk_first else (us_df, hk_df)
+            data = primary if (primary is not None and len(primary) > 0) else fallback
 
             if hasattr(data, "to_dict"):
                 rows = data.to_dict("records")

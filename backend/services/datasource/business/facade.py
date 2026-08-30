@@ -986,9 +986,12 @@ class DataServiceFacade:
         }
 
         # ── Futu 真卖空源 ──
+        # ⚠️ _safe 返回 (label, value)：Result 在 [1]。取 [0] 会拿到标签字符串
+        # （"futu"），isinstance(fr, Result) 恒 False → 卖空接口恒定 ALL_SOURCES_FAILED
+        # （2026-08-30 修复：子服务实测返回 200 真实卖空榜，故障纯在主服务解包）。
         futu_payload = None
-        if isinstance(futu_res, tuple):
-            fr, _ = futu_res
+        if isinstance(futu_res, tuple) and len(futu_res) == 2:
+            fr = futu_res[1]
             if isinstance(fr, Result) and fr.is_success:
                 futu_payload = fr.data
                 data["sources"]["futu"] = "ok"
@@ -1015,34 +1018,64 @@ class DataServiceFacade:
         data["futu"] = futu_payload
 
         # ── 监管交叉验证（HKEX/SFC 市场级占比）──
+        # get_hk_share_margin() 返回 {"status": ..., "data": {...}} 字典（非元组），
+        # 经 _safe 包装后为 (label, payload)，须取 [1] 后再按 status 判定。
+        # 旧实现解包成 (hk_status, hk_payload)，hk_status 实为标签 "hkex"，
+        # 与 "success" 永不相等 → 监管交叉验证被静默丢弃（2026-08-30 修复）。
         hk_ratio = None
-        if isinstance(hk_res, tuple):
-            hk_status, hk_payload = hk_res
-            if hk_status == "success" and hk_payload and hk_payload.get("data"):
-                hk_data = hk_payload["data"]
-                hk_ratio = hk_data.get("short_volume_ratio")
-                data["regulatory"] = {
-                    "short_volume_ratio": hk_ratio,
-                    "as_of": hk_data.get("as_of"),
-                    "sources": hk_data.get("sources", []),
-                    "note": hk_data.get("note", ""),
-                }
-                data["sources"]["hkex_sfc"] = "ok"
-            else:
-                data["sources"]["hkex_sfc"] = "unavailable"
+        hk_payload = hk_res[1] if isinstance(hk_res, tuple) and len(hk_res) == 2 else hk_res
+        if isinstance(hk_payload, dict) and hk_payload.get("status") == "success" and hk_payload.get("data"):
+            hk_data = hk_payload["data"]
+            hk_ratio = _to_float(hk_data.get("short_volume_ratio"))
+            data["regulatory"] = {
+                "short_volume_ratio": hk_ratio,
+                "as_of": hk_data.get("as_of"),
+                "sources": hk_data.get("sources", []),
+                "note": hk_data.get("note", ""),
+            }
+            data["sources"]["hkex_sfc"] = "ok"
         else:
             data["sources"]["hkex_sfc"] = "unavailable"
 
-        # ── 派生指标（基于 Futu 卖空榜 DataFrame）──
+        # ── 派生指标 ──
         rows = futu_payload.get("data", [])
+
+        def _row_short_ratio(r: Dict[str, Any]) -> Optional[float]:
+            """单行卖空占比（%）。港美股分表，列名不同（futu 10.10）：
+
+            - 美股 us_df：``short_percent`` 已是百分比
+              （实测 5328185 / 38649398 * 100 = 13.785）
+            - 港股 hk_df：**无** short_percent，用 short_sell_turnover / turnover
+              （金额口径），回退 short_sell_shares_traded / shares_traded（股数口径）
+            """
+            sp = _to_float(r.get("short_percent"))
+            if sp is not None:
+                return sp
+            st = _to_float(r.get("short_sell_turnover"))
+            tt = _to_float(r.get("turnover"))
+            if st is None or not tt:
+                st = _to_float(r.get("short_sell_shares_traded"))
+                tt = _to_float(r.get("shares_traded"))
+            if st is not None and tt and tt > 0:
+                return st / tt * 100
+            return None
+
         derived: Dict[str, Any] = {}
+        # 告警文案引用的"当前占比"：rank=中位占比，daily=个股占比
+        headline_ratio: Optional[float] = None
         if mode == "rank" and rows:
             ratios = []
             for r in rows:
-                st = _to_float(r.get("short_sell_turnover"))
-                tt = _to_float(r.get("total_turnover")) or _to_float(r.get("turnover"))
-                if st is not None and tt and tt > 0:
-                    ratios.append(st / tt * 100)
+                # 卖空榜（市场级）列名：short_ratio 已是百分比成交占比
+                # （实测 short_number / volume 一致：661753200/1374700288=48.13）
+                st = _to_float(r.get("short_ratio"))
+                if st is None:
+                    sn = _to_float(r.get("short_number"))
+                    tv = _to_float(r.get("volume"))
+                    if sn is not None and tv and tv > 0:
+                        st = sn / tv * 100
+                if st is not None:
+                    ratios.append(st)
             if ratios:
                 median_ratio = statistics.median(ratios)
                 derived["short_sale_ratio_median"] = round(median_ratio, 4)
@@ -1051,6 +1084,21 @@ class DataServiceFacade:
                 derived["rank_count"] = len(ratios)
                 # 拥挤度分位：中位占比越高 → 越拥挤（阈值经验值，需历史回填校准）
                 derived["crowding_level"] = "high" if median_ratio >= 15 else "mid" if median_ratio >= 8 else "low"
+                headline_ratio = median_ratio
+        elif mode == "daily" and rows:
+            # 个股级 T-1 卖空占比：取最新一日（按 timestamp 最大，不依赖返回顺序）
+            latest = max(rows, key=lambda r: _to_float(r.get("timestamp")) or 0.0)
+            sp = _row_short_ratio(latest)
+            if sp is not None:
+                derived["short_sale_ratio"] = round(sp, 4)
+                derived["crowding_level"] = "high" if sp >= 15 else "mid" if sp >= 8 else "low"
+                headline_ratio = sp
+            derived["as_of"] = latest.get("timestamp_str")
+            series = []
+            for r in rows:
+                v = _row_short_ratio(r)
+                series.append({"date": r.get("timestamp_str"), "ratio": round(v, 4) if v is not None else None})
+            derived["daily_series"] = series
 
         # 交叉验证一致性：Futu 中位占比 vs HKEX 市场级占比
         if derived.get("short_sale_ratio_median") is not None and hk_ratio is not None:
@@ -1064,7 +1112,9 @@ class DataServiceFacade:
             alert_signal = {
                 "type": "squeeze_candidate",
                 "severity": "warning",
-                "message": f"卖空成交占比中位 {derived['short_sale_ratio_median']}% 进入高位，挤空候选",
+                # 用 headline_ratio 而非 short_sale_ratio_median：daily 模式无中位数字段，
+                # 直接取键会 KeyError（零幻觉：两种模式各自引用自己算出的占比）
+                "message": f"卖空成交占比 {headline_ratio}% 进入高位，挤空候选",
             }
         elif derived.get("cross_validation_consistent") is False:
             alert_signal = {

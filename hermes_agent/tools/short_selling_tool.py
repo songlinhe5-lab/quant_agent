@@ -49,7 +49,7 @@ class ShortSellingTool(BaseTool):
         prefer_sources: str | None = None,
     ) -> Dict[str, Any]:
         backend_url = get_backend_api_url()
-        url = f"{backend_url}/market-fundamental/short-selling/{ticker}"
+        url = f"{backend_url}/market/short-selling/{ticker}"
         params: Dict[str, Any] = {"mode": mode}
         if prefer_sources:
             params["prefer_sources"] = prefer_sources
