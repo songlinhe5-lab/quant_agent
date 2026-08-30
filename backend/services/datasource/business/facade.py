@@ -33,6 +33,17 @@ from backend.services.datasource import (
 )
 from backend.services.datasource.source_registry import datasource_registry
 
+# G7 交叉验证：分析师目标价的候选键（按优先级）。
+# Futu F4-4 共识记录字段为 average/highest/lowest/rating/total/...（不含 "price" 子串），
+# 通用模糊匹配（要求列名含 price）命中不了，故此处按语义显式声明。
+_CONSENSUS_TARGET_KEYS = (
+    "average",  # Futu 分析师平均目标价（首选）
+    "avg_target_price",
+    "target_price",
+    "target_mean_price",
+    "targetPrice",
+)
+
 
 def _to_float(v: Any) -> Optional[float]:
     """安全转 float（None / 空 / 非数字返回 None，不臆造）。"""
@@ -751,9 +762,15 @@ class DataServiceFacade:
         _pairs = await asyncio.gather(
             _safe("analyst_consensus", self.get_analyst_consensus(ticker, prefer_sources=prefer_sources)),
             _safe("fundamental_merged", self.get_fundamental_merged(ticker)),
+            # 当前价兜底：G1 合并基本面只含财报/估值，不含现价（2026-08-30 实测
+            # futu 段仅 financials/valuation、fmp 段仅 profile/income_statement），
+            # 导致 current_price 恒为 None → upside_pct / verdict 恒空。
+            # QUOTE 是唯一可靠的现价来源，并发拉取不额外增加串行耗时。
+            _safe("quote", self.get_quote(ticker)),
         )
         res_cons = _pairs[0][1] if _pairs and isinstance(_pairs[0], tuple) else None
         res_fund = _pairs[1][1] if len(_pairs) > 1 and isinstance(_pairs[1], tuple) else None
+        res_quote = _pairs[2][1] if len(_pairs) > 2 and isinstance(_pairs[2], tuple) else None
 
         panel: dict = {
             "ticker": ticker,
@@ -770,19 +787,33 @@ class DataServiceFacade:
         if isinstance(res_cons, Result) and res_cons.is_success and isinstance(res_cons.data, dict):
             cons_rows = res_cons.data.get("data") or []
             if isinstance(cons_rows, list) and cons_rows:
-                # 优先命中含 avg/target 的价格列，其次任意含 price 的列
+                # Futu F4-4 共识字段是 average/highest/lowest（不含 "price" 子串），
+                # 旧匹配要求 "price" 在列名里 → 永远命中不了 → target_price 恒 None。
+                # 先按语义映射键取值（average = 分析师平均目标价，G7 上行空间基准）。
                 for r in cons_rows:
                     if not isinstance(r, dict):
                         continue
-                    for k, v in r.items():
-                        kl = str(k).lower()
-                        if any(t in kl for t in ("avg", "target")) and "price" in kl:
-                            fv = _to_float(v)
-                            if fv:
-                                target_price = fv
-                                break
+                    for k in _CONSENSUS_TARGET_KEYS:
+                        fv = _to_float(r.get(k))
+                        if fv:
+                            target_price = fv
+                            break
                     if target_price:
                         break
+                # 优先命中含 avg/target 的价格列，其次任意含 price 的列
+                if not target_price:
+                    for r in cons_rows:
+                        if not isinstance(r, dict):
+                            continue
+                        for k, v in r.items():
+                            kl = str(k).lower()
+                            if any(t in kl for t in ("avg", "target")) and "price" in kl:
+                                fv = _to_float(v)
+                                if fv:
+                                    target_price = fv
+                                    break
+                        if target_price:
+                            break
                 if not target_price:
                     for r in cons_rows:
                         if not isinstance(r, dict):
@@ -800,7 +831,7 @@ class DataServiceFacade:
         else:
             panel["notes"].append("分析师共识源不可用")
 
-        # --- 解析当前价（合并基本面，防御式）---
+        # --- 解析当前价（合并基本面 → QUOTE 兜底，防御式）---
         current_price = None
         fund_data = res_fund.data if isinstance(res_fund, Result) else None
         if isinstance(fund_data, dict):
@@ -815,11 +846,24 @@ class DataServiceFacade:
                         break
                 if current_price:
                     break
+
+        # QUOTE 兜底：合并基本面不含现价时用行情快照补齐
+        price_source = "fundamental_merged" if current_price else ""
         if current_price is None:
-            panel["notes"].append("合并基本面未取到当前价")
+            qdata = res_quote.data if isinstance(res_quote, Result) else None
+            if isinstance(qdata, dict):
+                for cand in ("last_price", "price", "current_price", "currentPrice", "close"):
+                    cp = _to_float(qdata.get(cand))
+                    if cp:
+                        current_price = cp
+                        price_source = "quote"
+                        break
+        if current_price is None:
+            panel["notes"].append("合并基本面与行情均未取到当前价")
 
         panel["target_price"] = target_price
         panel["current_price"] = current_price
+        panel["current_price_source"] = price_source or None
 
         if target_price and current_price:
             upside = round((target_price - current_price) / current_price * 100, 2)
