@@ -110,6 +110,16 @@ export async function runChatStream(params: StreamParams, cb: StreamCallbacks): 
   cb.onStreamEnd()
 }
 
+/**
+ * RESEARCH-01: 判定是否为"新投研任务"指令（区别于同一话题的追问）。
+ * 命中规则：含 深度研判/深度调研/投研 强指令词，且不以"再/继续/接着/补充/追问"开头（非延续意图）。
+ */
+const NEW_RESEARCH_TASK_RE = /^(?!\s*(?:再|继续|接着|补充|追问))[^\n]*(?:深度研判|深度调研|投研)/
+
+export function isNewResearchTask(text: string): boolean {
+  return NEW_RESEARCH_TASK_RE.test(text)
+}
+
 /** 统一错误分类，返回应追加到消息尾部的人类可读提示 */
 export function classifyChatError(error: any): { message: string; isAuth: boolean } {
   if (error?.name === 'AbortError') {
