@@ -303,6 +303,38 @@ async def quotes_websocket(websocket: WebSocket):
         logger.error(f"[WS] 异常断开: {e}")
 
 
+async def _probe_futu_remote() -> tuple[bool, bool, str]:
+    """
+    BE-ARCH-09 远程-only：经 DataSourceRouter 探活主节点 data_subservice 持有的 OpenD。
+
+    主服务镜像不安装 futu SDK / 不直连 127.0.0.1:11111，故禁止本地 socket 探测
+    （在主容器内恒 False）。统一由本函数供 ``/futu/status`` 与 ``/health/services``
+    复用，保证两处状态同源一致。
+
+    Returns:
+        tuple[bool, bool, str]:
+            (节点是否可达, OpenD 是否已连接, 面向前端的中文状态说明)
+            二者区分的意义：路由未启用 / 探活抛异常 → 节点不可达；
+            节点可达但子服务上报 available=False → 不可达节点、OpenD 未连接。
+    """
+    if not data_source_router._enabled:
+        return False, False, "数据源路由未启用 (DATA_SOURCE_ROUTER_ENABLED=false)"
+
+    try:
+        health_res = await data_source_router.fetch_futu("HEALTH")
+    except Exception as exc:  # noqa: BLE001 - 探活失败不应 500，降级为 disconnected
+        logger.warning(f"[Futu Status] 探活 futu_master 节点失败: {exc}")
+        return False, False, f"探活异常: {exc}"
+
+    if isinstance(health_res, dict) and health_res.get("status") == "success":
+        if bool(health_res.get("available")):
+            return True, True, "已连接"
+        return True, False, "OpenD 行情通道未连接 (子服务探活失败)"
+
+    msg = health_res.get("message") if isinstance(health_res, dict) else str(health_res)
+    return False, False, f"Futu 远程节点不可用: {msg}"
+
+
 @router.get("/futu/status")
 async def get_futu_status():
     """供前端面板感知底层 OpenD 核心连接状态。
@@ -313,33 +345,12 @@ async def get_futu_status():
     OpenD 连接状态 (status==CONNECTED), 而非依赖已废弃的本地 legacy gateway 探测
     (该探测在主容器内必然 False, 导致前端 OpenD 标识永远红色)。
     """
-    if not data_source_router._enabled:
-        return {
-            "status": "DISCONNECTED",
-            "error": "数据源路由未启用 (DATA_SOURCE_ROUTER_ENABLED=false)",
-            "reachable": False,
-        }
-
-    try:
-        health_res = await data_source_router.fetch_futu("HEALTH")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"[Futu Status] 探活 futu_master 节点失败: {exc}")
-        health_res = {"status": "error", "message": str(exc)}
-
-    if isinstance(health_res, dict) and health_res.get("status") == "success":
-        # 子服务 HEALTH 返回 {"available": status==CONNECTED, ...}
-        opend_connected = bool(health_res.get("available"))
-        return {
-            "status": "CONNECTED" if opend_connected else "DISCONNECTED",
-            "error": None if opend_connected else "OpenD 行情通道未连接 (子服务探活失败)",
-            "reachable": True,
-        }
-
-    msg = health_res.get("message") if isinstance(health_res, dict) else str(health_res)
+    reachable, connected, msg = await _probe_futu_remote()
     return {
-        "status": "DISCONNECTED",
-        "error": f"Futu 远程节点不可用: {msg}",
-        "reachable": False,
+        "status": "CONNECTED" if connected else "DISCONNECTED",
+        "error": None if connected else msg,
+        # reachable = 远程节点可达性（区别于 OpenD 是否已建立行情连接）
+        "reachable": reachable,
     }
 
 
@@ -350,27 +361,22 @@ async def get_services_health():
 
     health_data = []
 
-    # 1. Futu OpenD - 💡 实时探测而非仅依赖内存状态
-    is_opend_reachable = market_data_gateway.is_opend_reachable(timeout=2.0)
-    f_status = "healthy" if is_opend_reachable else "disconnected"
-    f_msg = market_data_gateway.error_msg if not is_opend_reachable else "已连接"
-
-    # 💡 同步更新内存状态
-    if not is_opend_reachable and market_data_gateway.status == "CONNECTED":
-        market_data_gateway.status = "DISCONNECTED"
-        market_data_gateway.error_msg = "OpenD 连接已断开"
-    if is_opend_reachable and market_data_gateway.status != "CONNECTED":
-        market_data_gateway.connect()
-        f_status = "healthy" if market_data_gateway.status == "CONNECTED" else "disconnected"
-        f_msg = "已连接" if market_data_gateway.status == "CONNECTED" else market_data_gateway.error_msg
+    # 1. Futu OpenD - 💡 BE-ARCH-09 远程-only 探活
+    # ⚠️ 旧实现用 market_data_gateway.is_opend_reachable() 探测【主容器本地】
+    # 127.0.0.1:11111。但主服务镜像不安装 futu SDK、不直连 OpenD，OpenD 长连接
+    # 由 data_subservice(S1) 持有 → 该本地探测恒 False，健康面板长期误报
+    # "Futu OpenD disconnected / reachable:false"，与 /market/futu/status
+    # （远程探活，实测 CONNECTED）自相矛盾（2026-08-30 S1 实战修复）。
+    # 现统一走 DataSourceRouter 远程 HEALTH 探活，与 /futu/status 同源。
+    is_futu_reachable, is_opend_connected, f_msg = await _probe_futu_remote()
 
     health_data.append(
         {
             "name": "Futu OpenD",
-            "status": f_status,
+            "status": "healthy" if is_opend_connected else "disconnected",
             "cooldown_remaining": 0,
             "message": f_msg,
-            "reachable": is_opend_reachable,  # 💡 实际探测结果
+            "reachable": is_futu_reachable,  # 💡 远程节点实际探测结果
         }
     )
 

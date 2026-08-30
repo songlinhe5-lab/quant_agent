@@ -106,7 +106,11 @@ class DataSourceHealthMonitor:
 
         names = registry.list_names()
         for name in names:
-            metrics = call_metrics.get_today(name)
+            # ⚠️ CallMetricsStore.get_today 是 async（内部走 Redis 读取），
+            # 旧代码漏 await → metrics 是 coroutine → 下一行 .get() 直接抛
+            # "'coroutine' object has no attribute 'get'" → 每轮扫描整体异常，
+            # 数据源健康监控彻底失明（2026-08-30 S1 日志每 2 分钟一条 [SVC-03] 扫描异常）。
+            metrics = await call_metrics.get_today(name)
             if metrics is None:
                 continue
             calls = metrics.get("calls", 0) or 0
