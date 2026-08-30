@@ -477,6 +477,57 @@ class TestGetResearchAnalystConsensus:
         res = await OptionFundHandler(conn, CacheManager()).get_research_analyst_consensus("US.AAPL")
         assert res["status"] == "error"
 
+    async def test_dict_payload_is_accepted(self):
+        """回归：futu-api 10.10.7008 返回【单行 dict】而非 DataFrame。
+
+        旧实现强制 isinstance(data, pd.DataFrame) → 数据已完整到手却被判失败，
+        错误信息里反而带着全部字段 → G7 交叉验证面板恒空（2026-08-30 S1 实战）。
+        """
+        qctx = MagicMock()
+        qctx.get_research_analyst_consensus = lambda *a, **k: (
+            RET_OK,
+            {
+                "highest": 400.0,
+                "average": 346.78,
+                "lowest": 245.0,
+                "rating": "BUY",
+                "total": 25,
+                "buy": 60.0,
+                "hold": 24.0,
+                "sell": 16.0,
+            },
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_research_analyst_consensus("US.AAPL")
+
+        assert res["status"] == "success"
+        assert res["count"] == 1
+        assert res["data"][0]["average"] == 346.78
+        assert res["is_third_party_expectation"] is True
+
+    async def test_list_payload_is_accepted(self):
+        """list[dict] 形态同样归一为 rows。"""
+        qctx = MagicMock()
+        qctx.get_research_analyst_consensus = lambda *a, **k: (
+            RET_OK,
+            [{"average": 200.0, "rating": "HOLD"}],
+        )
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_research_analyst_consensus("US.AAPL")
+
+        assert res["status"] == "success"
+        assert res["data"][0]["average"] == 200.0
+
+    async def test_empty_dict_is_error(self):
+        """RET_OK 但无实质字段 → 按失败处理，不产出空 rows。"""
+        qctx = MagicMock()
+        qctx.get_research_analyst_consensus = lambda *a, **k: (RET_OK, {})
+        conn = _make_conn_mgr(quote_ctx=qctx)
+        res = await OptionFundHandler(conn, CacheManager()).get_research_analyst_consensus("US.AAPL")
+
+        assert res["status"] == "error"
+        assert "空数据" in res["message"]
+
 
 # ── get_fundamental ───────────────────────────────────────────────────────
 class TestGetFundamental:

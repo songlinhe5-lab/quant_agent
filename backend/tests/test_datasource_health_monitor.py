@@ -37,7 +37,14 @@ def _registry_stub(names, mounted_map):
 
 def _metrics_stub(metrics_by_source: dict):
     cm = MagicMock()
-    cm.get_today.side_effect = lambda name: metrics_by_source.get(name)
+
+    # ⚠️ CallMetricsStore.get_today 是 async（内部走 Redis 读取），stub 必须同签名。
+    # 旧 stub 是同步 lambda，恰好掩盖了 _scan_once 里漏 await 的缺陷
+    # （生产上每轮扫描都抛 "'coroutine' object has no attribute 'get'"）。
+    async def _get_today(name):
+        return metrics_by_source.get(name)
+
+    cm.get_today = _get_today
     return cm
 
 

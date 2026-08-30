@@ -395,6 +395,55 @@ def make_execution_timer_middleware() -> MiddlewareFn:
 # ========================================================================
 
 
+def _filter_tool_kwargs(tool: Any, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    LLM 幻觉参数容错：丢弃工具未声明的入参，避免 TypeError 让整轮工具调用失败。
+
+    背景（2026-08-30 实战）：LLM 习惯性给 get_broker_market_data 传
+    ``prefer_sources``（该参数只存在于 get_analyst_vs_fundamental 等少数工具），
+    而 ``BrokerMarketTool.run()`` 未声明该形参 → 直接抛
+    ``TypeError: run() got an unexpected keyword argument 'prefer_sources'``
+    → 工具执行失败、Agent 表现为「调用后无响应」。
+
+    白名单 = run() 形参名 ∪ tool.parameters.properties 键名。
+    若 run() 带 **kwargs（VAR_KEYWORD）则原样透传，不做裁剪。
+
+    Args:
+        tool: 工具实例
+        kwargs: LLM 传入的原始参数字典
+
+    Returns:
+        Dict[str, Any]: 过滤后的参数字典
+    """
+    if not kwargs:
+        return kwargs
+
+    try:
+        sig = inspect.signature(tool.run)
+    except (TypeError, ValueError):  # noqa: BLE001 - 拿不到签名则不过滤
+        return kwargs
+
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+        return kwargs
+
+    allowed = set(sig.parameters.keys())
+    schema_props = (getattr(tool, "parameters", None) or {}).get("properties") or {}
+    if isinstance(schema_props, dict):
+        allowed |= set(schema_props.keys())
+
+    dropped = [k for k in kwargs if k not in allowed]
+    if not dropped:
+        return kwargs
+
+    print(f"🧹 [Tool Kwargs] {ctx_tool_name(tool)} 忽略未声明参数: {', '.join(sorted(dropped))}")
+    return {k: v for k, v in kwargs.items() if k in allowed}
+
+
+def ctx_tool_name(tool: Any) -> str:
+    """取工具名（用于日志），兼容 name 属性缺失的工具实现。"""
+    return str(getattr(tool, "name", None) or type(tool).__name__)
+
+
 async def core_tool_execute(ctx: ToolContext, tools: Dict[str, Any]) -> Any:
     """
     实际调用 tool.run() — 管线最内层。
@@ -414,10 +463,12 @@ async def core_tool_execute(ctx: ToolContext, tools: Dict[str, Any]) -> Any:
         return {"status": "error", "message": f"未找到名为 '{ctx.tool_name}' 的工具。"}
 
     try:
+        # LLM 幻觉参数容错（详见 _filter_tool_kwargs 文档串）
+        kwargs = _filter_tool_kwargs(tool, ctx.kwargs)
         if inspect.iscoroutinefunction(tool.run):
-            return await tool.run(**ctx.kwargs)
+            return await tool.run(**kwargs)
         else:
-            return await asyncio.to_thread(tool.run, **ctx.kwargs)
+            return await asyncio.to_thread(tool.run, **kwargs)
     except Exception as e:
         # AGENT-10: 异常消息可能携带凭据（URL 内嵌密码 / 请求头），脱敏后再进入上下文与日志
         from hermes_agent.redact import redact_exception
