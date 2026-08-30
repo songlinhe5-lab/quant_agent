@@ -220,3 +220,41 @@ async def test_daily_series_and_alert_message(monkeypatch):
     assert [s["ratio"] for s in derived["daily_series"]] == pytest.approx([13.785, 24.0])
     # crowding_level=high → 生成告警；旧实现取 short_sale_ratio_median 会 KeyError
     assert derived["alert_signal"]["type"] == "squeeze_candidate"
+
+
+@pytest.mark.asyncio
+async def test_rank_list_payload_after_envelope_unwrap(monkeypatch):
+    """回归：FutuDataSource.fetch 循环剥离 {status,data} 信封后 res.data 是 list。
+
+    旧实现对 list 调 .get("status") → AttributeError → 接口 500
+    （2026-08-30 部署后实测：HK.00700/US.AAPL 的 rank 与 daily 全部 500）。
+    """
+    facade = _build_facade(Result.make_success([_ROW_A, _ROW_B], source="futu"), monkeypatch)
+
+    res = await facade.get_short_selling("HK.00700", mode="rank")
+
+    assert res.is_success
+    assert res.data["derived"]["short_sale_ratio_median"] == pytest.approx(56.5)
+
+
+@pytest.mark.asyncio
+async def test_daily_list_payload_derives_stock_ratio(monkeypatch):
+    """daily + list 形态：个股占比按列名正确派生（生产实际路径）。"""
+    facade = _build_facade(Result.make_success([_HK_DAILY_ROW], source="futu"), monkeypatch)
+
+    res = await facade.get_short_selling("HK.00700", mode="daily")
+
+    assert res.data["derived"]["short_sale_ratio"] == pytest.approx(24.0)
+    assert res.data["derived"]["as_of"] == "2026-08-29"
+
+
+@pytest.mark.asyncio
+async def test_empty_list_payload_reports_no_data(monkeypatch):
+    """空 list（daily 0 行）如实标 no_data，不输出卖空为 0（T-1 红线）。"""
+    facade = _build_facade(Result.make_success([], source="futu"), monkeypatch)
+
+    res = await facade.get_short_selling("HK.00700", mode="daily")
+
+    assert res.is_success
+    assert res.data["sources"]["futu"] == "no_data"
+    assert res.data["futu"]["status"] == "no_data"
