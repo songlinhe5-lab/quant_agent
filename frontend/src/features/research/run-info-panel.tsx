@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { apiClient } from '@/lib/api-client'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 import { useChatStore } from '@/stores/useChatStore'
 import { Paperclip, CandlestickChart, Shield, Filter, Star, Wrench, CheckCircle2, Clock, Cpu } from 'lucide-react'
@@ -12,6 +13,17 @@ const KIND_ICON: Record<string, React.ReactNode> = {
   risk: <Shield className="h-3 w-3" />,
   analysis: <Star className="h-3 w-3" />,
 }
+
+/** 后端 GET /market/health/services 的单源健康快照 */
+interface ServiceHealth {
+  name: string
+  status: string
+  cooldown_remaining?: number
+  message?: string
+}
+
+/** 非故障态：健康 / 未启用 / 仅告警（如未配置 API Key）都不该显示为熔断 */
+const NON_FAULT_STATUS = new Set(['healthy', 'disabled', 'warning'])
 
 /**
  * COPILOT-19: B3 运行信息列（可折叠）
@@ -34,15 +46,38 @@ export function RunInfoPanel({ modelName }: { modelName: string }) {
 
   // 迭代数 = 工具步数
   const iterCount = toolTrail.length
-  // 连续失败检测（result 含 error 视为失败）
-  const failStreak = useMemo(() => {
-    let max = 0, cur = 0
-    for (const t of toolTrail) {
-      if (t.status === 'done' && t.result && /error|failed|exception/i.test(t.result)) { cur += 1; max = Math.max(max, cur) }
-      else cur = 0
+
+  // RL-14: 熔断状态读后端真实快照，不再用本地连续失败数猜。
+  // 此前以工具返回文本是否含 error 计数（>=3 即"已熔断"），与后端熔断器实际状态
+  // 无关——上游已恢复仍显示熔断、熔断中却不显示，属误导性猜测。
+  const [unhealthy, setUnhealthy] = useState<ServiceHealth[]>([])
+
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      try {
+        const res = await apiClient.get('/market/health/services')
+        const list: ServiceHealth[] = Array.isArray(res?.data) ? res.data : []
+        if (!alive) return
+        setUnhealthy(list.filter((s) => !NON_FAULT_STATUS.has(s.status)))
+      } catch {
+        // 探测接口本身不可用时保持静默，不猜测
+        if (alive) setUnhealthy([])
+      }
     }
-    return max
-  }, [toolTrail])
+    void load()
+    const timer = window.setInterval(load, 15000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  // 冷却剩余：后端熔断器给出的真实恢复倒计时（0 表示无冷却信息）
+  const maxCooldown = useMemo(
+    () => unhealthy.reduce((m, s) => Math.max(m, s.cooldown_remaining ?? 0), 0),
+    [unhealthy],
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -91,9 +126,10 @@ export function RunInfoPanel({ modelName }: { modelName: string }) {
             ))}
           </div>
         )}
-        {failStreak >= 3 && (
+        {unhealthy.length > 0 && (
           <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-center text-[9px] font-semibold text-red-400">
-            ⛔ 已熔断 · 检查数据源
+            ⛔ {unhealthy.map((s) => s.name).join('、')} 不可用
+            {maxCooldown > 0 ? ` · ${Math.ceil(maxCooldown)}s 后恢复` : ' · 检查数据源'}
           </div>
         )}
       </div>

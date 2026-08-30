@@ -29,6 +29,11 @@ DEFAULT_SYSTEM_PROMPT_PATH = os.path.join(_REPO_ROOT, "prompts", "system", "HERM
 # ── AGENT-17: Prometheus 指标（延迟初始化）────────────────────────────
 _TURN_DURATION_HISTOGRAM: Any = None
 
+# RL-14: ReAct 工具并发闸（经验值，普通用户零配置；env 仅留作线上紧急调参入口）。
+# 复用投研会 data_collector 的同款取值：一轮内工具调用多为同一上游通道（Futu），
+# 无闸并发会让 4~6 个请求同时打过去，既易触发限流，也把单点抖动放大成整批失败。
+_TOOL_CONCURRENCY = int(os.getenv("AGENT_TOOL_CONCURRENCY", "3"))
+
 
 def _init_prometheus_metrics():
     """延迟初始化 Prometheus 指标（避免未安装 prometheus_client 时崩溃）"""
@@ -245,6 +250,15 @@ class HermesAgent(MemoryOperationsMixin):
             args = json.loads(arguments_str)
             # 💡 核心修复：execute 是 async 函数，必须 await
             result = await self.tool_registry.execute(tool_name, **args)
+
+            # RL-14: 冷却信号 → 结果里注入"勿重试"提示。
+            # 否则 LLM 看到报错会换参数/换工具重复调用，把上游冷却期全部耗在无谓重试上。
+            if isinstance(result, dict):
+                from hermes_agent.cooldown import detect_cooldown
+
+                _signal = detect_cooldown(result)
+                if _signal is not None:
+                    result = {**result, "cooldown_hint": _signal.hint}
 
             # AGENT-12: 记录工具调用到重复守卫（用于停滞检测）
             # FIX: record_tool_call 是同步方法，禁止 await（否则报 NoneType can't be used in 'await'）
@@ -635,8 +649,16 @@ class HermesAgent(MemoryOperationsMixin):
 
                     result_queue: asyncio.Queue = asyncio.Queue()
 
+                    # RL-14: 并发闸 = 全局并发槽(3) + 同工具串行（同一上游排队）。
+                    # 加锁顺序固定「先抢并发槽、再抢工具锁」，与 data_collector 一致，避免死锁。
+                    tool_sem = asyncio.Semaphore(max(1, _TOOL_CONCURRENCY))
+                    tool_locks: dict[str, asyncio.Lock] = {}
+
                     async def run_and_queue(tc):
-                        res = await self._safe_execute_tool(tc["function"]["name"], tc["function"]["arguments"])
+                        _name = tc["function"]["name"]
+                        async with tool_sem:
+                            async with tool_locks.setdefault(_name, asyncio.Lock()):
+                                res = await self._safe_execute_tool(_name, tc["function"]["arguments"])
                         await result_queue.put((tc, res))
 
                     tool_tasks = [asyncio.create_task(run_and_queue(tc)) for tc in msg_dict["tool_calls"]]
