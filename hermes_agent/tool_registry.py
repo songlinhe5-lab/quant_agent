@@ -168,6 +168,25 @@ class ToolRegistry:
                 result.append(self._tool_to_schema(name, tool))
         return result
 
+    @staticmethod
+    def _normalize_output(result: Any) -> Dict[str, Any]:
+        """将工具返回值归一化为带 status 的 dict（缓存命中与直接执行共用）。
+
+        AGENT-02 约定 execute() 恒返回 dict；但工具 run() 可返回 str/list 等
+        基础类型（如 get_insider_transactions 返回紧凑文本以节省 token）。
+        统一在此包装为 {"data": <原始值>, "status": "success"}，保证下游
+        final_res.get("status") 等消费点永不抛 "'str' object has no attribute 'get'"。
+        """
+        if isinstance(result, ToolResult):
+            # 熔断器产生的 ToolResult
+            output = result.to_dict()
+        else:
+            # 原始工具返回值 —— 确保有 status 字段
+            output = result if isinstance(result, dict) else {"data": result}
+            if "status" not in output:
+                output["status"] = "success"
+        return output
+
     def _tool_to_schema(self, name: str, tool) -> Dict[str, Any]:
         """将单个工具实例转为 OpenAI function-calling schema。"""
         return {
@@ -206,7 +225,10 @@ class ToolRegistry:
         cached = await self.result_cache.get(name, kwargs)
         if cached is not None:
             print(f"⚡ [Tool Cache HIT] {name}")
-            return cached
+            # 回归修复：缓存里存的是工具原始返回值（如 get_insider_transactions 的紧凑文本 str），
+            # 若直接返回会绕过下方归一化，导致下游 final_res.get("status") 抛
+            # "'str' object has no attribute 'get'"。缓存命中同样需归一化。
+            return self._normalize_output(cached)
 
         _t_start = time.monotonic()
 
@@ -231,15 +253,7 @@ class ToolRegistry:
         # ── 后处理：分类 + 计时 + 转 dict ──────────────────────────
         _t_end = time.monotonic()
 
-        if isinstance(result, ToolResult):
-            # 熔断器产生的 ToolResult
-            output = result.to_dict()
-        else:
-            # 原始工具返回值 —— 确保有 status 字段
-            output = result if isinstance(result, dict) else {"data": result}
-            if "status" not in output:
-                output["status"] = "success"
-
+        output = self._normalize_output(result)
         output["execution_time"] = round(_t_end - _t_start, 3)
 
         # AGENT-09: 失败追踪（管线外，避免分类冲突）
