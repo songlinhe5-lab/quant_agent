@@ -17,6 +17,10 @@ def _to_fmp_symbol(symbol: str) -> str:
     if not symbol:
         return symbol
     s = symbol.strip().upper()
+    if s.startswith("US."):
+        # 2026-08-30 实测: US.NVDA 带前缀直接透传 FMP → profile 402 (NVDA 则 200)。
+        # 美股前缀剥离, 与 HK/SH 同属格式适配。
+        return s[3:]
     if s.startswith("HK."):
         code = s[3:].lstrip("0") or "0"
         return f"{code}.HK"

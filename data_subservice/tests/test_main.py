@@ -22,6 +22,33 @@ def _sign(body: str, secret: str = None) -> tuple:
     return ts, sig
 
 
+def test_json_safe_nan_inf_to_none():
+    # 2026-08-30 S1 实测: futu SNAPSHOT/QUOTE 的 DataFrame.to_dict 含 np.float64 NaN
+    # (np.float64 是 float 子类, 会被 _json_safe 数值分支直接透传) → FastAPI
+    # JSONResponse(allow_nan=False) 序列化抛 "ValueError: Out of range" → 500 →
+    # 主服务熔断连锁 (SNAPSHOT/QUOTE/yf_primary 全灭)。统一出口兜底: NaN/Inf → None。
+    import numpy as np
+
+    out = main_mod._json_safe(
+        {
+            "price": float("nan"),
+            "pct": float("inf"),
+            "np_nan": np.float64("nan"),
+            "ok": 1.5,
+            "n": 2,
+            "s": "x",
+            "nested": {"v": float("-inf")},
+        }
+    )
+    assert out["price"] is None
+    assert out["pct"] is None
+    assert out["np_nan"] is None
+    assert out["ok"] == 1.5
+    assert out["n"] == 2
+    assert out["s"] == "x"
+    assert out["nested"] == {"v": None}
+
+
 @pytest.fixture
 def client(monkeypatch):
     # 固定 HMAC secret, 避免环境已有 DATA_SOURCE_HMAC 导致签名不一致 (403)

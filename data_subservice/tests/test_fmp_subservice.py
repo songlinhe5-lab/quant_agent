@@ -41,6 +41,17 @@ def _signed_post(client, payload: dict):
     )
 
 
+def test_to_fmp_symbol_us_prefix_stripped():
+    # 2026-08-30: US.NVDA 带前缀直接透传给 FMP → profile 402 (NVDA 则 200)。
+    # 美股前缀应剥离, 与 HK.00772→0772.HK 同属格式适配。
+    from data_subservice.fmp_worker import _to_fmp_symbol
+
+    assert _to_fmp_symbol("US.NVDA") == "NVDA"
+    assert _to_fmp_symbol("NVDA") == "NVDA"
+    assert _to_fmp_symbol("HK.00772") == "772.HK"
+    assert _to_fmp_symbol("SH.600000") == "600000.sh"
+
+
 def test_fmp_smoke(client):
     # 1. /metrics 暴露 fmp_* 指标（14 个中至少命中核心几个）
     r = client.get("/metrics")

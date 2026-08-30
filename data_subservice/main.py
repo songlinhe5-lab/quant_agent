@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import math
 import os
 import time
 from typing import Any, Dict, Optional
@@ -195,13 +196,32 @@ def _json_safe(obj: Any) -> Any:
     JSONResponse 序列化抛 "TypeError: keys must be str" → 整个请求 500, 主服务侧表现为
     该 action 持续失败并累积熔断 (fed_watch 恒为 None 的根因)。此处统一兜底:
     非 str dict key 转 str, Timestamp/datetime 等时间对象转 isoformat, 其余转 str。
+
+    修复 (2026-08-30, S1 实测): futu SNAPSHOT/QUOTE 返回 DataFrame 经 to_dict 后
+    含 np.float64 NaN (np.float64 是 float 子类, 会被数值分支直接透传), FastAPI
+    JSONResponse(allow_nan=False) 序列化抛 "ValueError: Out of range float values
+    are not JSON compliant" → 500 → 主服务熔断连锁 (SNAPSHOT/QUOTE/yf_primary 全灭)。
+    数值型 NaN/Inf 统一转 None (JSON null), numpy 标量统一转原生数值。
     """
     if isinstance(obj, dict):
         return {str(k): _json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_json_safe(v) for v in obj]
-    if isinstance(obj, (str, int, float, bool)) or obj is None:
+    if isinstance(obj, bool) or obj is None:
         return obj
+    if isinstance(obj, (int, float)):
+        # np.float64 是 float 子类, 一并命中; NaN/Inf 非 JSON 合规 → None
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        return obj
+    if isinstance(obj, str):
+        return obj
+    # numpy 整数标量 (np.int64 等) 统一转原生数值, 避免 JSON 序列化类型问题
+    if obj.__class__.__module__.startswith("numpy") and hasattr(obj, "item"):
+        try:
+            return obj.item()
+        except Exception:  # noqa: BLE001
+            pass
     isoformat = getattr(obj, "isoformat", None)
     if callable(isoformat):
         try:
