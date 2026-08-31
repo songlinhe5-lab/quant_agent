@@ -1,0 +1,41 @@
+{
+  "frame": {
+    "start": "2024-07-01",
+    "end": "2024-09-30",
+    "cx": {
+      "components": {
+        "Assets": {
+          "label": "Assets",
+          "unit": "USD"
+        }
+      }
+    },
+    "data": [
+      {
+        "start": "2024-07-01",
+        "end": "2024-09-30",
+        "val": 365725000000,
+        "accn": "000032019324000123",
+        "fy": 2024,
+        "fp": "FY",
+        "filed": "2024-11-01",
+        "form": "10-K",
+        "entityCIK": "320193",
+        "entityName": "Apple Inc.",
+        "taxonomies": ["us-gaap"]
+      },
+      {
+        "end": "2024-09-30",
+        "val": 2457000000000,
+        "accn": "000010658124000091",
+        "fy": 2024,
+        "fp": "FY",
+        "filed": "2024-11-15",
+        "form": "10-K",
+        "entityCIK": "106581",
+        "entityName": "MICROSOFT CORP",
+        "taxonomies": ["us-gaap"]
+      }
+    ]
+  }
+}

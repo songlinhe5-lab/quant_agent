@@ -46,6 +46,8 @@ _WORKER_IMPORTS = {
     "bocha": "data_subservice.search_worker",
     "jina": "data_subservice.search_worker",
     "sentiment": "data_subservice.sentiment_worker",
+    # FIN-01: 一手申报采集（SEC EDGAR / 披露易 / 巨潮），仅美国节点声明 filings 能力
+    "filings": "data_subservice.filings_worker",
 }
 
 load_dotenv()

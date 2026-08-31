@@ -101,3 +101,18 @@
 - [ ] **[RMOD-02]** 风险分解 + 预算：`decompose.py`（MCTR/CTR 持仓×因子两级，勾稽误差 <1% 内置断言）+ 预算检查端点（超支可联动告警）（~250 行，测试 ≥85%，依赖 RMOD-01）
 - [ ] **[RMOD-03]** Black-Litterman：均衡收益 + 观点融合（置信度必填 → Ω 映射，AI 观点强制溯源；极端情形收敛性 golden case）（~300 行，测试 ≥85%，依赖 RMOD-01）
 - [ ] **[RMOD-04]** 前端进阶 Tab + 优化器接入：风险瀑布/协方差热力/预算条/观点表单 + `/portfolio/optimize` 可选 `model_id`（不破坏现有接口）（~300 行，测试 ≥70%，依赖 RMOD-02/03）
+
+### 公司财报看板（FIN · P2 · 📐 docs/28 · 2026-08-31 新增）
+
+> 产品定义 `docs/01 §二十九`，实现架构 `docs/28`。补齐「只有二手快照式基本面、无一手申报事实层」缺口；对标 SEC EDGAR XBRL + Koyfin/TIKR + Daloopa。
+> 红线：一手采集只允许在 `data_subservice`；回测/因子只读 `value_as_reported` + `filed_at <= as_of`；缺失科目置空禁补 0；LLM 抽取值必须带 `source_page`。
+> 依赖：01 → 02 → 03 → {04 → 06, 05} → 07；08 与主链并行。**建议先做 01~03**，事实层脏则上层全部推倒重来。
+
+- [x] **[FIN-01]** 一手采集：`data_subservice/filings_worker.py` + `_internal/sec_edgar.py`（`submissions` / `companyfacts` / `frames` 三端点）+ 披露易 `titleSearchServlet` + 巨潮 `hisAnnouncement`；描述性 UA + ≤10 req/s 限流 + fixture 锁响应结构（~400 行，测试 ≥80%，禁打真实外网）✅ **40 tests**（2026-08-31；`main.py` 注册 `source=filings`，能力声明 `DS_CAPABILITIES=...,filings`，部署须配 `SEC_EDGAR_USER_AGENT`）
+- [ ] **[FIN-02]** 归一化引擎：`domain/financials/concept_map.json`（声明式标签链，禁服务层 if-else）+ `mapper.py` + `periods.py`（YTD 拆分 / Q4=FY−9M）+ `checks.py`（三表勾稽）（~450 行，测试 ≥85% 含 20 家 golden case，依赖 FIN-01）
+- [ ] **[FIN-03]** 双时间轴存储：`financial_facts` / `filings` PG 迁移（唯一键 `entity+concept+start+end+unit`，**禁按 fy 去重**）+ PIT 查询（落地现有内存 `PointInTimeStore`）+ Parquet 宽表接 docs/19 快照（~350 行，测试 ≥85%，依赖 FIN-02）
+- [ ] **[FIN-04]** Facade 收口 + `routers/financials.py` 全端点（statements/facts/analytics/peers/filings/restatements/backfill）+ 回填走进程池（~300 行，测试 ≥80%，依赖 FIN-03）
+- [ ] **[FIN-05]** 分析引擎：`domain/financials/analytics.py`（common-size / TTM / DuPont / 现金流质量 / Piotroski F · Altman Z · Beneish M，须输出分项）（~350 行，测试 ≥85% 含手算对照，依赖 FIN-03）
+- [ ] **[FIN-06]** 同业与行业：peer set 解析（SIC / 申万 / Futu 板块 + 手工固定）+ EDGAR `frames` 截面分位 + 行业聚合（样本 <8 禁出分位结论）（~250 行，测试 ≥80%，依赖 FIN-04）
+- [ ] **[FIN-07]** 前端 `features/financials/`：报表 AG Grid（含 common-size 与口径切换）/ 趋势 / DuPont / 同业散点 / 质量记分卡 / 归档时间轴 / 重述 diff（~500 行分 7 组件，测试 ≥70%，依赖 FIN-05/06）
+- [ ] **[FIN-08]** 文本层：MD&A 与风险因素逐年 diff（Lazy Prices 依据）+ 港A PDF 定点抽取强制 `source_page`/`source_text` + RAG 引用跳回原文（~300 行，测试 ≥75%，依赖 FIN-01 + 既有 RAG）

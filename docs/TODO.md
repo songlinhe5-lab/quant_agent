@@ -26,7 +26,7 @@
 | [TODO-frontend.md](./TODO-frontend.md) | 前端基础设施、体验、架构债、产品功能、AI 渗透 | FE / FE-ARCH / FE-PROD / PROD / AI / OPTION / FUNDFLOW |
 | [TODO-datasource.md](./TODO-datasource.md) | 分布式数据源集群、限流退避、三方服务监控 | DIST / RL / SVC |
 | [TODO-client.md](./TODO-client.md) | Flutter 客户端 | CLI |
-| [TODO-engine.md](./TODO-engine.md) | 回测/策略/量化引擎、策略实验室、纸面组合、交易进阶、量化研究进阶 | BT / QUANT / STRAT / PT / TRADE / FACT / TCA / EVT / RMOD |
+| [TODO-engine.md](./TODO-engine.md) | 回测/策略/量化引擎、策略实验室、纸面组合、交易进阶、量化研究进阶、公司财报看板 | BT / QUANT / STRAT / PT / TRADE / FACT / TCA / EVT / RMOD / FIN |
 | [TODO-ops.md](./TODO-ops.md) | 部署运维、CI/CD、监控、文档、数据正确性 | OPS / OBS / DOC / DQ / MRKT / WRNT |
 | [TODO-archive.md](./TODO-archive.md) | 已完成归档、会话笔记、变更日志、Phase 规划、融资融券、存量清理 | 历史记录 |
 

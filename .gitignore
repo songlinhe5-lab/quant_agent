@@ -247,6 +247,8 @@ reports/*.xlsx
 mock_data/
 test_data/
 fixtures/
+# 例外：单测依赖的 fixture 资源必须入库（filings worker 结构锁测试）
+!data_subservice/tests/fixtures/
 
 # 缓存数据
 data/cache/
