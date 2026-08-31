@@ -3,8 +3,12 @@
 背景：
   C.1 在 SentimentRecord 模型新增 retail_heat_change_pct / retail_heat_total，
   但生产库为已存在旧表（SQLAlchemy create_all 不会给已有表加列），查询报
-  UndefinedColumn。Alembic 迁移链历史已损坏（多个 None head），故不用 alembic，
+  UndefinedColumn。当时 Alembic 迁移链历史已损坏（多个 None head），故不用 alembic，
   改用独立幂等 DDL（PostgreSQL 15+ ADD COLUMN IF NOT EXISTS）。
+
+  2026-08-31 迁移链已修复为单链，`sent01` 并入主链且改为方言无关的 inspector 判列加列，
+  `alembic upgrade head` 可正常执行。本脚本保留作**兜底/手工修复**用（与 sent01 幂等，
+  两者都执行不会冲突）。
 
 用法：
   DATABASE_URL=... python -m backend.scripts.migrate_sentiment_retail_heat
