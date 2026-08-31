@@ -109,7 +109,7 @@
 > 依赖：01 → 02 → 03 → {04 → 06, 05} → 07；08 与主链并行。**建议先做 01~03**，事实层脏则上层全部推倒重来。
 
 - [x] **[FIN-01]** 一手采集：`data_subservice/filings_worker.py` + `_internal/sec_edgar.py`（`submissions` / `companyfacts` / `frames` 三端点）+ 披露易 `titleSearchServlet` + 巨潮 `hisAnnouncement`；描述性 UA + ≤10 req/s 限流 + fixture 锁响应结构（~400 行，测试 ≥80%，禁打真实外网）✅ **40 tests**（2026-08-31；`main.py` 注册 `source=filings`，能力声明 `DS_CAPABILITIES=...,filings`，部署须配 `SEC_EDGAR_USER_AGENT`）
-- [ ] **[FIN-02]** 归一化引擎：`domain/financials/concept_map.json`（声明式标签链，禁服务层 if-else）+ `mapper.py` + `periods.py`（YTD 拆分 / Q4=FY−9M）+ `checks.py`（三表勾稽）（~450 行，测试 ≥85% 含 20 家 golden case，依赖 FIN-01）
+- [x] **[FIN-02]** 归一化引擎：`domain/financials/concept_map.json`（声明式标签链，禁服务层 if-else）+ `mapper.py` + `periods.py`（YTD 拆分 / Q4=FY−9M）+ `checks.py`（三表勾稽）（~450 行，测试 ≥85% 含 20 家 golden case，依赖 FIN-01）✅ **96 tests / 覆盖率 98%**（2026-08-31；35 个标准科目 × 4 taxonomy；golden 21 家含 us-gaap 12 家 + ifrs 4 家 + tushare 4 家 + futu 1 家；`split_ytd` 无 9M 时只出 H2、禁把 H2 当 Q4；勾稽失败只标 `check_failed` 不丢数。⚠️ `ifrs-full` / `tushare` / `futu` 三条链在 `concept_map.json` 里标 `verified: false`，接真源前须实测校对；futu 以 `display_name`（中文）为 key，`field_id` 是整数不可作键——见 `option_fund_handler` 实测注释）
 - [ ] **[FIN-03]** 双时间轴存储：`financial_facts` / `filings` PG 迁移（唯一键 `entity+concept+start+end+unit`，**禁按 fy 去重**）+ PIT 查询（落地现有内存 `PointInTimeStore`）+ Parquet 宽表接 docs/19 快照（~350 行，测试 ≥85%，依赖 FIN-02）
 - [ ] **[FIN-04]** Facade 收口 + `routers/financials.py` 全端点（statements/facts/analytics/peers/filings/restatements/backfill）+ 回填走进程池（~300 行，测试 ≥80%，依赖 FIN-03）
 - [ ] **[FIN-05]** 分析引擎：`domain/financials/analytics.py`（common-size / TTM / DuPont / 现金流质量 / Piotroski F · Altman Z · Beneish M，须输出分项）（~350 行，测试 ≥85% 含手算对照，依赖 FIN-03）
