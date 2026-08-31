@@ -1,10 +1,14 @@
 """add_frontend_logs_table
 
 Revision ID: fe05b_frontend_logs
-Revises: strat03a_add_strategy_version_tables
+Revises: ai04rag
 Create Date: 2026-07-14
 
 FE-05b: 前端日志采集表
+
+⚠️ 2026-08-31 修复：原 down_revision 写成了**文件名**
+   `strat03a_add_strategy_version_tables`（真实 revision id 是 `strat03a`），
+   该链断裂使本迁移成了悬空头。已改挂到 ai04rag 之后。
 """
 
 from typing import Sequence, Union
@@ -14,7 +18,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "fe05b_frontend_logs"
-down_revision: Union[str, None] = "strat03a_add_strategy_version_tables"
+down_revision: Union[str, None] = "ai04rag"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

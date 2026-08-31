@@ -1,9 +1,13 @@
 """add strategy version tables
 
 Revision ID: strat03a
-Revises:
+Revises: (链根，不要改)
 Create Date: 2025-01-13
 
+⚠️ 本文件是迁移链的唯一根节点。历史上有 3 个 None 头 + 1 处断链
+   （fe05b 的 down_revision 写成了文件名而非 revision id），
+   导致 `alembic upgrade head` 无法执行，已于 2026-08-31 修复为单链。
+   改动前先看 `backend/alembic/README.md`。
 """
 
 import sqlalchemy as sa
@@ -11,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "strat03a"
-down_revision = None  # Adjust based on latest migration
+down_revision = None  # 链根：唯一允许为 None 的位置（新增迁移请挂到链尾）
 branch_labels = None
 depends_on = None
 

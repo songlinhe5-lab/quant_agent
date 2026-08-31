@@ -1,7 +1,7 @@
 """add financials tables (FIN-03)
 
 Revision ID: fin03a
-Revises: pt01a
+Revises: sent01
 Create Date: 2026-08-31
 
 双时间轴事实层：
@@ -17,7 +17,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "fin03a"
-down_revision = "pt01a"
+down_revision = "sent01"
 branch_labels = None
 depends_on = None
 

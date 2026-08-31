@@ -1,9 +1,10 @@
 """add RAG governance fields (AI-04)
 
 Revision ID: ai04rag
-Revises:
+Revises: pt01a
 Create Date: 2026-07-08
 
+本迁移用 inspector 判列后加列，PG / SQLite 均幂等，可安全并入主链。
 """
 
 import sqlalchemy as sa
@@ -11,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "ai04rag"
-down_revision = None  # Adjust based on latest migration
+down_revision = "pt01a"
 branch_labels = None
 depends_on = None
 
