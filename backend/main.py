@@ -92,6 +92,7 @@ from backend.routers.earnings_router import router as earnings_router  # noqa: E
 from backend.routers.eval import router as eval_router  # noqa: E402
 from backend.routers.expert_team import router as expert_team_router  # noqa: E402
 from backend.routers.factor import router as factor_router  # noqa: E402
+from backend.routers.financials import router as financials_router  # noqa: E402  # FIN-04
 from backend.routers.futu_admin import router as futu_admin_router  # noqa: E402
 from backend.routers.internal import router as internal_router  # noqa: E402
 from backend.routers.log_stream import router as log_stream_router  # noqa: E402  # FE-DEBUG-01
@@ -184,6 +185,7 @@ def create_app() -> FastAPI:
     application.include_router(backtest_router, prefix=API_PREFIX)
     application.include_router(backtest_reports_router, prefix=API_PREFIX)
     application.include_router(datalake_router, prefix=API_PREFIX)
+    application.include_router(financials_router, prefix=API_PREFIX)  # FIN-04
     application.include_router(screener_router, prefix=API_PREFIX)
     application.include_router(search_router, prefix=API_PREFIX)
     application.include_router(strategy_router, prefix=API_PREFIX)
