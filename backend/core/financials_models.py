@@ -139,3 +139,24 @@ class FilingRecord(Base):
             "lang": self.lang,
             "rag_indexed": self.rag_indexed,
         }
+
+
+class FinancialsJob(Base):
+    """回填任务登记簿（FIN-10 可靠性）：内存 jobs 的 PG 快照。
+
+    写侧是 best-effort 双写（持久化失败不影响内存任务推进，回填本身幂等重放）；
+    读侧内存优先、miss 落库——进程重启后任务状态不再凭空消失。
+    """
+
+    __tablename__ = "financial_jobs"
+
+    job_id: Mapped[str] = mapped_column(String(32), primary_key=True)  # finbf_{uuid12}
+    entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="sec")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # ISO 字符串，与内存 job dict 的 created_at/updated_at 同形（快照直灌）
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(32), nullable=False)

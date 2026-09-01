@@ -130,11 +130,17 @@ def classify_period(
     quarter = _quarter_label(end, fiscal_year_end_month)
     for band, center, tol in _DURATION_BANDS:
         if abs(days - center) <= tol:
-            fiscal_period = quarter if band == "Q" else band
+            if band == "Q":
+                # 单季落在财年末：是 Q4 不是 FY（EDGAR 常见离散 Q4 申报，标成 FY 会污染年报快照）
+                fiscal_period = "Q4" if quarter == "FY" else quarter
+            else:
+                fiscal_period = band
             return Period(start, end, fiscal_year, fiscal_period, days, False)
 
     # 跨度落在所有分档之外（如异常申报区间）：退回按月定位，累计与否按 100 天判定
     fiscal_period = quarter if days <= 100 else "FY"
+    if fiscal_period == "FY" and days <= 100:
+        fiscal_period = "Q4"  # 同上：短跨度撞上财年末仍是 Q4
     return Period(start, end, fiscal_year, fiscal_period, days, False)
 
 

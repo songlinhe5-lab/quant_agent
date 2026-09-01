@@ -288,6 +288,7 @@ class VersionedFact:
     source_tag: str
     accession_no: str | None = None
     derived: bool = False
+    check_failed: list[str] = field(default_factory=list)  # 勾稽失败项（只标注不丢数）
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -307,6 +308,7 @@ class VersionedFact:
             "source_tag": self.source_tag,
             "accession_no": self.accession_no,
             "derived": self.derived,
+            "check_failed": list(self.check_failed),
         }
 
 
@@ -425,6 +427,7 @@ class ConceptMapper:
                     source_tag=last.source_tag,
                     accession_no=last.accession_no,
                     derived=last.derived,
+                    check_failed=list(last.check_failed),
                 )
             )
         return sorted(out, key=lambda v: (v.concept, v.period_end))

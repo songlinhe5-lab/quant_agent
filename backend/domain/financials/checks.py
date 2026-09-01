@@ -27,6 +27,14 @@ GROSS_PROFIT = "gross_profit"
 
 CHECKS: tuple[str, ...] = (BALANCE_IDENTITY, CASH_FLOW_RECONCILIATION, GROSS_PROFIT)
 
+# 勾稽项 → 归属报表：失败标注只打在参与该校验的报表事实上，
+# 不把「资产 ≠ 负债+权益」涂到利润表的收入格子上。
+CHECK_STATEMENTS: dict[str, str] = {
+    BALANCE_IDENTITY: "balance",
+    CASH_FLOW_RECONCILIATION: "cash",
+    GROSS_PROFIT: "income",
+}
+
 
 def rel_error(actual: float, expected: float) -> float:
     """相对误差；分母过小则退化为绝对误差，避免除零噪声。"""
