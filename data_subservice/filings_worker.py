@@ -1,7 +1,7 @@
 """Filings 一手采集 worker（FIN-01，docs/28 §二）。
 
 三地申报索引统一入口（source=filings）：
-- 美股 SEC EDGAR：``SUBMISSIONS`` / ``COMPANY_FACTS`` / ``FRAMES``（经 _internal/sec_edgar）
+- 美股 SEC EDGAR：``SUBMISSIONS`` / ``COMPANY_FACTS`` / ``FRAMES`` / ``SYMBOLS``（经 _internal/sec_edgar）
 - 港股 HKEXnews 披露易：``HKEX_FILINGS``（titleSearchServlet 页面后端接口）
 - A股 巨潮资讯网：``CNINFO_FILINGS``（hisAnnouncement 页面后端接口）
 
@@ -31,7 +31,7 @@ _CNINFO_STATIC = "http://static.cninfo.com.cn/"
 # 浏览器型 UA：披露易/巨潮对空 UA 或脚本 UA 会拒答/返回验证码页
 _BROWSER_UA = "Mozilla/5.0 (compatible; quant-agent-data-subservice/1.0; +ops@quant-agent.example.com)"
 
-_SEC_ACTIONS = {"SUBMISSIONS", "COMPANY_FACTS", "FRAMES"}
+_SEC_ACTIONS = {"SUBMISSIONS", "COMPANY_FACTS", "FRAMES", "SYMBOLS"}
 
 
 # ── SEC ──
@@ -45,13 +45,18 @@ async def _handle_sec(action: str, params: dict[str, Any]) -> dict[str, Any]:
             params.get("cik") or params.get("entity_id"),
             use_cache=bool(params.get("use_cache", True)),
         )
-    # FRAMES
-    return await sec_edgar_service.get_frames(
-        params.get("taxonomy", "us-gaap"),
-        params.get("concept", ""),
-        params.get("measure", "USD"),
-        params.get("frame", ""),
-    )
+    if action == "FRAMES":
+        return await sec_edgar_service.get_frames(
+            params.get("taxonomy", "us-gaap"),
+            params.get("concept", ""),
+            params.get("measure", "USD"),
+            params.get("frame", ""),
+        )
+    if action == "DOC_TEXT":
+        # FIN-08：申报文档全文（YoY diff 文本源）
+        return await sec_edgar_service.get_document_text(params.get("doc_url", ""))
+    # SYMBOLS：ticker → CIK 对照表（FIN-04 实体解析）
+    return await sec_edgar_service.get_symbols(use_cache=bool(params.get("use_cache", True)))
 
 
 # ── 港股披露易 ──
