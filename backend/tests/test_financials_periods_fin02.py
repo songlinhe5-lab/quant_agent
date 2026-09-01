@@ -55,6 +55,12 @@ def test_classify_instant_period():
     assert period.days == 0
 
 
+def test_classify_discrete_q4_is_not_fy():
+    """离散 Q4（10-01~12-31 单季）撞上财年末仍是 Q4，禁止标成 FY 污染年报快照（FIN-05 发现）"""
+    period = classify_period(date(2025, 10, 1), date(2025, 12, 31), 12)
+    assert period.fiscal_period == "Q4" and period.fiscal_year == 2025
+
+
 def test_fiscal_year_with_non_december_year_end():
     # 苹果 9 月财年：2025-09-27 属 FY2025，2025-12-27 已属 FY2026
     assert fiscal_year_of(date(2025, 9, 27), 9) == 2025

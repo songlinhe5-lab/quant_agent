@@ -91,6 +91,30 @@ class TestDispatch:
         )
         assert seen == {"tax": "us-gaap", "concept": "Assets", "measure": "USD", "frame": "CY2024Q3I"}
 
+    async def test_symbols_delegates_with_cache_flag(self, monkeypatch):
+        # FIN-04：ticker → CIK 对照表（实体解析依赖），use_cache 得透传到客户端
+        seen = {}
+
+        async def fake_symbols(use_cache=True):
+            seen["use_cache"] = use_cache
+            return {"status": "success", "data": {"0": {"cik_str": 320193, "ticker": "AAPL"}}}
+
+        monkeypatch.setattr(fw.sec_edgar_service, "get_symbols", fake_symbols)
+        out = await fw.handle_filings("symbols", {"use_cache": False})
+        assert out["status"] == "success"
+        assert seen == {"use_cache": False}
+
+    async def test_symbols_default_keeps_cache(self, monkeypatch):
+        seen = {}
+
+        async def fake_symbols(use_cache=True):
+            seen["use_cache"] = use_cache
+            return {"status": "success", "data": {}}
+
+        monkeypatch.setattr(fw.sec_edgar_service, "get_symbols", fake_symbols)
+        await fw.handle_filings("SYMBOLS", {})
+        assert seen == {"use_cache": True}
+
 
 # ─── HKEX ───────────────────────────────────────────────────────
 # 2026-08-31 实测契约：两步请求（prefix.do JSONP 解析 stockId → titleSearchServlet），

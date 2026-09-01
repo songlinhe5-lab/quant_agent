@@ -1,7 +1,7 @@
 """SEC EDGAR 客户端单测（FIN-01）— mock httpx，禁打真实外网。
 
-覆盖：CIK 归一化 / UA 合规 / 令牌桶限流 / 三端点 200·429·403·404·异常分支 /
-结构锁（structure_changed）/ companyfacts 落盘缓存命中与 TTL 过期。
+覆盖：CIK 归一化 / UA 合规 / 令牌桶限流 / 四端点 200·429·403·404·异常分支 /
+结构锁（structure_changed）/ companyfacts 与 symbols 落盘缓存命中与 TTL 过期。
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import data_subservice._internal.sec_edgar as sec_mod
-from data_subservice._internal.sec_edgar import SecEdgarService, TokenBucketLimiter, normalize_cik
+from data_subservice._internal.sec_edgar import SecEdgarService, TokenBucketLimiter, _html_to_text, normalize_cik
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "filings"
 
@@ -23,10 +23,11 @@ def _load(name: str):
 
 
 class _Resp:
-    def __init__(self, status_code=200, payload=None, json_exc=None):
+    def __init__(self, status_code=200, payload=None, json_exc=None, text=""):
         self.status_code = status_code
         self._payload = payload
         self._json_exc = json_exc
+        self.text = text
 
     def json(self):
         if self._json_exc:
@@ -259,3 +260,124 @@ class TestFrames:
         with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
             out = await svc.get_frames("us-gaap", "Assets", "USD", "CY2024Q3I")
         assert out["error_category"] == "bad_response"
+
+
+# ─── symbols（FIN-04 实体解析用）───────────────────────────
+class TestSymbols:
+    _TABLE = {
+        "0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
+        "1": {"cik_str": 1652044, "ticker": "NVDA", "title": "NVIDIA Corp."},
+    }
+
+    async def test_success_uses_www_host_not_data_subdomain(self, svc, tmp_path, monkeypatch):
+        # company_tickers.json 在 www.sec.gov/files（非 data 子域），Host 头必须跟着变
+        monkeypatch.setenv("SEC_CACHE_DIR", str(tmp_path))
+        client = _client(_Resp(200, self._TABLE))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+            out = await svc.get_symbols()
+        assert out["status"] == "success"
+        assert client.captured["url"] == "https://www.sec.gov/files/company_tickers.json"
+        assert client.captured["headers"]["Host"] == "www.sec.gov"
+
+    async def test_structure_changed_on_flat_list(self, svc, tmp_path, monkeypatch):
+        monkeypatch.setenv("SEC_CACHE_DIR", str(tmp_path))
+        client = _client(_Resp(200, {"0": "AAPL"}))  # 值不再是 dict → SEC 改版
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+            out = await svc.get_symbols()
+        assert out["error_category"] == "structure_changed"
+
+    async def test_cache_hit_and_ttl(self, svc, tmp_path, monkeypatch):
+        monkeypatch.setenv("SEC_CACHE_DIR", str(tmp_path))
+        client = _client(_Resp(200, self._TABLE))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+            await svc.get_symbols()
+        boom = _client(raise_exc=AssertionError("不应再打网络"))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=boom):
+            hit = await svc.get_symbols()
+            monkeypatch.setenv("SEC_SYMBOLS_TTL_SEC", "0")  # 立即过期
+            stale = await svc.get_symbols(use_cache=False)
+        assert hit["cached"] is True
+        assert not stale.get("cached")
+
+    async def test_429_keeps_rate_limit_category(self, svc, tmp_path, monkeypatch):
+        monkeypatch.setenv("SEC_CACHE_DIR", str(tmp_path))
+        client = _client(_Resp(429))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+            out = await svc.get_symbols()
+        assert out["error_category"] == "rate_limit"
+
+
+# ─── FIN-08 · DOC_TEXT：文档全文拉取与确定性清洗 ────────────────
+
+
+class TestHtmlToText:
+    def test_strips_script_style_and_tags(self):
+        html = (
+            "<html><head><style>.x{color:red}</style></head>"
+            "<body><script>evil()</script><p>Revenue&nbsp;grew</p><div>12%</div></body></html>"
+        )
+        out = _html_to_text(html)
+        assert "evil" not in out and ".x" not in out
+        assert "Revenue grew" in out and "12%" in out
+        assert "<" not in out
+
+    def test_block_tags_become_newlines_and_blank_lines_dropped(self):
+        out = _html_to_text("<p>a</p><p>b</p><p></p><p>c</p>")
+        assert out.splitlines() == ["a", "b", "c"]
+
+    def test_plain_text_passthrough(self):
+        assert _html_to_text("no markup at all") == "no markup at all"
+
+
+class TestGetDocumentText:
+    @pytest.fixture(autouse=True)
+    def _isolated_cache(self, monkeypatch, tmp_path):
+        """doc_text 缓存按 URL 指纹落盘，不隔离会跨测试污染（同 URL 直接命中真缓存）。"""
+        monkeypatch.setenv("SEC_CACHE_DIR", str(tmp_path))
+
+    async def test_bad_doc_url_rejected_before_network(self, svc):
+        with patch.object(sec_mod.httpx, "AsyncClient") as ac:
+            out = await svc.get_document_text("javascript:alert(1)")
+        assert out["error_category"] == "bad_request"
+        ac.assert_not_called()
+
+    async def test_success_returns_clean_text_and_truncation_flag(self, svc):
+        html = "<p>hello doc</p>" + "x" * 50
+        client = _client(_Resp(200, text=html))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+            out = await svc.get_document_text("https://www.sec.gov/Archives/a.htm", max_chars=14)
+        assert out["status"] == "success"
+        assert out["data"]["text"] == "hello doc\nxxxx"  # 截到 max_chars，标签已剥
+        assert out["data"]["truncated"] is True
+        assert client.captured["url"] == "https://www.sec.gov/Archives/a.htm"
+        assert client.captured["headers"]["Host"] == "www.sec.gov"
+
+    async def test_429_and_404_categories(self, svc):
+        for code, category in ((429, "rate_limit"), (404, "not_found")):
+            client = _client(_Resp(code, text="x"))
+            with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+                out = await svc.get_document_text("https://www.sec.gov/Archives/a.htm")
+            assert out["error_category"] == category
+
+    async def test_network_error_is_error_not_raise(self, svc):
+        client = _client(raise_exc=RuntimeError("boom"))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+            out = await svc.get_document_text("https://www.sec.gov/Archives/a.htm")
+        assert out["status"] == "error" and "boom" in out["message"]
+
+    # ─── FIN-09 性能：doc_text 落盘缓存（immutable 文档永不过期）───
+    async def test_cold_fetch_writes_cache_then_hit_skips_network(self, svc, tmp_path, monkeypatch):
+        monkeypatch.setenv("SEC_CACHE_DIR", str(tmp_path))
+        url = "https://www.sec.gov/Archives/a.htm"
+        client = _client(_Resp(200, text="<p>hello doc</p>"))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=client):
+            cold = await svc.get_document_text(url, max_chars=5)
+        assert cold["status"] == "success" and not cold["cached"]
+        assert cold["data"]["text"] == "hello" and cold["data"]["truncated"] is True
+
+        boom = _client(raise_exc=AssertionError("immutable 文档不应再打网络"))
+        with patch.object(sec_mod.httpx, "AsyncClient", return_value=boom):
+            warm = await svc.get_document_text(url, max_chars=10_000)
+        assert warm["cached"] is True
+        assert warm["data"]["truncated"] is False  # 缓存全文，截断随参数
+        assert cold["data"]["text"] in warm["data"]["text"]
