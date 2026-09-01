@@ -1,0 +1,474 @@
+{
+  "_note": "FIN-02 golden 回归样本：用于锁定「原始标签 → 标准科目」的命中关系与落空行为。数值取量级近似（非权威财报数据），改映射表导致任一 case 的命中结果变化即失败。unmapped 为预期落空标签数（不猜、不插值）。",
+  "version": "2026.08.31",
+  "cases": [
+    {
+      "entity_id": "US:CIK0000320193",
+      "name": "Apple Inc.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 9,
+      "raw": [
+        {"tag": "RevenueFromContractWithCustomerExcludingAssessedTax", "value": 416161000000, "unit": "USD", "start": "2024-09-29", "end": "2025-09-27", "filed": "2025-10-31", "accn": "0000320193-25-000123", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 112010000000, "unit": "USD", "start": "2024-09-29", "end": "2025-09-27", "filed": "2025-10-31", "accn": "0000320193-25-000123", "form": "10-K"},
+        {"tag": "Assets", "value": 359000000000, "unit": "USD", "end": "2025-09-27", "filed": "2025-10-31", "accn": "0000320193-25-000123", "form": "10-K"},
+        {"tag": "StockholdersEquity", "value": 74000000000, "unit": "USD", "end": "2025-09-27", "filed": "2025-10-31", "accn": "0000320193-25-000123", "form": "10-K"},
+        {"tag": "NetCashProvidedByUsedInOperatingActivities", "value": 118000000000, "unit": "USD", "start": "2024-09-29", "end": "2025-09-27", "filed": "2025-10-31", "accn": "0000320193-25-000123", "form": "10-K"},
+        {"tag": "DeferredRevenueCurrent", "value": 9000000000, "unit": "USD", "end": "2025-09-27", "filed": "2025-10-31", "accn": "0000320193-25-000123", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 416161000000.0,
+        "net_income": 112010000000.0,
+        "total_assets": 359000000000.0,
+        "stockholders_equity": 74000000000.0,
+        "cfo": 118000000000.0
+      },
+      "unmapped": 1
+    },
+    {
+      "entity_id": "US:CIK0000789019",
+      "name": "Microsoft Corp.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 6,
+      "raw": [
+        {"tag": "RevenueFromContractWithCustomerExcludingAssessedTax", "value": 281700000000, "unit": "USD", "start": "2024-07-01", "end": "2025-06-30", "filed": "2025-07-30", "accn": "0000789019-25-000087", "form": "10-K"},
+        {"tag": "OperatingIncomeLoss", "value": 128500000000, "unit": "USD", "start": "2024-07-01", "end": "2025-06-30", "filed": "2025-07-30", "accn": "0000789019-25-000087", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 101800000000, "unit": "USD", "start": "2024-07-01", "end": "2025-06-30", "filed": "2025-07-30", "accn": "0000789019-25-000087", "form": "10-K"},
+        {"tag": "Assets", "value": 619000000000, "unit": "USD", "end": "2025-06-30", "filed": "2025-07-30", "accn": "0000789019-25-000087", "form": "10-K"},
+        {"tag": "ResearchAndDevelopmentExpense", "value": 32500000000, "unit": "USD", "start": "2024-07-01", "end": "2025-06-30", "filed": "2025-07-30", "accn": "0000789019-25-000087", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 281700000000.0,
+        "operating_income": 128500000000.0,
+        "net_income": 101800000000.0,
+        "total_assets": 619000000000.0,
+        "research_and_development": 32500000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0001652044",
+      "name": "Alphabet Inc.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenues", "value": 402800000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001652044-26-000012", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 123400000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001652044-26-000012", "form": "10-K"},
+        {"tag": "Assets", "value": 502000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001652044-26-000012", "form": "10-K"},
+        {"tag": "StockholdersEquity", "value": 358000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001652044-26-000012", "form": "10-K"},
+        {"tag": "PaymentsToAcquirePropertyPlantAndEquipment", "value": 52000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001652044-26-000012", "form": "10-K"},
+        {"tag": "OperatingLeaseLiabilityCurrent", "value": 1500000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001652044-26-000012", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 402800000000.0,
+        "net_income": 123400000000.0,
+        "total_assets": 502000000000.0,
+        "stockholders_equity": 358000000000.0,
+        "capex": 52000000000.0
+      },
+      "unmapped": 1
+    },
+    {
+      "entity_id": "US:CIK0001018724",
+      "name": "Amazon.com Inc.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "RevenueFromContractWithCustomerExcludingAssessedTax", "value": 691300000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "CostOfRevenue", "value": 372000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "GrossProfit", "value": 319300000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 76200000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "Assets", "value": 601000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "Liabilities", "value": 341000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "StockholdersEquity", "value": 260000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "NetCashProvidedByUsedInOperatingActivities", "value": 130700000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "NetCashProvidedByUsedInInvestingActivities", "value": -95000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "NetCashProvidedByUsedInFinancingActivities", "value": -30000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"},
+        {"tag": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect", "value": 5700000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-05", "accn": "0001018724-26-000010", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 691300000000.0,
+        "cost_of_revenue": 372000000000.0,
+        "gross_profit": 319300000000.0,
+        "net_income": 76200000000.0,
+        "total_assets": 601000000000.0,
+        "total_liabilities": 341000000000.0,
+        "stockholders_equity": 260000000000.0,
+        "cfo": 130700000000.0,
+        "cfi": -95000000000.0,
+        "cff": -30000000000.0,
+        "net_change_in_cash": 5700000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0001045810",
+      "name": "NVIDIA Corp.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 1,
+      "raw": [
+        {"tag": "RevenueFromContractWithCustomerExcludingAssessedTax", "value": 214000000000, "unit": "USD", "start": "2025-01-27", "end": "2026-01-25", "filed": "2026-02-25", "accn": "0001045810-26-000009", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 118000000000, "unit": "USD", "start": "2025-01-27", "end": "2026-01-25", "filed": "2026-02-25", "accn": "0001045810-26-000009", "form": "10-K"},
+        {"tag": "EarningsPerShareDiluted", "value": 4.78, "unit": "USD/shares", "start": "2025-01-27", "end": "2026-01-25", "filed": "2026-02-25", "accn": "0001045810-26-000009", "form": "10-K"},
+        {"tag": "InventoryNet", "value": 11500000000, "unit": "USD", "end": "2026-01-25", "filed": "2026-02-25", "accn": "0001045810-26-000009", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 214000000000.0,
+        "net_income": 118000000000.0,
+        "eps_diluted": 4.78,
+        "inventory": 11500000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0001318605",
+      "name": "Tesla Inc.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenues", "value": 112000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0001318605-26-000011", "form": "10-K"},
+        {"tag": "ResearchAndDevelopmentExpense", "value": 5600000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0001318605-26-000011", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 8200000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0001318605-26-000011", "form": "10-K"},
+        {"tag": "Assets", "value": 130000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0001318605-26-000011", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 112000000000.0,
+        "research_and_development": 5600000000.0,
+        "net_income": 8200000000.0,
+        "total_assets": 130000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0000019617",
+      "name": "JPMorgan Chase & Co.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenues", "value": 178000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-20", "accn": "0000019617-26-000123", "form": "10-K"},
+        {"tag": "InterestExpense", "value": 95000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-20", "accn": "0000019617-26-000123", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 58000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-20", "accn": "0000019617-26-000123", "form": "10-K"},
+        {"tag": "Assets", "value": 4100000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-20", "accn": "0000019617-26-000123", "form": "10-K"},
+        {"tag": "InterestAndDividendIncomeOperating", "value": 141000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-20", "accn": "0000019617-26-000123", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 178000000000.0,
+        "interest_expense": 95000000000.0,
+        "net_income": 58000000000.0,
+        "total_assets": 4100000000000.0
+      },
+      "unmapped": 1
+    },
+    {
+      "entity_id": "US:CIK0000034088",
+      "name": "Exxon Mobil Corp.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "SalesRevenueNet", "value": 349000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-25", "accn": "0000034088-26-000014", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 33700000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-25", "accn": "0000034088-26-000014", "form": "10-K"},
+        {"tag": "DepreciationDepletionAndAmortization", "value": 24000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-25", "accn": "0000034088-26-000014", "form": "10-K"},
+        {"tag": "PropertyPlantAndEquipmentNet", "value": 265000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-25", "accn": "0000034088-26-000014", "form": "10-K"},
+        {"tag": "PaymentsOfDividendsCommonStock", "value": 17000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-25", "accn": "0000034088-26-000014", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 349000000000.0,
+        "net_income": 33700000000.0,
+        "depreciation_amortization": 24000000000.0,
+        "ppe_net": 265000000000.0,
+        "dividends_paid": 17000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0000104169",
+      "name": "Walmart Inc.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 1,
+      "raw": [
+        {"tag": "Revenues", "value": 681000000000, "unit": "USD", "start": "2025-02-01", "end": "2026-01-31", "filed": "2026-03-20", "accn": "0000104169-26-000018", "form": "10-K"},
+        {"tag": "InventoryNet", "value": 56000000000, "unit": "USD", "end": "2026-01-31", "filed": "2026-03-20", "accn": "0000104169-26-000018", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 22100000000, "unit": "USD", "start": "2025-02-01", "end": "2026-01-31", "filed": "2026-03-20", "accn": "0000104169-26-000018", "form": "10-K"},
+        {"tag": "Assets", "value": 252000000000, "unit": "USD", "end": "2026-01-31", "filed": "2026-03-20", "accn": "0000104169-26-000018", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 681000000000.0,
+        "inventory": 56000000000.0,
+        "net_income": 22100000000.0,
+        "total_assets": 252000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0000731766",
+      "name": "UnitedHealth Group Inc.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenues", "value": 435000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-18", "accn": "0000731766-26-000016", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 16500000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-18", "accn": "0000731766-26-000016", "form": "10-K"},
+        {"tag": "Goodwill", "value": 82000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-18", "accn": "0000731766-26-000016", "form": "10-K"},
+        {"tag": "Assets", "value": 300000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-18", "accn": "0000731766-26-000016", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 435000000000.0,
+        "net_income": 16500000000.0,
+        "goodwill": 82000000000.0,
+        "total_assets": 300000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0000018230",
+      "name": "Caterpillar Inc.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "SalesRevenueNet", "value": 67000000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-12", "accn": "0000018230-26-000013", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 10300000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-12", "accn": "0000018230-26-000013", "form": "10-K"},
+        {"tag": "AssetsCurrent", "value": 41000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-12", "accn": "0000018230-26-000013", "form": "10-K"},
+        {"tag": "LiabilitiesCurrent", "value": 29000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-12", "accn": "0000018230-26-000013", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 67000000000.0,
+        "net_income": 10300000000.0,
+        "total_current_assets": 41000000000.0,
+        "total_current_liabilities": 29000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0000021344",
+      "name": "Coca-Cola Co.",
+      "taxonomy": "us-gaap",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "RevenueFromContractWithCustomerExcludingAssessedTax", "value": 48500000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-17", "accn": "0000021344-26-000010", "form": "10-K"},
+        {"tag": "SellingGeneralAndAdministrativeExpense", "value": 15500000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-17", "accn": "0000021344-26-000010", "form": "10-K"},
+        {"tag": "NetIncomeLoss", "value": 11200000000, "unit": "USD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-17", "accn": "0000021344-26-000010", "form": "10-K"},
+        {"tag": "RetainedEarningsAccumulatedDeficit", "value": 69000000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-17", "accn": "0000021344-26-000010", "form": "10-K"},
+        {"tag": "MinorityInterest", "value": 1200000000, "unit": "USD", "end": "2025-12-31", "filed": "2026-02-17", "accn": "0000021344-26-000010", "form": "10-K"}
+      ],
+      "expected": {
+        "revenue": 48500000000.0,
+        "selling_general_admin": 15500000000.0,
+        "net_income": 11200000000.0,
+        "retained_earnings": 69000000000.0,
+        "minority_interest": 1200000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0000937966",
+      "name": "ASML Holding N.V.",
+      "taxonomy": "ifrs-full",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenue", "value": 32600000000, "unit": "EUR", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0000937966-26-000006", "form": "20-F"},
+        {"tag": "GrossProfit", "value": 17400000000, "unit": "EUR", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0000937966-26-000006", "form": "20-F"},
+        {"tag": "ProfitLoss", "value": 9600000000, "unit": "EUR", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0000937966-26-000006", "form": "20-F"},
+        {"tag": "Assets", "value": 44000000000, "unit": "EUR", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0000937966-26-000006", "form": "20-F"},
+        {"tag": "EquityAttributableToOwnersOfParent", "value": 21000000000, "unit": "EUR", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0000937966-26-000006", "form": "20-F"},
+        {"tag": "CashFlowsFromUsedInOperatingActivities", "value": 11200000000, "unit": "EUR", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0000937966-26-000006", "form": "20-F"},
+        {"tag": "EmployeeBenefitsExpense", "value": 4200000000, "unit": "EUR", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-01-28", "accn": "0000937966-26-000006", "form": "20-F"}
+      ],
+      "expected": {
+        "revenue": 32600000000.0,
+        "gross_profit": 17400000000.0,
+        "net_income": 9600000000.0,
+        "total_assets": 44000000000.0,
+        "stockholders_equity": 21000000000.0,
+        "cfo": 11200000000.0
+      },
+      "unmapped": 1
+    },
+    {
+      "entity_id": "US:CIK0001780492",
+      "name": "Novo Nordisk A/S",
+      "taxonomy": "ifrs-full",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenue", "value": 305000000000, "unit": "DKK", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001780492-26-000008", "form": "20-F"},
+        {"tag": "ProfitLossFromOperatingActivities", "value": 132000000000, "unit": "DKK", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001780492-26-000008", "form": "20-F"},
+        {"tag": "ProfitLossBeforeTax", "value": 128000000000, "unit": "DKK", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001780492-26-000008", "form": "20-F"},
+        {"tag": "IncomeTaxExpenseContinuingOperations", "value": 28000000000, "unit": "DKK", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001780492-26-000008", "form": "20-F"},
+        {"tag": "ProfitLoss", "value": 100000000000, "unit": "DKK", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001780492-26-000008", "form": "20-F"},
+        {"tag": "Assets", "value": 480000000000, "unit": "DKK", "end": "2025-12-31", "filed": "2026-02-04", "accn": "0001780492-26-000008", "form": "20-F"}
+      ],
+      "expected": {
+        "revenue": 305000000000.0,
+        "operating_income": 132000000000.0,
+        "pretax_income": 128000000000.0,
+        "income_tax_expense": 28000000000.0,
+        "net_income": 100000000000.0,
+        "total_assets": 480000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0001011396",
+      "name": "SAP SE",
+      "taxonomy": "ifrs-full",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenue", "value": 37000000000, "unit": "EUR", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-10", "accn": "0001011396-26-000009", "form": "20-F"},
+        {"tag": "ProfitLoss", "value": 5200000000, "unit": "EUR", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-10", "accn": "0001011396-26-000009", "form": "20-F"},
+        {"tag": "IntangibleAssetsOtherThanGoodwill", "value": 4100000000, "unit": "EUR", "end": "2025-12-31", "filed": "2026-03-10", "accn": "0001011396-26-000009", "form": "20-F"},
+        {"tag": "Goodwill", "value": 39000000000, "unit": "EUR", "end": "2025-12-31", "filed": "2026-03-10", "accn": "0001011396-26-000009", "form": "20-F"},
+        {"tag": "Liabilities", "value": 31000000000, "unit": "EUR", "end": "2025-12-31", "filed": "2026-03-10", "accn": "0001011396-26-000009", "form": "20-F"}
+      ],
+      "expected": {
+        "revenue": 37000000000.0,
+        "net_income": 5200000000.0,
+        "intangible_assets": 4100000000.0,
+        "goodwill": 39000000000.0,
+        "total_liabilities": 31000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "US:CIK0001046179",
+      "name": "Taiwan Semiconductor Manufacturing Co.",
+      "taxonomy": "ifrs-full",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "Revenue", "value": 3200000000000, "unit": "TWD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-04-20", "accn": "0001046179-26-000007", "form": "20-F"},
+        {"tag": "CostOfSales", "value": 1450000000000, "unit": "TWD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-04-20", "accn": "0001046179-26-000007", "form": "20-F"},
+        {"tag": "ProfitLoss", "value": 1300000000000, "unit": "TWD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-04-20", "accn": "0001046179-26-000007", "form": "20-F"},
+        {"tag": "CashAndCashEquivalents", "value": 2100000000000, "unit": "TWD", "end": "2025-12-31", "filed": "2026-04-20", "accn": "0001046179-26-000007", "form": "20-F"},
+        {"tag": "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", "value": 1100000000000, "unit": "TWD", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-04-20", "accn": "0001046179-26-000007", "form": "20-F"}
+      ],
+      "expected": {
+        "revenue": 3200000000000.0,
+        "cost_of_revenue": 1450000000000.0,
+        "net_income": 1300000000000.0,
+        "cash": 2100000000000.0,
+        "capex": 1100000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "CN:600519",
+      "name": "贵州茅台",
+      "taxonomy": "tushare",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "total_revenue", "value": 178000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-26", "accn": "CNINFO-600519-2025-ANN", "form": "年度报告"},
+        {"tag": "total_cogs", "value": 15000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-26", "accn": "CNINFO-600519-2025-ANN", "form": "年度报告"},
+        {"tag": "n_income_attr_p", "value": 89000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-26", "accn": "CNINFO-600519-2025-ANN", "form": "年度报告"},
+        {"tag": "total_assets", "value": 320000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-26", "accn": "CNINFO-600519-2025-ANN", "form": "年度报告"},
+        {"tag": "total_hldr_eqy_exc_min_int", "value": 240000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-26", "accn": "CNINFO-600519-2025-ANN", "form": "年度报告"},
+        {"tag": "n_cashflow_act", "value": 96000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-26", "accn": "CNINFO-600519-2025-ANN", "form": "年度报告"},
+        {"tag": "minority_int", "value": 8000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-26", "accn": "CNINFO-600519-2025-ANN", "form": "年度报告"}
+      ],
+      "expected": {
+        "revenue": 178000000000.0,
+        "cost_of_revenue": 15000000000.0,
+        "net_income": 89000000000.0,
+        "total_assets": 320000000000.0,
+        "stockholders_equity": 240000000000.0,
+        "cfo": 96000000000.0,
+        "minority_interest": 8000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "CN:000858",
+      "name": "五粮液",
+      "taxonomy": "tushare",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "total_revenue", "value": 92000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-30", "accn": "CNINFO-000858-2025-ANN", "form": "年度报告"},
+        {"tag": "operate_profit", "value": 47000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-30", "accn": "CNINFO-000858-2025-ANN", "form": "年度报告"},
+        {"tag": "n_income_attr_p", "value": 35000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-30", "accn": "CNINFO-000858-2025-ANN", "form": "年度报告"},
+        {"tag": "basic_eps", "value": 9.02, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-30", "accn": "CNINFO-000858-2025-ANN", "form": "年度报告"},
+        {"tag": "total_assets", "value": 170000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-30", "accn": "CNINFO-000858-2025-ANN", "form": "年度报告"},
+        {"tag": "inventories", "value": 17000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-30", "accn": "CNINFO-000858-2025-ANN", "form": "年度报告"},
+        {"tag": "prepay", "value": 500000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-30", "accn": "CNINFO-000858-2025-ANN", "form": "年度报告"}
+      ],
+      "expected": {
+        "revenue": 92000000000.0,
+        "operating_income": 47000000000.0,
+        "net_income": 35000000000.0,
+        "eps_basic": 9.02,
+        "total_assets": 170000000000.0,
+        "inventory": 17000000000.0
+      },
+      "unmapped": 1
+    },
+    {
+      "entity_id": "CN:601318",
+      "name": "中国平安",
+      "taxonomy": "tushare",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "total_revenue", "value": 1020000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-19", "accn": "CNINFO-601318-2025-ANN", "form": "年度报告"},
+        {"tag": "n_income_attr_p", "value": 132000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-19", "accn": "CNINFO-601318-2025-ANN", "form": "年度报告"},
+        {"tag": "total_assets", "value": 11800000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-19", "accn": "CNINFO-601318-2025-ANN", "form": "年度报告"},
+        {"tag": "total_liab", "value": 10600000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-19", "accn": "CNINFO-601318-2025-ANN", "form": "年度报告"},
+        {"tag": "total_hldr_eqy_exc_min_int", "value": 980000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-19", "accn": "CNINFO-601318-2025-ANN", "form": "年度报告"},
+        {"tag": "money_cap", "value": 620000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-19", "accn": "CNINFO-601318-2025-ANN", "form": "年度报告"}
+      ],
+      "expected": {
+        "revenue": 1020000000000.0,
+        "net_income": 132000000000.0,
+        "total_assets": 11800000000000.0,
+        "total_liabilities": 10600000000000.0,
+        "stockholders_equity": 980000000000.0,
+        "cash": 620000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "CN:300750",
+      "name": "宁德时代",
+      "taxonomy": "tushare",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "total_revenue", "value": 420000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"},
+        {"tag": "rd_exp", "value": 22000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"},
+        {"tag": "n_income_attr_p", "value": 58000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"},
+        {"tag": "n_cashflow_act", "value": 88000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"},
+        {"tag": "n_cashflow_inv_act", "value": -56000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"},
+        {"tag": "n_cash_flows_fnc_act", "value": -12000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"},
+        {"tag": "c_pay_acq_const_fiolta", "value": 33000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"},
+        {"tag": "fix_assets", "value": 120000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-14", "accn": "CNINFO-300750-2025-ANN", "form": "年度报告"}
+      ],
+      "expected": {
+        "revenue": 420000000000.0,
+        "research_and_development": 22000000000.0,
+        "net_income": 58000000000.0,
+        "cfo": 88000000000.0,
+        "cfi": -56000000000.0,
+        "cff": -12000000000.0,
+        "capex": 33000000000.0,
+        "ppe_net": 120000000000.0
+      },
+      "unmapped": 0
+    },
+    {
+      "entity_id": "HK:00700",
+      "name": "腾讯控股",
+      "taxonomy": "futu",
+      "fiscal_year_end_month": 12,
+      "raw": [
+        {"tag": "营业收入", "value": 712000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-22", "accn": "HKEX-00700-2025-ANN", "form": "年報"},
+        {"tag": "毛利", "value": 392000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-22", "accn": "HKEX-00700-2025-ANN", "form": "年報"},
+        {"tag": "净利润", "value": 205000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-22", "accn": "HKEX-00700-2025-ANN", "form": "年報"},
+        {"tag": "总资产", "value": 1900000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-22", "accn": "HKEX-00700-2025-ANN", "form": "年報"},
+        {"tag": "总负债", "value": 830000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-22", "accn": "HKEX-00700-2025-ANN", "form": "年報"},
+        {"tag": "权益总额", "value": 1070000000000, "unit": "CNY", "end": "2025-12-31", "filed": "2026-03-22", "accn": "HKEX-00700-2025-ANN", "form": "年報"},
+        {"tag": "经营活动现金流净额", "value": 258000000000, "unit": "CNY", "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-03-22", "accn": "HKEX-00700-2025-ANN", "form": "年報"}
+      ],
+      "expected": {
+        "revenue": 712000000000.0,
+        "gross_profit": 392000000000.0,
+        "net_income": 205000000000.0,
+        "total_assets": 1900000000000.0,
+        "total_liabilities": 830000000000.0,
+        "stockholders_equity": 1070000000000.0,
+        "cfo": 258000000000.0
+      },
+      "unmapped": 0
+    }
+  ]
+}

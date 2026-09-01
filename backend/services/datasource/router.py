@@ -646,6 +646,19 @@ class DataSourceRouter:
             capabilities=["sentiment", "trending"],
         )
 
+        # 一手申报源远程节点 (SEC EDGAR / HKEXnews 披露易 / 巨潮)
+        # SEC 连接层 (UA/限流/落盘缓存) 已下沉 data_subservice (_internal/sec_edgar +
+        # filings_worker.py)。主服务不装任何 SEC SDK, 仅经 HTTP+HMAC 调 source=filings。
+        # ⚠️ SEC 采集节点固定美国节点 (docs/28 §二), 禁止从 CN-DATA 节点直连; 默认
+        # http://localhost:8001 与主节点 data_subservice 同机。
+        filings_url = os.getenv("FILINGS_REMOTE_URL", "http://localhost:8001").strip()
+        self._nodes["filings_master"] = DataSourceNode(
+            name="filings_master",
+            url=filings_url,
+            weight=10,
+            capabilities=["filings"],
+        )
+
         logger.info(f"[Router] 初始化完成: enabled={self._enabled}, nodes={list(self._nodes.keys())}")
 
     @staticmethod
@@ -1922,6 +1935,61 @@ class DataSourceRouter:
 
         logger.warning("[Sentiment] 远程节点失败（后端已移除本地兜底）")
         return {"status": "error", "message": "Sentiment remote node failed (local SDK disabled)"}
+
+    async def fetch_filings(self, action: str, **params) -> Dict[str, Any]:
+        """Filings 一手申报源远程代理 (FIN-01/04, docs/28 §二)。
+
+        SEC EDGAR / 披露易 / 巨潮的 HTTP 客户端、UA 合规与 ≤10 req/s 限流全部在
+        `data_subservice/filings_worker.py`；主服务只经本方法转发，绝不直连外网。
+        action ∈ {SYMBOLS, SUBMISSIONS, COMPANY_FACTS, FRAMES, HKEX_FILINGS, CNINFO_FILINGS}。
+
+        限流/退避类失败由 `_update_node_status(error_category=...)` 归类，**不计入**
+        熔断失败计数 (AGENTS §4)。
+        """
+        record_breaker = bool(params.pop("_record_breaker", True))
+        remote_action = (action or "").upper()
+        offline = self._maybe_offline("filings", remote_action, **params)
+        if offline is not None:
+            return offline
+
+        remote_node = self._nodes.get("filings_master")
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
+            logger.warning("[Filings] 远程节点不可用（主服务禁止直连 SEC/披露易/巨潮）")
+            return {"status": "error", "message": "No healthy Filings remote node (direct API disabled)"}
+
+        try:
+            payload = {"source": "filings", "action": remote_action, "params": dict(params)}
+            result = await self._send_request(remote_node, "filings", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(
+                    remote_node.name, success=True, action=remote_action, record_breaker=record_breaker
+                )
+                return result
+            ec = result.get("error_category")
+            await self._update_node_status(
+                remote_node.name,
+                success=False,
+                error=str(result.get("message")),
+                error_category=ErrorCategory(ec) if ec in {e.value for e in ErrorCategory} else ErrorCategory.NORMAL,
+                action=remote_action,
+                record_breaker=record_breaker,
+            )
+        except Exception as e:
+            logger.warning(f"[Filings] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(e), action=remote_action, record_breaker=record_breaker
+            )
+
+        logger.warning(f"[Filings] 远程节点失败: {remote_action}")
+        return {
+            "status": "error",
+            "message": f"Filings remote node failed (direct API disabled) action={remote_action}",
+        }
 
     # ─────────────────────────────────────────
     #  DIST-19: AKShare STALE 缓存降级

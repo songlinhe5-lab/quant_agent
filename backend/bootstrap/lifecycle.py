@@ -74,6 +74,17 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"⚠️ [Startup] 数据源适配器注册失败 (部分源可能不可用): {e}")
 
+    # 0.05 财报回填任务登记簿：接线上下文工厂 + 收敛上次进程留下的 running（FIN-10）
+    try:
+        from backend.services.financials import jobs as fin_jobs
+
+        fin_jobs.configure(AsyncSessionLocal)
+        stale = await fin_jobs.mark_stale_failed()
+        if stale:
+            log.warning(f"⚠️ [Startup] 财报任务 {stale} 条残留 pending/running 已收敛为 failed")
+    except Exception as e:
+        log.warning(f"⚠️ [Startup] 财报任务登记簿接线失败（回填仍可用，仅无持久化）: {e}")
+
     # 0.1 初始化默认系统管理员账号
     log.info("🚀 [Startup] 正在初始化系统默认账号...")
     try:

@@ -1,0 +1,366 @@
+{
+  "version": "2026.08.31",
+  "updated_at": "2026-08-31",
+  "default_sign": 1,
+  "taxonomies": {
+    "us-gaap": {
+      "verified": true,
+      "note": "SEC XBRL 官方 taxonomy 标签，来源 EDGAR companyfacts（一手，权威）"
+    },
+    "ifrs-full": {
+      "verified": false,
+      "note": "IFRS taxonomy 标签，用于 20-F/6-K 发行人；需 20-F 实测校对后转 verified"
+    },
+    "tushare": {
+      "verified": false,
+      "note": "tushare pro income/balancesheet/cashflow 接口列名（A股二手数字层）；需实测校对"
+    },
+    "futu": {
+      "verified": false,
+      "note": "富途 get_financials_statements 的 display_name（中文）。field_id 是整数且非稳定语义键（见 data_subservice/futu_src/option_fund_handler.py 实测注释），故以中文名为 key；需 OpenD 实测校对"
+    }
+  },
+  "concepts": {
+    "revenue": {
+      "label": "营业收入",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": [
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "Revenues",
+        "SalesRevenueNet",
+        "SalesRevenueGoodsNet"
+      ],
+      "ifrs-full": ["Revenue", "RevenueFromContractsWithCustomers", "RevenueFromSaleOfGoods"],
+      "futu": ["营业收入", "营业额", "收益"],
+      "tushare": ["total_revenue", "revenue"]
+    },
+    "cost_of_revenue": {
+      "label": "营业成本",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold"],
+      "ifrs-full": ["CostOfSales", "CostOfRevenue"],
+      "futu": ["营业成本", "销售成本"],
+      "tushare": ["total_cogs", "operating_cost"]
+    },
+    "gross_profit": {
+      "label": "毛利润",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["GrossProfit"],
+      "ifrs-full": ["GrossProfit"],
+      "futu": ["毛利"],
+      "tushare": []
+    },
+    "research_and_development": {
+      "label": "研发费用",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["ResearchAndDevelopmentExpense"],
+      "ifrs-full": ["ResearchAndDevelopmentExpense"],
+      "futu": ["研发费用"],
+      "tushare": ["rd_exp"]
+    },
+    "selling_general_admin": {
+      "label": "销售管理费用",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["SellingGeneralAndAdministrativeExpense", "GeneralAndAdministrativeExpense"],
+      "ifrs-full": ["AdministrativeExpense", "SellingAndDistributionExpense"],
+      "futu": ["销售及管理费用"],
+      "tushare": ["admin_exp", "sell_exp"]
+    },
+    "depreciation_amortization": {
+      "label": "折旧与摊销",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet"],
+      "ifrs-full": ["DepreciationDepletionAndAmortisationExpense", "DepreciationExpense"],
+      "futu": ["折旧与摊销"],
+      "tushare": ["depr_fa_coga_dpba"]
+    },
+    "operating_income": {
+      "label": "营业利润",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["OperatingIncomeLoss"],
+      "ifrs-full": ["ProfitLossFromOperatingActivities"],
+      "futu": ["经营溢利", "营业利润"],
+      "tushare": ["operate_profit"]
+    },
+    "interest_expense": {
+      "label": "利息支出",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["InterestExpense"],
+      "ifrs-full": ["FinanceCosts"],
+      "futu": ["财务费用"],
+      "tushare": ["fin_exp"]
+    },
+    "pretax_income": {
+      "label": "税前利润",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": [
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"
+      ],
+      "ifrs-full": ["ProfitLossBeforeTax"],
+      "futu": ["除税前溢利", "税前利润"],
+      "tushare": []
+    },
+    "income_tax_expense": {
+      "label": "所得税费用",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["IncomeTaxExpenseBenefit"],
+      "ifrs-full": ["IncomeTaxExpenseContinuingOperations", "IncomeTaxExpenseBenefit"],
+      "futu": ["所得税", "所得税费用"],
+      "tushare": ["income_tax"]
+    },
+    "net_income": {
+      "label": "净利润",
+      "statement": "income",
+      "period_type": "duration",
+      "us-gaap": ["NetIncomeLoss", "ProfitLoss"],
+      "ifrs-full": ["ProfitLoss", "ProfitLossAttributableToOwnersOfParent"],
+      "futu": ["年内溢利", "股东应占溢利", "净利润"],
+      "tushare": ["n_income_attr_p", "n_income"]
+    },
+    "eps_basic": {
+      "label": "基本每股收益",
+      "statement": "income",
+      "period_type": "duration",
+      "unit": "per_share",
+      "us-gaap": ["EarningsPerShareBasic"],
+      "ifrs-full": ["BasicEarningsPerShare"],
+      "futu": ["每股基本盈利"],
+      "tushare": ["basic_eps"]
+    },
+    "eps_diluted": {
+      "label": "摊薄每股收益",
+      "statement": "income",
+      "period_type": "duration",
+      "unit": "per_share",
+      "us-gaap": ["EarningsPerShareDiluted"],
+      "ifrs-full": ["DilutedEarningsPerShare"],
+      "futu": ["每股摊薄盈利"],
+      "tushare": ["diluted_eps"]
+    },
+    "shares_diluted": {
+      "label": "摊薄股本",
+      "statement": "income",
+      "period_type": "duration",
+      "unit": "shares",
+      "us-gaap": ["WeightedAverageNumberOfDilutedSharesOutstanding"],
+      "ifrs-full": ["WeightedAverageNumberOfDilutedSharesOutstanding"],
+      "futu": [],
+      "tushare": []
+    },
+    "cash": {
+      "label": "现金及等价物",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": [
+        "CashAndCashEquivalentsAtCarryingValue",
+        "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"
+      ],
+      "ifrs-full": ["CashAndCashEquivalents"],
+      "futu": ["现金及现金等价物"],
+      "tushare": ["money_cap"]
+    },
+    "accounts_receivable": {
+      "label": "应收账款",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent"],
+      "ifrs-full": ["TradeAndOtherReceivablesCurrent", "TradeReceivablesCurrent"],
+      "futu": ["应收账款"],
+      "tushare": ["accounts_receiv"]
+    },
+    "inventory": {
+      "label": "存货",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["InventoryNet"],
+      "ifrs-full": ["Inventories"],
+      "futu": ["存货"],
+      "tushare": ["inventories"]
+    },
+    "total_current_assets": {
+      "label": "流动资产合计",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["AssetsCurrent"],
+      "ifrs-full": ["CurrentAssets"],
+      "futu": ["流动资产"],
+      "tushare": ["total_cur_assets"]
+    },
+    "ppe_net": {
+      "label": "固定资产净额",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["PropertyPlantAndEquipmentNet"],
+      "ifrs-full": ["PropertyPlantAndEquipment"],
+      "futu": ["固定资产"],
+      "tushare": ["fix_assets"]
+    },
+    "goodwill": {
+      "label": "商誉",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["Goodwill"],
+      "ifrs-full": ["Goodwill"],
+      "futu": ["商誉"],
+      "tushare": ["goodwill"]
+    },
+    "intangible_assets": {
+      "label": "无形资产",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["FiniteLivedIntangibleAssetsNet", "IntangibleAssetsNetExcludingGoodwill"],
+      "ifrs-full": ["IntangibleAssetsOtherThanGoodwill"],
+      "futu": ["无形资产"],
+      "tushare": ["intan_assets"]
+    },
+    "total_assets": {
+      "label": "总资产",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["Assets"],
+      "ifrs-full": ["Assets"],
+      "futu": ["资产总值", "总资产"],
+      "tushare": ["total_assets"]
+    },
+    "accounts_payable": {
+      "label": "应付账款",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["AccountsPayableCurrent"],
+      "ifrs-full": ["TradeAndOtherPayablesCurrent"],
+      "futu": ["应付账款"],
+      "tushare": ["acct_payable"]
+    },
+    "total_current_liabilities": {
+      "label": "流动负债合计",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["LiabilitiesCurrent"],
+      "ifrs-full": ["CurrentLiabilities"],
+      "futu": ["流动负债"],
+      "tushare": ["total_cur_liab"]
+    },
+    "long_term_debt": {
+      "label": "长期借款",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["LongTermDebtNoncurrent", "LongTermDebt"],
+      "ifrs-full": ["NoncurrentBorrowings"],
+      "futu": ["长期借款"],
+      "tushare": ["lt_borr"]
+    },
+    "total_liabilities": {
+      "label": "总负债",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["Liabilities"],
+      "ifrs-full": ["Liabilities"],
+      "futu": ["负债总值", "总负债"],
+      "tushare": ["total_liab"]
+    },
+    "stockholders_equity": {
+      "label": "归母股东权益",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": [
+        "StockholdersEquity",
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"
+      ],
+      "ifrs-full": ["EquityAttributableToOwnersOfParent", "Equity"],
+      "futu": ["权益总额", "股东权益"],
+      "tushare": ["total_hldr_eqy_exc_min_int"]
+    },
+    "minority_interest": {
+      "label": "少数股东权益",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["MinorityInterest"],
+      "ifrs-full": ["NoncontrollingInterests"],
+      "futu": ["少数股东权益"],
+      "tushare": ["minority_int"]
+    },
+    "retained_earnings": {
+      "label": "留存收益",
+      "statement": "balance",
+      "period_type": "instant",
+      "us-gaap": ["RetainedEarningsAccumulatedDeficit"],
+      "ifrs-full": ["RetainedEarnings"],
+      "futu": ["留存收益"],
+      "tushare": ["undistributed_profit"]
+    },
+    "cfo": {
+      "label": "经营活动现金流",
+      "statement": "cash",
+      "period_type": "duration",
+      "us-gaap": [
+        "NetCashProvidedByUsedInOperatingActivities",
+        "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"
+      ],
+      "ifrs-full": ["CashFlowsFromUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivities"],
+      "futu": ["经营活动现金流净额", "经营活动所得现金净额"],
+      "tushare": ["n_cashflow_act"]
+    },
+    "capex": {
+      "label": "资本开支",
+      "statement": "cash",
+      "period_type": "duration",
+      "us-gaap": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
+      "ifrs-full": [
+        "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+        "PaymentsToAcquirePropertyPlantAndEquipment"
+      ],
+      "futu": ["购置固定资产"],
+      "tushare": ["c_pay_acq_const_fiolta"]
+    },
+    "cfi": {
+      "label": "投资活动现金流",
+      "statement": "cash",
+      "period_type": "duration",
+      "us-gaap": ["NetCashProvidedByUsedInInvestingActivities"],
+      "ifrs-full": ["CashFlowsFromUsedInInvestingActivities"],
+      "futu": ["投资活动现金流净额"],
+      "tushare": ["n_cashflow_inv_act"]
+    },
+    "cff": {
+      "label": "融资活动现金流",
+      "statement": "cash",
+      "period_type": "duration",
+      "us-gaap": ["NetCashProvidedByUsedInFinancingActivities"],
+      "ifrs-full": ["CashFlowsFromUsedInFinancingActivities"],
+      "futu": ["融资活动现金流净额"],
+      "tushare": ["n_cash_flows_fnc_act"]
+    },
+    "dividends_paid": {
+      "label": "已付股息",
+      "statement": "cash",
+      "period_type": "duration",
+      "us-gaap": ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],
+      "ifrs-full": ["DividendsPaidClassifiedAsFinancingActivities"],
+      "futu": ["已付股息"],
+      "tushare": []
+    },
+    "net_change_in_cash": {
+      "label": "现金净变动",
+      "statement": "cash",
+      "period_type": "duration",
+      "us-gaap": [
+        "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect",
+        "CashAndCashEquivalentsPeriodIncreaseDecrease"
+      ],
+      "ifrs-full": ["IncreaseDecreaseInCashAndCashEquivalents"],
+      "futu": ["现金及现金等价物增加净额"],
+      "tushare": []
+    }
+  }
+}

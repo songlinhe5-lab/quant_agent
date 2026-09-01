@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { KeepAliveOutlet } from './keep-alive-outlet'
-import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell, Database, Users, Microscope } from 'lucide-react'
+import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell, Database, Users, Microscope, FileSpreadsheet } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -61,6 +61,7 @@ const modules: NavItem[] = [
   { url: '/strategy', name: '策略研发工作台', label: 'Strategy Dev', icon: Code2, domain: 'research' },
   { url: '/research', name: '投研工作台', label: 'Research', icon: Microscope, domain: 'research' },
   { url: '/research-team', name: '专家团投研会', label: 'Research Team', icon: Users, domain: 'research' },
+  { url: '/financials', name: '个股财报看板', label: 'Financials', icon: FileSpreadsheet, domain: 'research' },
   { url: '/backtest', name: '高频回测引擎', label: 'Backtest', icon: FlaskConical, domain: 'trading' },
   { url: '/oms', name: '订单中枢与算力节点', label: 'OMS & Bots', icon: Bot, domain: 'trading', badge: '3' },
   { url: '/risk', name: '资产风控与高级归因', label: 'Risk', icon: ShieldAlert, domain: 'risk' },

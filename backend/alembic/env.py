@@ -20,6 +20,7 @@ load_dotenv()
 # noqa: E402 - load_dotenv() 必须在 import 之前运行
 from backend.core import (  # noqa: E402
     datalake_models,  # noqa: F401
+    financials_models,  # noqa: F401
     models,  # noqa: F401
 )
 from backend.core.database import Base  # noqa: E402

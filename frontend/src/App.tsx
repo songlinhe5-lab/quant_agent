@@ -58,6 +58,7 @@ const ResearchWorkspaceModule = lazyWithRetry(() => import('@/features/research/
 const ApmModule = lazyWithRetry(() => import('@/features/system/performance-panel').then(m => ({ default: m.PerformancePanel })))
 const AlertCenterModule = lazyWithRetry(() => import('@/features/trading/alert-center').then(m => ({ default: m.AlertCenterModule })))
 const CalendarsModule = lazyWithRetry(() => import('@/features/calendars/module').then(m => ({ default: m.CalendarsModule })))
+const FinancialsWorkbenchModule = lazyWithRetry(() => import('@/features/financials/financials-workbench').then(m => ({ default: m.FinancialsWorkbench })))
 const PaperModule = lazyWithRetry(() => import('@/features/paper/module').then(m => ({ default: m.PaperModule })))
 const SettingsPage = lazyWithRetry(() => import('@/features/settings/settings'))
 const BriefingSharePage = lazyWithRetry(() =>
@@ -116,6 +117,7 @@ export default function App() {
             <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="APM"><ApmModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Alerts"><AlertCenterModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/calendars" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Calendars"><CalendarsModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/financials" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Financials"><FinancialsWorkbenchModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/datasource-health" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="DataSourceHealth"><DataSourceHealthModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Paper"><PaperModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Settings"><SettingsPage /></ModuleErrorBoundary></Suspense>} />

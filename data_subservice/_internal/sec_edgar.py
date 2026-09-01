@@ -4,6 +4,7 @@
 - ``submissions``    公司申报索引（含全部近期 filing 元数据）
 - ``companyfacts``   XBRL 全量事实（单公司可达数 MB，必须落盘缓存）
 - ``frames``         市场截面（一次请求拿全市场某 tag 某期取值，FIN-06 同业分位用）
+- ``symbols``        ticker → CIK 对照表（FIN-04 实体解析；周更，长 TTL 缓存）
 
 合规红线（docs/28 §二「采集合规」）：
 - SEC 要求描述性 ``User-Agent``（含联系邮箱），缺失即 403；
@@ -17,10 +18,13 @@ XBRL tag → 标准科目的映射在 backend/domain/financials（FIN-02）。
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
+import re
 import time
 from collections import deque
+from html import unescape as html_unescape
 from pathlib import Path
 from typing import Any, Callable
 
@@ -29,6 +33,21 @@ import httpx
 from data_subservice._internal.logger import logger
 
 _BASE = "https://data.sec.gov"
+_WWW_BASE = "https://www.sec.gov"
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_BLOCK_RE = re.compile(r"</(p|div|tr|table|h[1-6]|li)>", re.IGNORECASE)
+
+
+def _html_to_text(html: str) -> str:
+    """确定性 HTML → 纯文本：去 script/style、块级标签换行、剥其余标签、折叠空白。"""
+    s = re.sub(r"<(script|style)[\s\S]*?</\1>", " ", html, flags=re.IGNORECASE)
+    s = _BLOCK_RE.sub("\n", s)
+    s = _TAG_RE.sub(" ", s)
+    s = html_unescape(s)
+    lines = (re.sub(r"\s+", " ", ln).strip() for ln in s.split("\n"))  # Unicode \s 含 unescape 后的 \xa0
+    return "\n".join(ln for ln in lines if ln)
+
 
 # 默认 UA：描述性 + 联系邮箱（SEC fair access 政策要求）。
 # 生产必须经 SEC_EDGAR_USER_AGENT 覆盖为真实可达邮箱，否则可能被 SEC 封禁。
@@ -96,13 +115,13 @@ class SecEdgarService:
 
     # ── 内部 HTTP ──
 
-    async def _get_json(self, url: str, timeout: float = 30.0) -> dict[str, Any]:
+    async def _get_json(self, url: str, timeout: float = 30.0, host: str = "data.sec.gov") -> dict[str, Any]:
         """带 UA + 限流的 GET JSON。错误统一 {status:error}，429 标 rate_limit。"""
         await self._limiter.acquire()
         headers = {
             "User-Agent": _user_agent(),
             "Accept-Encoding": "gzip, deflate",
-            "Host": "data.sec.gov",
+            "Host": host,
         }
         try:
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
@@ -211,6 +230,77 @@ class SecEdgarService:
                     "message": "SEC frames 结构变化（缺 frame 键）",
                     "error_category": "structure_changed",
                 }
+        return resp
+
+    async def get_document_text(self, doc_url: str, max_chars: int = 2_000_000) -> dict[str, Any]:
+        """FIN-08 · 申报文档全文（FIN-08 文本层 YoY diff 的文本源）。
+
+        EDGAR 文档在 www.sec.gov/Archives（HTML/iXBRL，非 JSON），拉回后剥标签成纯文本。
+        只做确定性清洗（去 script/style/tag、折叠空白），**不做任何 LLM/摘要**；
+        文档可达数 MB，超过 max_chars 截断并标记 truncated（章节切分由主服务做）。
+
+        FIN-09 性能：已申报文档 immutable → 落盘永久缓存（缓存清洗后全文，
+        命中后再按 max_chars 截断；验收「缓存命中 < 1s」的关键）。
+        """
+        url = (doc_url or "").strip()
+        if not url.startswith(("http://", "https://")):
+            return {"status": "error", "message": "doc_url 非法", "error_category": "bad_request"}
+        key = f"doc_text_{hashlib.md5(url.encode('utf-8')).hexdigest()}"
+        cached = self._cache_read(key, float("inf"))  # immutable 文档永不过期
+        if cached is not None and isinstance(cached, dict) and cached.get("text") is not None:
+            return self._doc_text_payload(url, str(cached["text"]), max_chars, cached=True)
+
+        host = "www.sec.gov" if "sec.gov" in url else url.split("//", 1)[-1].split("/", 1)[0]
+        await self._limiter.acquire()
+        headers = {"User-Agent": _user_agent(), "Host": host}
+        try:
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as c:
+                r = await c.get(url, headers=headers)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"⚠️ [SEC] 文档拉取失败 {url}: {e}")
+            return {"status": "error", "message": f"document request failed: {e}"}
+        if r.status_code == 429:
+            return {"status": "error", "message": "SEC 429 rate limited", "error_category": "rate_limit"}
+        if r.status_code == 404:
+            return {"status": "error", "message": f"document 404: {url}", "error_category": "not_found"}
+        if r.status_code != 200:
+            return {"status": "error", "message": f"document HTTP {r.status_code}"}
+        text = _html_to_text(r.text)
+        self._cache_write(key, {"text": text})
+        return self._doc_text_payload(url, text, max_chars, cached=False)
+
+    @staticmethod
+    def _doc_text_payload(url: str, full_text: str, max_chars: int, *, cached: bool) -> dict[str, Any]:
+        """统一组装响应：缓存的是清洗后全文，截断随调用参数走。"""
+        return {
+            "status": "success",
+            "data": {"url": url, "text": full_text[:max_chars], "truncated": len(full_text) > max_chars},
+            "cached": cached,
+        }
+
+    async def get_symbols(self, use_cache: bool = True) -> dict[str, Any]:
+        """ticker → CIK 对照表（FIN-04 实体解析用）。
+
+        在 ``www.sec.gov/files``（非 data 子域），周更即可 → 默认 7 天缓存，
+        禁止每次请求都拉全表。响应结构变化必须显式失败（缺键 → structure_changed）。
+        """
+        ttl = float(os.getenv("SEC_SYMBOLS_TTL_SEC", "604800"))  # 默认 7d
+        key = "symbols_company_tickers"
+        if use_cache:
+            cached = self._cache_read(key, ttl)
+            if cached is not None:
+                return {"status": "success", "data": cached, "cached": True}
+        resp = await self._get_json(f"{_WWW_BASE}/files/company_tickers.json", host="www.sec.gov")
+        if resp.get("status") == "success":
+            data = resp["data"]
+            # 官方形状：{"0": {"cik_str":..,"ticker":..,"title":..}, ...}
+            if not isinstance(data, dict) or not all(isinstance(v, dict) for v in data.values()):
+                return {
+                    "status": "error",
+                    "message": "SEC company_tickers 结构变化",
+                    "error_category": "structure_changed",
+                }
+            self._cache_write(key, data)
         return resp
 
 
