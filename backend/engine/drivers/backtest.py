@@ -28,7 +28,7 @@ from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
 from backend.engine.strategy import Strategy
 
 if TYPE_CHECKING:
-    from backend.services.datalake.financial_pit import PointInTimeStore
+    from backend.services.financials.pit import FinancialFactsPit
     from backend.services.survivorship.survivorship_bias import SurvivorshipBiasTracker
 
 
@@ -69,14 +69,14 @@ class BacktestContext(BaseContext):
         df: pd.DataFrame,
         symbol: str,
         broker: SimBroker,
-        pit_store: Optional["PointInTimeStore"] = None,
+        pit: Optional["FinancialFactsPit"] = None,
         universe_tracker: Optional["SurvivorshipBiasTracker"] = None,
     ) -> None:
         super().__init__(mode="backtest", run_id=run_id, clock=clock)
         self._df = df
         self._symbol = symbol
         self._broker = broker
-        self._pit_store = pit_store
+        self._pit = pit
         self._universe_tracker = universe_tracker
         self._cursor: int = 0  # 当前 bar 索引
 
@@ -108,16 +108,14 @@ class BacktestContext(BaseContext):
         )
 
     def financial(self, symbol: str, field: str) -> Optional[float]:
-        """获取财务数据（Point-in-Time，as-of ctx.now）"""
-        if self._pit_store is None:
-            return None
-        from backend.services.datalake.financial_pit import PITQuery
+        """获取财务数据（Point-in-Time，as-of ctx.now）。
 
-        query = PITQuery(symbol=symbol, field=field, as_of_date=self.now.date())
-        points = self._pit_store.query_as_of(query)
-        if not points:
+        FIN-04b 起读 `financial_facts`（FinancialFactsPit）：只给首次披露值，
+        且 `filed_as_reported <= ctx.now`；未披露返回 None，架构级防前视。
+        """
+        if self._pit is None:
             return None
-        return points[-1].value
+        return self._pit.latest_as_of(symbol=symbol, field=field, as_of=self.now.date())
 
     def universe(self) -> List[str]:
         """获取当前时点的标的池"""
@@ -207,7 +205,7 @@ class BacktestDriver:
         df: pd.DataFrame,
         symbol: str,
         source_code: Optional[str] = None,
-        pit_store: Optional["PointInTimeStore"] = None,
+        pit: Optional["FinancialFactsPit"] = None,
         universe_tracker: Optional["SurvivorshipBiasTracker"] = None,
     ) -> BacktestResult:
         """运行回测
@@ -218,7 +216,8 @@ class BacktestDriver:
             df: K 线 DataFrame（index=DatetimeIndex，列含 open/high/low/close/volume）
             symbol: 标的代码
             source_code: 策略源码（用于计算 code_hash）
-            pit_store: PIT 财务数据存储（可选）
+            pit: financial_facts PIT 视图（FIN-04b，可选；预载见
+                `backend/services/financials/pit.py`）
             universe_tracker: 幸存者偏差追踪器（可选）
 
         Returns:
@@ -270,7 +269,7 @@ class BacktestDriver:
             df=df,
             symbol=symbol,
             broker=self._broker,
-            pit_store=pit_store,
+            pit=pit,
             universe_tracker=universe_tracker,
         )
 
