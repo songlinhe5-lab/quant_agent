@@ -54,7 +54,11 @@ async def upsert_facts(
     *,
     fiscal_year_end_month: int = 12,
 ) -> int:
-    """写入（或推进）一批事实，按唯一键幂等。返回写入行数。"""
+    """写入（或推进）一批事实，按唯一键幂等。返回写入行数。
+
+    勾稽失败项取每条事实自带的 `check_failed`（FIN-04 编排层算出）：只标注不丢数；
+    事实里没带时保留库里旧值，禁止把历史标注抹成空。
+    """
     written = 0
     for fact in facts:
         period = classify_period(fact.period_start, fact.period_end, fiscal_year_end_month)
@@ -88,6 +92,7 @@ async def upsert_facts(
                     accession_no=fact.accession_no,
                     source=fact.source,
                     source_tag=fact.source_tag,
+                    check_failed=list(fact.check_failed) if getattr(fact, "check_failed", None) else None,
                 )
             )
             written += 1
@@ -103,6 +108,8 @@ async def upsert_facts(
             row.accession_no = fact.accession_no or row.accession_no
         row.restated = row.value_as_reported != row.value_latest
         row.source_tag = fact.source_tag or row.source_tag
+        if getattr(fact, "check_failed", None):
+            row.check_failed = list(fact.check_failed)
         written += 1
 
     await session.commit()
