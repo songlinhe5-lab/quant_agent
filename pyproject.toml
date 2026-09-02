@@ -73,6 +73,8 @@ datasource-all = [
     # data_subservice/futu_src。请勿在主服务默认环境安装此包。
     "futu-api>=10.10.0",        # 港股/富途 (仅 data_subservice, 主服务走 HTTP 代理)
     "finnhub-python>=2.4.29",  # Finnhub REST+WebSocket (长连接实时流)
+    "baostock>=0.8.9",         # A股历史K线/季频财务/复权因子 (T+1, 免费协议源)
+    "mootdx>=0.11.0",         # 通达信协议: 盘中快照/分时/分钟线 (免费, 同步 socket; 核心依赖 tdxpy 在 base, 无需 [all] extra)
 ]
 # 本地向量化模型（可选，默认用 API 替代）
 local-embedding = [
@@ -235,3 +237,8 @@ dev = [
     "httpx>=0.27.0",
     "vcrpy>=8.3.0",
 ]
+
+[tool.uv]
+# mootdx 0.11.7 已停更且硬钉 httpx>=0.25.0,<0.26.0，与项目 httpx>=0.27.0 永久冲突。
+# mootdx 仅用 httpx 下载 bestip 服务器列表（httpx.get，0.27 API 兼容），强制对齐项目版本。
+override-dependencies = ["httpx>=0.27.0"]

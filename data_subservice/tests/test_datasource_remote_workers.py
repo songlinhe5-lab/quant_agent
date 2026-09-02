@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from data_subservice.baostock_worker import handle_baostock
 from data_subservice.dbnomics_worker import handle_dbnomics
 from data_subservice.finnhub_worker import handle_finnhub
 from data_subservice.fred_worker import handle_fred
 from data_subservice.rbi_worker import handle_rbi
 from data_subservice.search_worker import handle_search
+from data_subservice.tdx_worker import handle_tdx
 
 
 class TestFinnhubWorker:
@@ -90,3 +92,33 @@ class TestSearchWorker:
     async def test_unknown_source(self):
         out = await handle_search("foo", "SEARCH", {})
         assert "error" in out
+
+
+class TestBaoStockWorker:
+    @pytest.mark.asyncio
+    async def test_dispatch_kline(self):
+        with patch("data_subservice.baostock_worker.baostock_service") as svc:
+            svc.get_kline = MagicMock(return_value={"status": "success", "data": []})
+            out = await handle_baostock("KLINE_CN", {"symbol": "600000", "frequency": "d"})
+        assert out["status"] == "success"
+        svc.get_kline.assert_called_once_with("600000", start_date="", end_date="", frequency="d", adjust="front")
+
+    @pytest.mark.asyncio
+    async def test_unknown_action(self):
+        out = await handle_baostock("BOGUS", {})
+        assert out["status"] == "error" and "未知" in out["message"]
+
+
+class TestTdxWorker:
+    @pytest.mark.asyncio
+    async def test_dispatch_snapshot(self):
+        with patch("data_subservice.tdx_worker.tdx_service") as svc:
+            svc.get_snapshot = MagicMock(return_value={"status": "success", "data": [{"price": 10.5}]})
+            out = await handle_tdx("QUOTE_CN_SNAPSHOT", {"symbol": "600036"})
+        svc.get_snapshot.assert_called_once_with("600036")
+        assert out["data"][0]["price"] == 10.5
+
+    @pytest.mark.asyncio
+    async def test_unknown_action(self):
+        out = await handle_tdx("BOGUS", {})
+        assert out["status"] == "error" and "未知" in out["message"]

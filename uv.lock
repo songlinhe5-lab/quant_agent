@@ -16,6 +16,9 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+overrides = [{ name = "httpx", specifier = ">=0.27.0" }]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.2"
@@ -378,6 +381,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/9a/8e/82a0fe20a541c03148528be8cac2408564a6c9a0cc7e9171802bc1d26985/attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32", size = 952055, upload-time = "2026-03-19T14:22:25.026Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309", size = 67548, upload-time = "2026-03-19T14:22:23.645Z" },
+]
+
+[[package]]
+name = "baostock"
+version = "0.9.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pandas" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/1d/e62f47577d49d5dd98ff20c2e3fccc318e2b7984a06fb9abb9b1136f046c/baostock-0.9.3.tar.gz", hash = "sha256:16699d82d05037a8c133577fcdeb9ac0d5a7f31edc2432c4e883004e0a95e3f7", size = 26798, upload-time = "2026-07-10T06:02:54.081Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/16/f28fef16a5d9af31def7435b73efd91ed66b40b9c249387d6c11cdf2ba35/baostock-0.9.3-py3-none-any.whl", hash = "sha256:acbd19403285bc4e254cee8297cf0e2646ae2276e5af7e549deed3988ab02293", size = 51125, upload-time = "2026-07-10T06:02:52.767Z" },
 ]
 
 [[package]]
@@ -2720,6 +2735,25 @@ wheels = [
 ]
 
 [[package]]
+name = "mootdx"
+version = "0.11.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "httpx" },
+    { name = "prettytable" },
+    { name = "py-mini-racer" },
+    { name = "tdxpy" },
+    { name = "tenacity" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2a/19/ede725a3ca8a4a393116ebcf3417f3e708093ff4c55ba87d47fe26ca4b2f/mootdx-0.11.7.tar.gz", hash = "sha256:446c15f55c1509bc706a1b44d3f26a0f40d7ac016e326ffd6df3cf7ebcdf1c0a", size = 99153, upload-time = "2024-05-04T08:12:30.966Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/7c/dff7de8e9d29d49a22ffcb03f765cf829be5097019a760319d908009da54/mootdx-0.11.7-py3-none-any.whl", hash = "sha256:eab475f1d08b1c71ea51212c8b1b1038c4739798f7d95ad1a6fb7bb26e348ef2", size = 108803, upload-time = "2024-05-04T08:12:27.916Z" },
+]
+
+[[package]]
 name = "mpmath"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3872,6 +3906,18 @@ wheels = [
 ]
 
 [[package]]
+name = "prettytable"
+version = "3.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "wcwidth" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/81/74/ba08d81e668ccfe8658d7520a307e63c19862c08eb4ccb26f356c5239a7a/prettytable-3.18.0.tar.gz", hash = "sha256:439217116152244369caf3d9f1caf2f9fe29b03bd79e88d2928c8e718c95d680", size = 76373, upload-time = "2026-06-22T16:07:50.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/be/2e6798ace5cc036f5d05d36b7b2fd85346f1a708c87060890b070d0ec607/prettytable-3.18.0-py3-none-any.whl", hash = "sha256:b3346e0e6f79180833aebaac088ae926340586cf6d7d991b9eb125b65f72313a", size = 37357, upload-time = "2026-06-22T16:07:48.595Z" },
+]
+
+[[package]]
 name = "primp"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -4160,7 +4206,9 @@ version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/50/97/a578b918b2e5923dd754cb60bb8b8aeffc85255ffb92566e3c65b148ff72/py_mini_racer-0.6.0.tar.gz", hash = "sha256:f71e36b643d947ba698c57cd9bd2232c83ca997b0802fc2f7f79582377040c11", size = 5994836, upload-time = "2021-04-22T07:58:35.993Z" }
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/13/058240c7fd1fbf29a24bda048d93346c2a56275736b76b56afe64050a161/py_mini_racer-0.6.0-py2.py3-none-macosx_10_10_x86_64.whl", hash = "sha256:346e73bb89a2024888244d487834be24a121089ceb0641dd0200cb96c4e24b57", size = 5280865, upload-time = "2021-04-22T07:58:29.118Z" },
     { url = "https://files.pythonhosted.org/packages/29/a9/8ce0ca222ef04d602924a1e099be93f5435ca6f3294182a30574d4159ca2/py_mini_racer-0.6.0-py2.py3-none-manylinux1_x86_64.whl", hash = "sha256:42896c24968481dd953eeeb11de331f6870917811961c9b26ba09071e07180e2", size = 5416149, upload-time = "2021-04-22T07:58:25.615Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/71/76ac5d593e14b148a4847b608c5ad9a2c7c4827c796c33b396d0437fa113/py_mini_racer-0.6.0-py2.py3-none-win_amd64.whl", hash = "sha256:97cab31bbf63ce462ba4cd6e978c572c916d8b15586156c7c5e0b2e42c10baab", size = 4797809, upload-time = "2021-04-22T07:58:32.286Z" },
 ]
 
 [[package]]
@@ -4879,8 +4927,10 @@ dependencies = [
 [package.optional-dependencies]
 datasource-all = [
     { name = "akshare" },
+    { name = "baostock" },
     { name = "finnhub-python" },
     { name = "futu-api" },
+    { name = "mootdx" },
     { name = "tushare" },
     { name = "yfinance" },
 ]
@@ -4924,6 +4974,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.19.0" },
     { name = "akshare", marker = "extra == 'datasource-all'", specifier = ">=1.1.15" },
     { name = "asyncpg", specifier = ">=0.29.0" },
+    { name = "baostock", marker = "extra == 'datasource-all'", specifier = ">=0.8.9" },
     { name = "bcrypt", specifier = ">=4.1.2" },
     { name = "chromadb", specifier = ">=0.4.24" },
     { name = "duckduckgo-search", specifier = ">=5.0.0" },
@@ -4937,6 +4988,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "jieba", specifier = ">=0.42.1" },
     { name = "langchain-text-splitters", specifier = ">=0.2.0" },
+    { name = "mootdx", marker = "extra == 'datasource-all'", specifier = ">=0.11.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0,<3" },
     { name = "numba", specifier = ">=0.59.0" },
     { name = "openai", specifier = ">=1.14.0" },
@@ -5752,12 +5804,24 @@ wheels = [
 ]
 
 [[package]]
-name = "tenacity"
-version = "9.1.4"
+name = "tdxpy"
+version = "0.2.7"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
+dependencies = [
+    { name = "pandas" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/63/ecc88446a1e693336dfe57aa3c95d02b3a1dc0d7ba0c4b256bea471c6033/tdxpy-0.2.7.tar.gz", hash = "sha256:e2462cf61f5cef845e70ac9be071ba6386b226bec4075de4af9807b60b7ae70d", size = 34175, upload-time = "2024-03-10T04:59:03.066Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/db/6513418e77e3635148d251eb15e6fbd32bad7ee4842b81bda8be7d2fbd0a/tdxpy-0.2.7-py3-none-any.whl", hash = "sha256:5514d35608fac2c7b2acf693de6f41ba7ccda58207b65a3f374c89887560737c", size = 56830, upload-time = "2024-03-10T04:59:00.591Z" },
+]
+
+[[package]]
+name = "tenacity"
+version = "8.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/4d/6a19536c50b849338fcbe9290d562b52cbdcf30d8963d3588a68a4107df1/tenacity-8.5.0.tar.gz", hash = "sha256:8bc6c0c8a09b31e6cad13c47afbed1a567518250a9a171418582ed8d9c20ca78", size = 47309, upload-time = "2024-07-05T07:25:31.836Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/3f/8ba87d9e287b9d385a02a7114ddcef61b26f86411e121c9003eb509a1773/tenacity-8.5.0-py3-none-any.whl", hash = "sha256:b594c2a5945830c267ce6b79a166228323ed52718f30302c1359836112346687", size = 28165, upload-time = "2024-07-05T07:25:29.591Z" },
 ]
 
 [[package]]
