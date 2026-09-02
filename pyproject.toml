@@ -73,6 +73,8 @@ datasource-all = [
     # data_subservice/futu_src。请勿在主服务默认环境安装此包。
     "futu-api>=10.10.0",        # 港股/富途 (仅 data_subservice, 主服务走 HTTP 代理)
     "finnhub-python>=2.4.29",  # Finnhub REST+WebSocket (长连接实时流)
+    "baostock>=0.8.9",         # A股历史K线/季频财务/复权因子 (T+1, 免费协议源)
+    "tdxpy>=0.2.5",            # 通达信协议: 盘中快照/分时/分钟线 (免费, 同步 socket; 直连底层库, 规避 mootdx 停更的 httpx<0.26 硬钉)
 ]
 # 本地向量化模型（可选，默认用 API 替代）
 local-embedding = [

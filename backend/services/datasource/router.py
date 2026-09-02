@@ -509,6 +509,8 @@ class DataSourceRouter:
         yf_backups = os.getenv("YF_BACKUP_NODE_URL", "")
         akshare_urls = self._split_urls(os.getenv("AKSHARE_REMOTE_URL", ""))
         tushare_urls = self._split_urls(os.getenv("TUSHARE_REMOTE_URL", ""))
+        baostock_urls = self._split_urls(os.getenv("BAOSTOCK_REMOTE_URL", ""))
+        tdx_urls = self._split_urls(os.getenv("TDX_REMOTE_URL", ""))
 
         self._nodes["yf_primary"] = DataSourceNode(
             name="yf_primary",
@@ -551,6 +553,24 @@ class DataSourceRouter:
                     "lowfreq_history",
                     "macro",
                 ],
+            )
+
+        # BaoStock 远程节点（A股免费协议源：历史K线/季频财务/复权因子，单键）
+        if baostock_urls:
+            self._nodes["baostock_remote"] = DataSourceNode(
+                name="baostock_remote",
+                url=baostock_urls[0],
+                weight=10,
+                capabilities=["baostock", "cn_history", "cn_fundamental"],
+            )
+
+        # TDX 远程节点（A股免费协议源：盘中快照/分时/分钟线，单键）
+        if tdx_urls:
+            self._nodes["tdx_remote"] = DataSourceNode(
+                name="tdx_remote",
+                url=tdx_urls[0],
+                weight=10,
+                capabilities=["tdx", "cn_snapshot", "cn_minutes"],
             )
 
         # Futu 主节点节点 (pin 主节点, 单键)
@@ -1248,6 +1268,66 @@ class DataSourceRouter:
 
         logger.warning("[AKShare] 远程节点失败且无 STALE 缓存（后端已移除本地兜底）")
         return {"status": "error", "message": "AKShare remote node failed (local SDK disabled)"}
+
+    async def fetch_baostock(self, action: str, **params) -> Dict[str, Any]:
+        """BaoStock 远程节点代理（A股历史K线/季频财务/复权因子，免费协议源 T+1）。"""
+        return await self._fetch_remote_simple("baostock", "baostock_remote", action, **params)
+
+    async def fetch_tdx(self, action: str, **params) -> Dict[str, Any]:
+        """TDX 远程节点代理（盘中快照/分时/分钟线增量，免费协议源）。"""
+        return await self._fetch_remote_simple("tdx", "tdx_remote", action, **params)
+
+    async def _fetch_remote_simple(self, source: str, remote_key: str, action: str, **params) -> Dict[str, Any]:
+        """无 STALE 缓存的通用远程代理（baostock/tdx 等新源）。
+
+        与 fetch_akshare 的差异：不存 STALE/热点缓存（历史包袱，新源不背）；
+        bad_request/UNSUPPORTED 是确定性结论，直接透传且不计熔断失败。"""
+        record_breaker = bool(params.pop("_record_breaker", True))
+        offline = self._maybe_offline(source, action, **params)
+        if offline is not None:
+            return offline
+
+        remote_node = self._nodes.get(remote_key)
+        remote_action = action.upper()
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
+            logger.warning(f"[{source.upper()}] 远程节点不可用")
+            return {"status": "error", "message": f"No healthy {source.upper()} remote node"}
+
+        try:
+            payload = {
+                "source": source,
+                "action": remote_action,
+                "params": self._normalize_outbound_params(dict(params)),
+            }
+            result = await self._send_request(remote_node, source, payload)
+            if result.get("status") == "success":
+                await self._update_node_status(
+                    remote_node.name, success=True, action=remote_action, record_breaker=record_breaker
+                )
+                return result
+            # 客户端侧确定性错误：透传给调用方（facade 改走候选源），不累计熔断
+            if result.get("error_category") in ("bad_request", "UNSUPPORTED"):
+                return result
+            await self._update_node_status(
+                remote_node.name,
+                success=False,
+                error=str(result.get("message")),
+                action=remote_action,
+                record_breaker=record_breaker,
+            )
+        except Exception as e:
+            logger.warning(f"[{source.upper()}] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(e), action=remote_action, record_breaker=record_breaker
+            )
+
+        logger.warning(f"[{source.upper()}] 远程节点失败且无降级路径")
+        return {"status": "error", "message": f"{source.upper()} remote node failed"}
 
     async def fetch_tushare(self, action: str, **params) -> Dict[str, Any]:
         """Tushare 远程节点代理 (北京从节点 DS_CAPABILITIES=tushare,akshare)。

@@ -522,7 +522,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 北京从节点 (VPS_BJ)：全量镜像 :us，DS_CAPABILITIES 运行时隔离为 tushare+akshare+yfinance
+          # 北京从节点 (VPS_BJ)：全量镜像 :us，DS_CAPABILITIES 运行时隔离为 tushare+akshare+baostock+tdx+yfinance
           - node: bj
             host-secret: VPS_BJ_HOST
             user-secret: VPS_BJ_USER
@@ -531,7 +531,7 @@ jobs:
             ts-ip-secret: VPS_BJ_TAILSCALE_IP
             ds-id: bj-slave
             ds-region: cn
-            ds-caps: "tushare,akshare,yfinance"
+            ds-caps: "tushare,akshare,baostock,tdx,yfinance"
             ds-tag: us  # 全量镜像合并后统一 :us，经本机 daemon 代理直连 ghcr.io 拉取
             tz: Asia/Shanghai
             creds: true

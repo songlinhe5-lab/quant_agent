@@ -36,6 +36,8 @@ from data_subservice.yfinance_worker import handle_yfinance
 _WORKER_IMPORTS = {
     "akshare": "data_subservice.akshare_worker",
     "tushare": "data_subservice.tushare_worker",
+    "baostock": "data_subservice.baostock_worker",
+    "tdx": "data_subservice.tdx_worker",
     "futu": "data_subservice.futu_worker",
     "finnhub": "data_subservice.finnhub_worker",
     "fmp": "data_subservice.fmp_worker",
@@ -183,10 +185,10 @@ def _declared_capabilities() -> set:
     """
     # 默认能力集（未显式声明 DS_CAPABILITIES 时）。
     # ⚠️ 注意：部署时必须通过 DS_CAPABILITIES 显式声明本节点能力，否则未声明的能力全部 503。
-    # 全量能力集参考：yfinance,akshare,tushare,fmp,futu,finnhub,fred,dbnomics,rbi,tavily,bocha,jina
+    # 全量能力集参考：yfinance,akshare,tushare,baostock,tdx,fmp,futu,finnhub,fred,dbnomics,rbi,tavily,bocha,jina
     raw = os.getenv("DS_CAPABILITIES") or os.getenv("NODE_CAPABILITIES")
     if not raw:
-        return {"yfinance", "akshare", "tushare", "fmp", "futu"}
+        return {"yfinance", "akshare", "tushare", "baostock", "tdx", "fmp", "futu"}
     return {c.strip().lower() for c in raw.split(",") if c.strip()}
 
 
