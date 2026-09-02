@@ -19,7 +19,7 @@ futu-api>=10.10.0        # Futu OpenD 直连 (港股/美股/期权)
 tushare>=1.4.0           # A股主源 (2000积分/200元档)
 akshare>=1.14.0          # AkShare (A股兜底源, 新浪源)
 baostock>=0.8.9          # BaoStock (A股历史K线/季频财务/复权因子, T+1 免费协议源)
-mootdx>=0.11.0          # 通达信协议 (盘中快照/分时/分钟线, 免费同步 socket)
+tdxpy>=0.2.5            # 通达信协议 (盘中快照/分时/分钟线, 免费同步 socket; 直连底层库, 规避 mootdx 停更的 httpx<0.26 硬钉)
 yfinance>=0.2.40         # Yahoo Finance (美股/ETF)
 protobuf>=4.0.0          # futu-api 内部行情 protobuf 编解码依赖
 

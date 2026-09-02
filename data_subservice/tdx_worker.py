@@ -1,6 +1,6 @@
-"""TDX worker — 通达信协议（mootdx）：盘中快照 / 分时 / 分钟线与日线增量。
+"""TDX worker — 通达信协议（tdxpy 直连）：盘中快照 / 分时 / 分钟线与日线增量。
 
-与 akshare_worker 同款薄分发模式；mootdx 是同步 socket，
+与 akshare_worker 同款薄分发模式；tdxpy 是同步 socket，
 按 AGENTS §4（禁止 async 里同步阻塞）一律 asyncio.to_thread 卸载。
 """
 

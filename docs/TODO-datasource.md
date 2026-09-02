@@ -101,8 +101,9 @@
     - 全绿。验证重点：日志实测触发「节点 yf_a 触发熔断」「无健康子服务节点可用（后端已移除本地兜底）」「Futu 远程节点不可用（后端已移除本地兜底）」，证明降级/熔断/切换链路真实生效，而非 mock 假结果。
 - [x] **[SVC-08]** A股免费协议源双接入：BaoStock（历史深度）+ TDX/通达信（盘中实时），与 akshare 爬虫源互补（交付 2026-09-01）
   - **交付**：
-    - **子服务**：新建 `_internal/baostock/`（client 连接管理 + service：日/周/月/5-60分钟 K 线含 peTTM/pbMRQ 估值列、季频财务四表 profit/growth/balance/cashflow、复权因子、股票基础信息；进程级单连接 + 全局串行锁，login 幂等）与 `_internal/tdx/`（mootdx 封装：盘中快照/分时/分钟线与日线增量；`TDX_SERVER_IP` 显式指定否则 bestip 自动测速，断线自动重建）。SDK 均为同步阻塞 → worker 侧一律 `asyncio.to_thread` 卸载；SDK 延迟导入，未安装环境可安全 import。
+    - **子服务**：新建 `_internal/baostock/`（client 连接管理 + service：日/周/月/5-60分钟 K 线含 peTTM/pbMRQ 估值列、季频财务四表 profit/growth/balance/cashflow、复权因子、股票基础信息；进程级单连接 + 全局串行锁，login 幂等）与 `_internal/tdx/`（tdxpy 直连：盘中快照/分时/分钟线与日线增量；`TDX_SERVER_IP` 显式指定否则内置服务器池顺序试连，断线自动重建）。SDK 均为同步阻塞 → worker 侧一律 `asyncio.to_thread` 卸载；SDK 延迟导入，未安装环境可安全 import。
     - **worker + 挂载**：`baostock_worker.py`（KLINE_CN / FUNDAMENTAL_CN / ADJUST_FACTOR_CN / STOCK_BASIC_CN）与 `tdx_worker.py`（QUOTE_CN_SNAPSHOT / BARS_CN / MINUTES_CN）注册进 `main.py` `_WORKER_IMPORTS` 与默认能力集。
     - **主服务**：`DataSourceRouter.fetch_baostock` / `fetch_tdx` 经 `_fetch_remote_simple` 通用远程代理（新源不背 STALE/热点缓存历史包袱；bad_request/UNSUPPORTED 确定性结论透传且不计熔断）；节点 `baostock_remote` / `tdx_remote` 由 `BAOSTOCK_REMOTE_URL` / `TDX_REMOTE_URL` 环境变量注册（未配置则不启用，单键拓扑与 tushare_remote 同款）。
-    - **依赖**：`pyproject.toml` 数据节点 extra 与 `data_subservice/requirements.txt` 追加 `baostock>=0.8.9`、`mootdx[all]>=0.11.0`；`.env.example` 补两个 URL 变量与 TDX_SERVER_IP 说明。
+    - **依赖**：`pyproject.toml` 数据节点 extra 与 `data_subservice/requirements.txt` 追加 `baostock>=0.8.9`、`tdxpy>=0.2.5`；`.env.example` 补两个 URL 变量与 TDX_SERVER_IP 说明。
     - **守门**：`test_baostock_worker.py`（error_code 结构锁/代码归一化/分发语义）、`test_tdx_worker.py`（周期映射/空 DataFrame 如实为空/断线重建）+ `test_datasource_remote_workers.py` 补两个新源分发用例，全部 mock SDK 不触真实外网；子服务回归 1001 passed。
+  - **修正（2026-09-02）**：TDX 侧由 mootdx 切换为其底层库 **tdxpy 直连**——mootdx 已停更且硬钉 `httpx<0.26`，与项目 `httpx>=0.27.0` 冲突导致 CI `pip install -r requirements.txt` 必炸（pip 无 uv override 机制）；tdxpy 纯 socket 零 httpx 依赖，`[tool.uv] override-dependencies` 随之删除。连接管理相应改为 `TDX_SERVER_IP` 或内置服务器池顺序试连（不再经 httpx 拉 bestip）。
