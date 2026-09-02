@@ -1,7 +1,7 @@
 /**
  * FE-DEBUG-01 底部 DEBUG 面板 — 实时查看主服务 + 各数据子服务日志
- * - 布局：固定底部条带，左右多栏（主服务 + 每节点一栏），高度可拖，上限 1/3 屏
- * - 数据：useDebugLogStream 每 2s 增量轮询 /logs/stream/summary
+ * - 布局：固定底部条带，Tab 切换（主服务 + 每节点一个页签），单栏全宽展示，高度可拖，上限 2/3 屏
+ * - 数据：useDebugLogStream 每 2s 增量轮询 /logs/stream/summary（后台各节点缓冲不中断，切 Tab 即时可见）
  * - 控制：折叠 / 暂停 / 清空 / 级别过滤（全局）
  */
 import { useEffect, useRef, useState } from 'react'
@@ -29,8 +29,9 @@ const LEVEL_BADGE: Record<string, string> = {
 }
 
 const MIN_HEIGHT = 96
-const DEFAULT_HEIGHT = 200
-const STORAGE = { collapsed: 'quant_debug_panel_collapsed', height: 'quant_debug_panel_height' }
+const DEFAULT_HEIGHT = 240
+const MAX_HEIGHT_RATIO = 2 / 3 // 可拖到 2/3 屏，看长日志不用受罪
+const STORAGE = { collapsed: 'quant_debug_panel_collapsed', height: 'quant_debug_panel_height', tab: 'quant_debug_panel_tab' }
 
 function matchLevel(e: LogEntry, level: Level): boolean {
   if (level === 'ALL') return true
@@ -70,38 +71,12 @@ function LogRows({ entries, level }: { entries: LogEntry[]; level: Level }) {
   )
 }
 
-interface LogPaneProps {
-  title: string
-  subtitle?: string
-  state: 'ok' | 'error' | 'empty'
-  entries: LogEntry[]
-  level: Level
-}
+// ── 单个日志页签内容（全宽；节点不可达由 Tab 区处理） ──────────────
 
-function LogPane({ title, subtitle, state, entries, level }: LogPaneProps) {
+function LogPane({ entries, level }: { entries: LogEntry[]; level: Level }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col border-r border-border/40 last:border-r-0">
-      <div className="flex h-7 shrink-0 items-center gap-2 border-b border-border/40 px-2">
-        <span
-          className={cn(
-            'h-1.5 w-1.5 rounded-full shrink-0',
-            state === 'ok' ? 'bg-emerald-500' : state === 'error' ? 'bg-red-500' : 'bg-slate-500',
-          )}
-          aria-hidden
-        />
-        <span className="truncate text-[10px] font-bold tracking-wide uppercase">{title}</span>
-        {subtitle && <span className="truncate text-[9px] text-muted-foreground">{subtitle}</span>}
-        <span className="ml-auto text-[9px] text-muted-foreground tabular-nums">{entries.length}</span>
-      </div>
-      <div className="min-h-0 flex-1">
-        {state === 'error' ? (
-          <div className="flex h-full items-center justify-center text-[10px] text-red-400/80 font-mono px-2 text-center">
-            节点不可达（子服务未注册或离线）
-          </div>
-        ) : (
-          <LogRows entries={entries} level={level} />
-        )}
-      </div>
+    <div className="h-full min-w-0">
+      <LogRows entries={entries} level={level} />
     </div>
   )
 }
@@ -114,6 +89,7 @@ export function DebugLogPanel() {
   })
   const [paused, setPaused] = useState(false)
   const [level, setLevel] = useState<Level>('ALL')
+  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem(STORAGE.tab) || 'main')
   const { nodes, mainEntries, nodeEntries, clearAll } = useDebugLogStream(paused)
   const dragging = useRef(false)
 
@@ -123,12 +99,15 @@ export function DebugLogPanel() {
   useEffect(() => {
     localStorage.setItem(STORAGE.height, String(height))
   }, [height])
+  useEffect(() => {
+    localStorage.setItem(STORAGE.tab, activeTab)
+  }, [activeTab])
 
-  // 拖动调整面板高度（上限 1/3 屏）
+  // 拖动调整面板高度（上限 2/3 屏）
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragging.current) return
-      const maxH = window.innerHeight / 3
+      const maxH = window.innerHeight * MAX_HEIGHT_RATIO
       const next = Math.min(maxH, Math.max(MIN_HEIGHT, window.innerHeight - e.clientY - 28))
       setHeight(next)
     }
@@ -216,29 +195,61 @@ export function DebugLogPanel() {
           </button>
         </span>
       </div>
-      {/* 左右多栏日志区 */}
-      <div className="flex min-h-0 flex-1">
-        <LogPane title="主服务" state="ok" entries={mainEntries} level={level} />
-        {nodes.length === 0 && (
-          <LogPane
-            title="数据服务节点"
-            subtitle="无已注册节点"
-            state="empty"
-            entries={[]}
-            level={level}
-          />
-        )}
-        {nodes.map((n) => (
-          <LogPane
-            key={n.url}
-            title={n.name}
-            subtitle={n.online ? '在线' : '离线'}
-            state={n.online ? 'ok' : 'error'}
-            entries={nodeEntries[n.url] ?? []}
-            level={level}
-          />
-        ))}
-      </div>
+      {/* Tab 页签（主服务 + 各节点）+ 单栏全宽日志区 */}
+      {(() => {
+        const tabs = [
+          { id: 'main', name: '主服务', subtitle: undefined, state: 'ok' as const, entries: mainEntries },
+          ...nodes.map((n) => ({
+            id: n.url,
+            name: n.name,
+            subtitle: n.online ? '在线' : '离线',
+            state: (n.online ? 'ok' : 'error') as 'ok' | 'error',
+            entries: nodeEntries[n.url] ?? [],
+          })),
+        ]
+        const active = tabs.find((t) => t.id === activeTab) ?? tabs[0]
+        return (
+          <>
+            <div className="flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border/40 bg-zinc-950/60" data-testid="debug-log-tabs">
+              {tabs.map((t) => {
+                const isActive = t.id === active.id
+                const count = t.entries.length
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTab(t.id)}
+                    className={cn(
+                      'flex shrink-0 items-center gap-1.5 border-b-2 px-3 text-[10px] font-bold tracking-wide uppercase transition-colors',
+                      isActive
+                        ? 'border-primary text-foreground'
+                        : 'border-transparent text-slate-500 hover:text-slate-300',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full shrink-0',
+                        t.state === 'ok' ? 'bg-emerald-500' : t.state === 'error' ? 'bg-red-500' : 'bg-slate-500',
+                      )}
+                      aria-hidden
+                    />
+                    {t.name}
+                    <span className={cn('tabular-nums font-normal', count > 0 ? 'text-slate-500' : 'text-slate-700')}>{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="min-h-0 flex-1">
+              {active.state === 'error' ? (
+                <div className="flex h-full items-center justify-center text-[10px] text-red-400/80 font-mono px-2 text-center">
+                  {active.name} 节点不可达（子服务未注册或离线）
+                </div>
+              ) : (
+                <LogPane entries={active.entries} level={level} />
+              )}
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }
